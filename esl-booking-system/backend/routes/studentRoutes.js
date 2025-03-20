@@ -28,35 +28,48 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
 ;
 
         const packageDetails = packageQuery.rows.length > 0 ? packageQuery.rows[0] : null;
-console.log("Package Details ID:", packageDetails ? packageDetails.id : "No package found")
-        // Fetch bookings
-        // const bookingsQuery = await pool.query(
-        //     `SELECT * FROM bookings WHERE student_package_id = $1`, [userId]);
-        const studentPackageQuery = await pool.query(
-          `SELECT id FROM student_packages WHERE student_id = $1`, 
-          [userId]
-      );
+        console.log("Package Details ID:", packageDetails ? packageDetails.id : "No package found")
+
+        let bookings = [];
+
+        if (packageDetails) {
+            // Fetch student's package ID
+            const studentPackageQuery = await pool.query(
+                `SELECT id FROM student_packages WHERE student_id = $1`, 
+                [userId]
+            );
+
       
       const studentPackage = studentPackageQuery.rows[0]; 
       
-      if (!studentPackage) {
-          return res.status(404).json({ message: "No package found for this student" });
-      }
+      // if (!studentPackage) {
+      //     return res.status(404).json({ message: "No package found for this student" });
+      // }
       
+      if (studentPackage) {
       // Now fetch bookings using this student_package_id
-      const bookingsQuery = await pool.query(
-          `SELECT * FROM bookings WHERE student_package_id = $1`, 
-          [studentPackage.id]
-      );
-        
-           const bookings = bookingsQuery.rows.map(booking => ({
-                id: booking.id,
-                // appointment_date: booking.appointment_date,
-                // timeslot: booking.timeslot,
-                appointment_date: booking.appointment_date.toISOString().split('T')[0], // Extract date
-    timeslot: new Date(booking.appointment_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }), // Extract time
-                status: booking.status,
-              }));
+        const bookingsQuery = await pool.query(
+            `SELECT * FROM bookings WHERE student_package_id = $1`, 
+            [studentPackage.id]
+        );
+          
+                bookings = bookingsQuery.rows.map(booking => {
+                  const appointmentDate = new Date(booking.appointment_date); // Auto-converts UTC to local
+              
+                  return {
+                      id: booking.id,
+                      appointment_date: appointmentDate.toISOString().split('T')[0], // Extract YYYY-MM-DD
+                      timeslot: appointmentDate.toLocaleTimeString('en-US', { 
+                          hour: '2-digit', 
+                          minute: '2-digit', 
+                          hour12: true 
+                      }),
+                      status: booking.status,
+                  };
+              });
+      
+              }
+            }
             
         console.log("Student Data:", student);
         console.log("Package Details:", packageDetails);

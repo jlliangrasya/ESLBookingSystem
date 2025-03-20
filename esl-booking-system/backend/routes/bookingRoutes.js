@@ -72,11 +72,14 @@ router.get("/api/student-bookings", async (req, res) => {
         WHERE b.appointment_date >= NOW()   
         ORDER BY b.appointment_date ASC
       `);
-      res.json(result.rows);
-      console.log(
-        "Returning student package ID:",
-        result.rows[0].student_package_id
-      );
+      //  Check if result.rows is empty before accessing result.rows[0]
+      if (result.rows.length === 0) {
+        console.log("No bookings found.");
+        return res.json([]); // Return an empty array
+    }
+
+    console.log("Returning student package ID:", result.rows[0].student_package_id);
+    res.json(result.rows);
     } catch (err) {
       console.error("Error fetching bookings:", err);
       res.status(500).json({ message: "Server error", error: err.message });

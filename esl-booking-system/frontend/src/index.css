@@ -14,6 +14,7 @@
   width: 100% !important;  /* Make calendar take full width */
   max-width: 100%; /* Ensure it doesn't overflow */
   font-size: 1.2rem; /* Increase text size */
+
 }
 
 .booking-names {

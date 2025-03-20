@@ -79,6 +79,7 @@ const TimeslotPage = () => {
               })
               .toUpperCase();
 
+            console.log("Formatted Time:", formattedTime); // Log formatted time
             slotsMap[formattedTime] = booking.student_package_id; // Store package ID
           }
         });
@@ -210,7 +211,7 @@ const TimeslotPage = () => {
 
   return (
     <div className="container mt-4">
-      <h2>Available Time Slots for {date}</h2>
+      <h2 className="pb-5 pt-2">Available Time Slots for {date}</h2>
       <div className="row g-2">
         {generateTimeSlots().map((slot, index) => {
           const now = new Date();

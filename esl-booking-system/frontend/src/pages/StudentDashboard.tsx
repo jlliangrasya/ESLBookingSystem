@@ -70,19 +70,27 @@ const StudentDashboard = () => {
         setStudent(response.data.student);
         setPackageDetails(response.data.package || null);
 
+        // Get current date & time in the same format as bookings
+        const now = new Date();
+
         // Process bookings to match calendar format
         const processedBookings: Record<string, string[]> = {};
+
         response.data.bookings.forEach((booking: Booking) => {
-          // Ensure the date remains in UTC by treating it as a string (no conversion)
-          const dateKey = booking.appointment_date; // Already 'YYYY-MM-DD' from backend
+          // Combine date and time for accurate comparison
+          const appointmentDateTime = new Date(
+            `${booking.appointment_date} ${booking.timeslot}`
+          );
 
-          // Keep the provided timeslot without converting
-          const timeslot = booking.timeslot; // Already stored correctly in DB
+          // 🔥 Remove past appointments
+          if (appointmentDateTime >= now) {
+            const dateKey = booking.appointment_date;
 
-          if (!processedBookings[dateKey]) {
-            processedBookings[dateKey] = [];
+            if (!processedBookings[dateKey]) {
+              processedBookings[dateKey] = [];
+            }
+            processedBookings[dateKey].push(booking.timeslot);
           }
-          processedBookings[dateKey].push(timeslot);
         });
 
         setCalendarBookings(processedBookings);
@@ -192,6 +200,7 @@ const StudentDashboard = () => {
         <Navbar expand="lg" className="justify-content-center">
           <img src={logo} alt="Logo" height="40" className="d-block mx-auto" />
         </Navbar>
+
         <div>
           {/* Header Section */}
           <Row className="px-5">
@@ -212,7 +221,7 @@ const StudentDashboard = () => {
           </Row>
         </div>
       </div>
-      <div className="main-content">
+      <div className="main-content pb-5">
         {/* Main Content */}
         <Row>
           {/* Left Section - 50% of the screen */}
@@ -259,7 +268,7 @@ const StudentDashboard = () => {
 
             <h4 className="mt-4">Booked Classes</h4>
             <Calendar
-              className="custom-calendar"
+              className="custom-calendar "
               onClickDay={handleDateClick}
               tileContent={({ date }) => {
                 const dateString = date.toLocaleDateString("en-CA"); // "YYYY-MM-DD"
