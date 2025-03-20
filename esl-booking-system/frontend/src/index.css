@@ -1,0 +1,197 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+* {
+  font-family: 'Poppins', sans-serif !important;
+}
+
+.nav-links {
+  display: flex;
+  justify-content: space-between;
+  gap: 60px; /* Adjust space as needed */
+}
+
+.custom-calendar {
+  width: 100% !important;  /* Make calendar take full width */
+  max-width: 100%; /* Ensure it doesn't overflow */
+  font-size: 1.2rem; /* Increase text size */
+}
+
+.booking-names {
+  display: flex;
+  flex-direction: column;
+  gap: 5px; /* Add spacing between names */
+  padding: 5px;
+}
+
+.booking-name {
+  background-color: rgb(91, 176, 209); 
+  color: white; /* White text */
+  border-radius: 5px;
+  text-align: center;
+  font-size: 10px;
+  
+}
+
+.btn-xs {
+  font-size: 10px !important; /* Smaller text */
+  padding: 2px 6px !important;; /* Less padding */
+}
+
+.header-section {
+  position: absolute; /* Positions it at the top */
+  top: 0;
+  left: 0;
+  width: 100%; /* Ensures full width */
+  background-color: rgba(101, 195, 232, 0.25); /* Bootstrap primary blue (change as needed) */
+  color: rgb(0, 0, 0); /* Ensures text is visible */
+  padding-top: 10px; /* Adds spacing inside */
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.main-content {
+  margin-top: 180px; /* Adjust this based on your header height */
+ 
+}
+
+.custom-button {
+  width: 100%;
+  background-color: #65C3E8 !important;
+  border: none !important;
+  color: white;
+  box-shadow: 0px 10px 10px rgba(0, 0, 0, 0.1);
+  transition: background-color 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+}
+
+.custom-button:hover {
+  background-color: #3a87a3 ;
+  box-shadow: 0px 6px 10px rgba(0, 0, 0, 0.15);
+}
+
+.custom-table {
+  font-family: "Poppins", sans-serif !important;
+  border-bottom: 2px solid #65C3E8 !important;
+}
+
+/* Header Styling */
+.custom-table thead {
+  background-color: #65C3E8;
+  color: white;
+}
+
+/* Default Row Styling */
+.custom-table tbody tr {
+  transition: background-color 0.3s ease, box-shadow 0.2s ease-in-out;
+}
+
+/* Hover Effect */
+.custom-table tbody tr:hover {
+  background-color: rgba(101, 195, 232, 0.3) !important;
+}
+
+/* Selected Row Effect */
+.custom-table .selected-row {
+  background-color: rgba(101, 195, 232, 0.50) !important; /* Stronger blue */
+  color: white !important;
+  font-weight: bold;
+  box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+}
+
+/* Ensure the text inside the selected row remains white */
+.custom-table .selected-row td {
+  background-color: rgba(101, 195, 232, 0.25) !important;
+}
+
+.weekly-calendar {
+  font-family: "Poppins", sans-serif;
+}
+
+/* Table Styling */
+.weekly-calendar table {
+  border-collapse: collapse;
+  width: 100%;
+  border: 2px solid #65C3E8;
+  table-layout: fixed; /* Prevents uneven column widths */
+}
+
+/* Header Row (Days) */
+.weekly-calendar th{
+  background-color: #65c3e870 !important;
+  color: rgb(0, 0, 0);
+  text-align: center;
+}
+
+/* Time Column */
+.weekly-calendar th:first-child {
+  background-color: #65C3E8;
+  color: rgb(0, 0, 0);
+  font-weight: bold !important;
+}
+
+/* Vertical Divider for Time Column */
+.weekly-calendar td:first-child,
+.weekly-calendar th:first-child {
+  border-right: 4px solid #65C3E8;
+  font-weight: bold !important;
+}
+
+/* Default Time Slot Style */
+.weekly-calendar td {
+  text-align: center;
+  padding: 12px;
+  cursor: pointer;
+  transition: background 0.3s ease-in-out;
+  
+}
+
+/* Reduce row height for all rows except the header */
+.weekly-calendar tbody tr td {
+  height: 25px !important;  /* Adjust this for desired row size */
+  padding: 3px !important; /* Reduce padding for a more compact look */
+  line-height: 1.5; /* Ensures text is properly aligned */
+}
+
+/* Available Time Slot */
+.weekly-calendar .available {
+  background-color: white;
+}
+
+/* Hover Effect on Available Slots */
+.weekly-calendar .available:hover {
+  background-color: rgba(101, 195, 232, 0.2);
+}
+
+/* Selected Time Slot */
+.weekly-calendar .selected {
+  background-color: #28a745 !important;
+  color: white;
+  font-weight: bold;
+}
+
+/* Booked Time Slot */
+.weekly-calendar .booked {
+  background-color: #0437F2 !important;
+  color: white;
+  font-weight: bold;
+}
+
+/* Closed Time Slot */
+.weekly-calendar .closed {
+  background-color: #929292 !important;
+  color: white;
+  font-weight: bold;
+  cursor: not-allowed;
+}
+
+/* Borders */
+.weekly-calendar td,
+.weekly-calendar th {
+  border: 1px solid #65C3E8;
+}
+
+.closed-timselot{
+  background-color: #929292 !important;
+  color: white;
+  font-weight: bold;
+  cursor: not-allowed;
+}
