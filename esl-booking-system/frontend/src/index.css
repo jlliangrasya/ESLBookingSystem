@@ -23,13 +23,15 @@
   padding: 5px;
 }
 
-.booking-name {
+.custom-calendar .booking-name p {
   background-color: rgb(91, 176, 209); 
   color: white; /* White text */
   border-radius: 5px;
   text-align: center;
-  font-size: 10px;
-  
+  padding: 2px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
 }
 
 .btn-xs {
@@ -189,9 +191,41 @@
   border: 1px solid #65C3E8;
 }
 
-.closed-timselot{
-  background-color: #929292 !important;
-  color: white;
+/* Styling for closed timeslots */
+.closed-timeslot {
+  background-color: #929292b6 !important;
+  color: rgb(0, 0, 0);
   font-weight: bold;
-  cursor: not-allowed;
+  text-align: center;
+}
+
+/* Styling for timeslots booked by user */
+.bookedByUser-timeslot {
+  background-color: #25ce4cc7 !important;
+  color: rgb(0, 0, 0);
+  font-weight: bold;
+  text-align: center;
+}
+
+/* Styling for available student timeslots */
+.student-timeslots {
+  background-color: #6bd4fd54 !important;
+  color: rgb(0, 0, 0);
+  text-align: center;
+  border: 1px solid #6bd4fd;
+}
+
+/* Hover effect for available slots */
+.student-timeslots:hover {
+  background-color: #00bbff;
+  color: rgba(0, 0, 0, 0.918);
+  transform: scale(1.05); /* Slight hover effect */
+  transition: all 0.2s ease-in-out;
+}
+
+/* Ensure buttons are responsive */
+button {
+  font-size: 1rem;
+  padding: 10px 5px;
+  border-radius: 8px;
 }

@@ -51,8 +51,10 @@ console.log("Package Details ID:", packageDetails ? packageDetails.id : "No pack
         
            const bookings = bookingsQuery.rows.map(booking => ({
                 id: booking.id,
-                appointment_date: booking.appointment_date,
-                timeslot: booking.timeslot,
+                // appointment_date: booking.appointment_date,
+                // timeslot: booking.timeslot,
+                appointment_date: booking.appointment_date.toISOString().split('T')[0], // Extract date
+    timeslot: new Date(booking.appointment_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }), // Extract time
                 status: booking.status,
               }));
             

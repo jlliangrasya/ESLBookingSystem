@@ -21,9 +21,7 @@ const TimeslotPage = () => {
   const navigate = useNavigate();
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
-  // bookedSlots: key is a time string in uppercase (e.g., "10:30 AM"), value is student_package_id (number)
   const [bookedSlots, setBookedSlots] = useState<{ [key: string]: number }>({});
-  // closedSlots: array of time strings (normalized to uppercase)
   const [closedSlots, setClosedSlots] = useState<string[]>([]);
   const [userPackageId, setUserPackageId] = useState<number | null>(null);
 
@@ -64,31 +62,27 @@ const TimeslotPage = () => {
           { headers: { Authorization: `Bearer ${token}` } }
         );
         console.log("API Response - Bookings:", response.data);
+
         const slotsMap: { [key: string]: number } = {};
 
         response.data.forEach((booking) => {
-          // Convert appointment_date to a Date object
-          const bookingDateTime = new Date(booking.appointment_date); // Ensure correct parsing
-          const formattedTime = bookingDateTime
-            .toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: true,
-              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, // Uses user's local timezone
-            })
-            .toLowerCase();
+          const bookingDate = booking.appointment_date.split("T")[0]; // Extract YYYY-MM-DD
 
-          if (booking.student_package_id) {
-            // Ensure ID is defined
-            slotsMap[formattedTime] = booking.student_package_id;
+          if (bookingDate === date) {
+            // Convert appointment_date to correct timeslot format
+            const formattedTime = new Date(booking.appointment_date)
+              .toLocaleTimeString("en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true,
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              })
+              .toUpperCase();
+
+            slotsMap[formattedTime] = booking.student_package_id; // Store package ID
           }
-          console.log(
-            `Booking Time: ${formattedTime}, Student Package ID:`,
-            booking.student_package_id
-          );
-
-          slotsMap[formattedTime] = booking.student_package_id;
         });
+
         console.log("Processed Booked Slots:", slotsMap);
         setBookedSlots(slotsMap);
       } catch (error) {
@@ -96,10 +90,10 @@ const TimeslotPage = () => {
       }
     };
 
-    if (date) {
+    if (date && userPackageId !== null) {
       fetchBookedSlots();
     }
-  }, [date]);
+  }, [date, userPackageId]);
 
   // useEffect(() => {
   //   const fetchBookings = async () => {
@@ -126,10 +120,14 @@ const TimeslotPage = () => {
         );
         // Filter closed slots for the selected date and normalize times to uppercase
         const slots = response.data
-          .filter((slot) => slot.date === date)
+          .filter(
+            (slot) => new Date(slot.date).toISOString().split("T")[0] === date
+          )
+
           .map((slot) => slot.time.toUpperCase());
-        setClosedSlots(slots);
+
         console.log("Closed slots for", date, ":", slots);
+        setClosedSlots(slots);
       } catch (error) {
         console.error("Error fetching closed slots:", error);
       }
@@ -145,6 +143,7 @@ const TimeslotPage = () => {
     const slots: string[] = [];
     const startTime = new Date(`${date}T07:00:00`);
     const endTime = new Date(`${date}T23:00:00`);
+
     while (startTime < endTime) {
       const slotTime = startTime
         .toLocaleTimeString([], {
@@ -153,6 +152,7 @@ const TimeslotPage = () => {
           hour12: true,
         })
         .toUpperCase();
+
       slots.push(slotTime);
       startTime.setMinutes(startTime.getMinutes() + 30);
     }
@@ -211,44 +211,48 @@ const TimeslotPage = () => {
   return (
     <div className="container mt-4">
       <h2>Available Time Slots for {date}</h2>
-      <div className="grid grid-cols-3 gap-2 mt-4">
+      <div className="row g-2">
         {generateTimeSlots().map((slot, index) => {
           const now = new Date();
           const slotDateTime = new Date(`${date} ${slot}`);
           const isPast = slotDateTime < now;
           const isBooked = slot in bookedSlots;
-          const bookedByUser =
-            isBooked && Number(bookedSlots[slot]) === Number(userPackageId);
-
+          const bookedByUser = isBooked && bookedSlots[slot] === userPackageId;
           const isClosed = closedSlots.includes(slot);
 
           return (
-            <button
-              key={index}
-              className={`p-2 px-5 rounded transition ${
-                isPast
-                  ? "bg-gray-400 text-white cursor-not-allowed"
+            <div className="col-6 col-md-4 col-lg-3">
+              <button
+                key={index}
+                className={`p-2 w-100 rounded text-center transition ${
+                  isPast
+                    ? "bg-gray-400 cursor-not-allowed" // Past slots
+                    : bookedByUser
+                    ? "bookedByUser-timeslot" // User's booking
+                    : isBooked
+                    ? "closed-timeslot" // Booked by someone else
+                    : isClosed
+                    ? "closed-timeslot cursor-not-allowed" // Closed by admin
+                    : "student-timeslots" // Available slots
+                }`}
+                onClick={() => {
+                  if (!isPast && !isBooked && !isClosed) {
+                    handleSlotClick(slot);
+                  }
+                }}
+                disabled={isPast || isBooked || isClosed}
+              >
+                {isPast
+                  ? "UNAVAILABLE"
                   : bookedByUser
-                  ? "bg-green-500 text-white"
-                  : isBooked || isClosed
-                  ? "bg-red-500 text-white cursor-not-allowed"
-                  : "bg-blue-500 hover:bg-blue-700"
-              }`}
-              onClick={() => {
-                if (!isPast && !isBooked && !isClosed) {
-                  handleSlotClick(slot);
-                }
-              }}
-              disabled={isPast || isBooked || isClosed}
-            >
-              {isPast
-                ? "UNAVAILABLE"
-                : bookedByUser
-                ? "YOUR BOOKING"
-                : isBooked || isClosed
-                ? "CLOSED"
-                : slot}
-            </button>
+                  ? slot
+                  : isBooked
+                  ? "CLOSED"
+                  : isClosed
+                  ? "CLOSED"
+                  : slot}
+              </button>
+            </div>
           );
         })}
       </div>

@@ -29,6 +29,7 @@ interface Package {
 interface Booking {
   id: number;
   appointment_date: string;
+  timeslot: string;
   status: string;
 }
 
@@ -68,7 +69,23 @@ const StudentDashboard = () => {
 
         setStudent(response.data.student);
         setPackageDetails(response.data.package || null);
-        setCalendarBookings(response.data.bookings || {});
+
+        // Process bookings to match calendar format
+        const processedBookings: Record<string, string[]> = {};
+        response.data.bookings.forEach((booking: Booking) => {
+          // Ensure the date remains in UTC by treating it as a string (no conversion)
+          const dateKey = booking.appointment_date; // Already 'YYYY-MM-DD' from backend
+
+          // Keep the provided timeslot without converting
+          const timeslot = booking.timeslot; // Already stored correctly in DB
+
+          if (!processedBookings[dateKey]) {
+            processedBookings[dateKey] = [];
+          }
+          processedBookings[dateKey].push(timeslot);
+        });
+
+        setCalendarBookings(processedBookings);
       } catch (error) {
         console.error("Error fetching student data:", error);
       }
@@ -245,12 +262,12 @@ const StudentDashboard = () => {
               className="custom-calendar"
               onClickDay={handleDateClick}
               tileContent={({ date }) => {
-                const dateString = date.toISOString().split("T")[0];
+                const dateString = date.toLocaleDateString("en-CA"); // "YYYY-MM-DD"
                 return calendarBookings[dateString] ? (
-                  <div className="highlight bg-primary text-white p-1 rounded">
-                    {calendarBookings[dateString].map((name, index) => (
+                  <div className="booking-name">
+                    {calendarBookings[dateString].map((slot, index) => (
                       <p key={index} className="m-0">
-                        {name}
+                        {slot}
                       </p>
                     ))}
                   </div>
