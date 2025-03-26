@@ -348,45 +348,51 @@ const AdminDashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {completedBookings.map((booking) => (
-                    <tr key={booking.id}>
-                      <td>{booking.student_name}</td>
-                      <td>
-                        {new Date(booking.appointment_date).toLocaleString(
-                          "en-US",
-                          {
-                            year: "numeric",
-                            month: "long",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: true,
-                          }
-                        )}
-                      </td>
-                      <td>
-                        <Button
-                          variant="success"
-                          className="ms-2 btn-xs"
-                          onClick={() =>
-                            handleMarkAsDone(
-                              booking.id,
-                              booking.student_package_id
-                            )
-                          }
-                        >
-                          Done
-                        </Button>
-                        <Button
-                          variant="danger"
-                          className="ms-2 btn-xs"
-                          onClick={() => handleCancelBooking(booking.id)}
-                        >
-                          Cancelled
-                        </Button>
-                      </td>
+                  {completedBookings.length === 0 ? (
+                    <tr>
+                      <td colSpan={3}>No completed bookings</td>
                     </tr>
-                  ))}
+                  ) : (
+                    completedBookings.map((booking) => (
+                      <tr key={booking.id}>
+                        <td>{booking.student_name}</td>
+                        <td>
+                          {new Date(booking.appointment_date).toLocaleString(
+                            "en-US",
+                            {
+                              year: "numeric",
+                              month: "long",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: true,
+                            }
+                          )}
+                        </td>
+                        <td>
+                          <Button
+                            variant="success"
+                            className="ms-2 btn-xs"
+                            onClick={() =>
+                              handleMarkAsDone(
+                                booking.id,
+                                booking.student_package_id
+                              )
+                            }
+                          >
+                            Done
+                          </Button>
+                          <Button
+                            variant="danger"
+                            className="ms-2 btn-xs"
+                            onClick={() => handleCancelBooking(booking.id)}
+                          >
+                            Cancelled
+                          </Button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </Table>
             </div>
