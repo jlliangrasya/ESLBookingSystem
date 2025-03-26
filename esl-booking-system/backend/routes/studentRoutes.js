@@ -98,13 +98,16 @@ router.get("/students", async (req, res) => {
              u.is_admin,
              sp.payment_status,
              sp.sessions_remaining,
+             sp.subject,
              sp.package_id,
+             tp.package_name,
              CASE 
                WHEN sp.payment_status = 'paid' AND sp.sessions_remaining = 0 THEN true 
                ELSE false 
              END AS enrolled
       FROM users u
       LEFT JOIN student_packages sp ON u.id = sp.student_id
+      LEFT JOIN tutorial_packages tp ON sp.package_id = tp.id 
       WHERE u.is_admin = false  -- Exclude admin accounts
       ORDER BY u.id, sp.purchased_at DESC;
     `);
@@ -122,6 +125,23 @@ router.get("/student-packages/pending", async (req, res) => {
       SELECT *
       FROM student_packages
       WHERE payment_status = 'unpaid'
+        AND sessions_remaining > 0
+      ORDER BY purchased_at DESC
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error fetching pending student packages:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+});
+
+router.get("/student-packages/paid", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT *
+      FROM student_packages
+      WHERE payment_status = 'paid'
         AND sessions_remaining > 0
       ORDER BY purchased_at DESC
     `);

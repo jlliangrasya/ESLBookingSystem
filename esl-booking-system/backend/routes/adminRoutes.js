@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("../db"); // Your database connection
+const verifyToken = require("../middleware/authMiddleware");
+const authenticateToken = require("../middleware/authMiddleware"); // Import middleware
 
 // API: Fetch Closed Slots
 router.get("/closed-slots", async (req, res) => {
@@ -45,5 +47,53 @@ router.post("/update-slots", async (req, res) => {
     res.status(500).json({ error: "Server Error" });
   }
 });
+
+// Get admin profile
+router.get("/profile", verifyToken, async (req, res) => {
+  try {
+    const adminId = req.user.id;
+    const result = await pool.query("SELECT student_name, email FROM users WHERE id = $1", [adminId]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("Error fetching profile:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+//  Update admin profile
+router.put("/profile", authenticateToken, async (req, res) => {
+  try {
+    console.log("Received Token Data:", req.user); // ✅ Debugging log
+
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ message: "Unauthorized: Admin ID is missing" });
+    }
+
+    const { student_name, email, password } = req.body;
+    const adminId = req.user.id; // ✅ Use req.user.id
+
+    let query;
+    let values;
+    if (password) {
+      query = `UPDATE users SET student_name = $1, email = $2, password = crypt($3, gen_salt('bf')) WHERE id = $4 RETURNING *`;
+      values = [student_name, email, password, adminId];
+    } else {
+      query = `UPDATE users SET student_name = $1, email = $2 WHERE id = $3 RETURNING *`;
+      values = [student_name, email, adminId];
+    }
+
+    const result = await pool.query(query, values);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Admin not found" });
+    }
+
+    res.json({ message: "Profile updated successfully", admin: result.rows[0] });
+  } catch (error) {
+    console.error("Error updating admin profile:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 
 module.exports = router;

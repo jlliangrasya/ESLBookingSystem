@@ -206,6 +206,15 @@
   color: rgb(0, 0, 0);
   font-weight: bold;
   text-align: center;
+  border: 1px solid #25ce4d;
+}
+
+/* Hover effect for bookedByUser slots */
+.bookedByUser-timeslot:hover {
+  background-color: #00bbff;
+  color: rgba(0, 0, 0, 0.918);
+  transform: scale(1.05); /* Slight hover effect */
+  transition: all 0.2s ease-in-out;
 }
 
 /* Styling for available student timeslots */

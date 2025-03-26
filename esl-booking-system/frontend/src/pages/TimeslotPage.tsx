@@ -2,11 +2,13 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import BookingConfirmationModal from "../components/BookingConfirmationModal";
+import BookingDetailsModal from "../components/BookingDetailsModal";
 
 interface Booking {
   id: number;
   student_package_id: number;
   appointment_date: string; // ISO string from backend
+  timeslot: string;
   status: string;
   rescheduled_by_admin: boolean;
 }
@@ -24,6 +26,10 @@ const TimeslotPage = () => {
   const [bookedSlots, setBookedSlots] = useState<{ [key: string]: number }>({});
   const [closedSlots, setClosedSlots] = useState<string[]>([]);
   const [userPackageId, setUserPackageId] = useState<number | null>(null);
+
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [subject, setSubject] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     if (!localStorage.getItem("token")) {
@@ -96,19 +102,67 @@ const TimeslotPage = () => {
     }
   }, [date, userPackageId]);
 
-  // useEffect(() => {
-  //   const fetchBookings = async () => {
-  //     const url = `/api/bookings?student_package_id=${userPackageId}`;
-  //     console.log("Fetching:", url);
+  const fetchSubject = async (student_package_id: number) => {
+    try {
+      console.log(
+        "Fetching subject for student_package_id:",
+        student_package_id
+      );
 
-  //     const response = await fetch(url);
-  //     const data = await response.json();
+      const token = localStorage.getItem("token");
+      if (!token) return;
 
-  //     console.log("API Response - Bookings:", data);
-  //   };
+      const response = await axios.get(
+        `${
+          import.meta.env.VITE_API_URL
+        }/api/student-package/${student_package_id}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-  //   fetchBookings();
-  // }, [userPackageId]);
+      console.log(" Fetched subject:", response.data.subject);
+      setSubject(response.data.subject);
+    } catch (error) {
+      console.error("Error fetching subject:", error);
+    }
+  };
+
+  const handleBookedSlotClick = (booking: Booking) => {
+    console.log("Booking clicked:", booking);
+
+    fetchSubject(booking.student_package_id);
+    setSelectedBooking(booking);
+    setIsModalOpen(true);
+
+    console.log(" Selected Booking:", booking);
+    console.log(" isModalOpen:", true);
+  };
+
+  const handleCancelBooking = async (bookingId: number) => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      await axios.delete(
+        `${import.meta.env.VITE_API_URL}/api/bookings/${bookingId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      // Remove the canceled booking from booked slots
+      setBookedSlots((prev) => {
+        const updatedSlots = { ...prev };
+        Object.keys(updatedSlots).forEach((slotTime) => {
+          if (updatedSlots[slotTime] === bookingId) {
+            delete updatedSlots[slotTime];
+          }
+        });
+        return updatedSlots;
+      });
+
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error("Error deleting booking:", error);
+    }
+  };
 
   // Fetch closed slots from backend
   useEffect(() => {
@@ -157,13 +211,24 @@ const TimeslotPage = () => {
       slots.push(slotTime);
       startTime.setMinutes(startTime.getMinutes() + 30);
     }
-    console.log("Generated Slots for", date, ":", slots);
+    //console.log("Generated Slots for", date, ":", slots);
     return slots;
   };
 
   const handleSlotClick = (time: string) => {
     setSelectedSlot(time);
     setShowBookingModal(true);
+  };
+
+  const convertToLocalTime = (utcDateString: string) => {
+    return new Date(utcDateString)
+      .toLocaleString(undefined, {
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true, // Ensures AM/PM format
+      })
+      .toUpperCase();
   };
 
   const confirmBooking = async () => {
@@ -222,14 +287,17 @@ const TimeslotPage = () => {
           const isClosed = closedSlots.includes(slot);
 
           return (
-            <div className="col-6 col-md-4 col-lg-3">
+            <div
+              key={`${date}-${slot}-${index}`}
+              className="col-6 col-md-4 col-lg-3"
+            >
               <button
-                key={index}
+                // key={index}
                 className={`p-2 w-100 rounded text-center transition ${
                   isPast
                     ? "bg-gray-400 cursor-not-allowed" // Past slots
                     : bookedByUser
-                    ? "bookedByUser-timeslot" // User's booking
+                    ? "bookedByUser-timeslot cursor-pointer" // User's booking
                     : isBooked
                     ? "closed-timeslot" // Booked by someone else
                     : isClosed
@@ -237,11 +305,80 @@ const TimeslotPage = () => {
                     : "student-timeslots" // Available slots
                 }`}
                 onClick={() => {
-                  if (!isPast && !isBooked && !isClosed) {
+                  alert("Slot clicked!");
+
+                  console.log(" Slot clicked:", slot);
+
+                  if (bookedByUser) {
+                    console.log(" This slot is booked by the user!");
+
+                    axios
+                      .get<Booking[]>(
+                        `${import.meta.env.VITE_API_URL}/api/student-bookings`,
+                        {
+                          headers: {
+                            Authorization: `Bearer ${localStorage.getItem(
+                              "token"
+                            )}`,
+                          },
+                        }
+                      )
+                      .then((response) => {
+                        console.log("📥 API Response:", response.data); // Log the entire response
+
+                        const userBooking = response.data.find((booking) => {
+                          const localDate = new Date(booking.appointment_date)
+                            .toISOString()
+                            .split("T")[0]; // Convert to YYYY-MM-DD
+                          const localTime = convertToLocalTime(
+                            booking.appointment_date
+                          ); // Convert to user's local time
+
+                          console.log(
+                            "🔍 Checking Booking:",
+                            localDate,
+                            "starts with",
+                            date
+                          );
+                          console.log(
+                            "🔍 Checking Timeslot:",
+                            localTime,
+                            "===",
+                            slot
+                          );
+                          console.log(
+                            "🔍 Checking Package ID:",
+                            booking.student_package_id,
+                            "===",
+                            userPackageId
+                          );
+
+                          return (
+                            localDate === date && // Match date
+                            localTime === slot && // Match timeslot
+                            booking.student_package_id === userPackageId // Belongs to user
+                          );
+                        });
+
+                        console.log("✅ Matched Booking:", userBooking);
+
+                        if (userBooking) {
+                          handleBookedSlotClick(userBooking);
+                        } else {
+                          console.error("❌ Booking not found for slot:", slot);
+                        }
+                      })
+                      .catch((error) => {
+                        console.error(
+                          "❌ Error fetching booking details:",
+                          error
+                        );
+                      });
+                  } else if (!isPast && !isBooked && !isClosed) {
                     handleSlotClick(slot);
                   }
                 }}
-                disabled={isPast || isBooked || isClosed}
+                disabled={isPast || (!bookedByUser && (isBooked || isClosed))}
               >
                 {isPast
                   ? "UNAVAILABLE"
@@ -263,6 +400,25 @@ const TimeslotPage = () => {
         onHide={() => setShowBookingModal(false)}
         confirmBooking={confirmBooking}
       />
+
+      {selectedBooking && subject && (
+        <>
+          {console.log("Rendering BookingDetailsModal")}
+          {console.log(" Selected Booking:", selectedBooking)}
+          {console.log(" Subject:", subject)}
+          {console.log(" isModalOpen:", isModalOpen)}
+
+          <BookingDetailsModal
+            isOpen={isModalOpen}
+            onClose={() => setIsModalOpen(false)}
+            booking={{
+              ...selectedBooking,
+              subject,
+            }}
+            onCancelBooking={handleCancelBooking}
+          />
+        </>
+      )}
     </div>
   );
 };

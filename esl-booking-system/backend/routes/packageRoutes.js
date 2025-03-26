@@ -85,6 +85,45 @@ router.get("/avail", async (req, res) => {
     }
   });
   
-
+  router.post("/package/confirm/:id", async (req, res) => {
+    const { id } = req.params;
+  
+    try {
+      const result = await pool.query(
+        "UPDATE student_packages SET payment_status = $1 WHERE id = $2 RETURNING *",
+        ["paid", id]
+      );
+  
+      if (result.rowCount === 0) {
+        return res.status(404).json({ message: "Enrollee not found" });
+      }
+  
+      res.json({ message: "Enrollee confirmed successfully", enrollee: result.rows[0] });
+    } catch (err) {
+      console.error("Error confirming enrollee:", err);
+      res.status(500).json({ message: "Server error", error: err.message });
+    }
+  });
+  
+  router.post("/package/reject/:id", async (req, res) => {
+    const { id } = req.params;
+  
+    try {
+      const result = await pool.query(
+        "UPDATE student_packages SET payment_status = $1 WHERE id = $2 RETURNING *",
+        ["rejected", id]
+      );
+  
+      if (result.rowCount === 0) {
+        return res.status(404).json({ message: "Enrollee not found" });
+      }
+  
+      res.json({ message: "Enrollee rejected successfully", enrollee: result.rows[0] });
+    } catch (err) {
+      console.error("Error rejecting enrollee:", err);
+      res.status(500).json({ message: "Server error", error: err.message });
+    }
+  });
+  
 
 module.exports = router;

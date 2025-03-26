@@ -7,6 +7,8 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
 import TimeslotPage from "./pages/TimeslotPage.tsx";
 import Home from "./pages/Home.tsx";
+import StudentListPage from "./pages/StudentList.tsx";
+import AdminProfile from "./pages/AdminProfile.tsx";
 
 const AppRoutes = () => {
   return (
@@ -43,6 +45,22 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute /*adminOnly*/>
               <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/students"
+          element={
+            <ProtectedRoute>
+              <StudentListPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <AdminProfile />
             </ProtectedRoute>
           }
         />
