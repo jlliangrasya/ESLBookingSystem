@@ -12,7 +12,7 @@ const NavBar: React.FC = () => {
 
   const handleLogout = () => {
     localStorage.removeItem("token"); // Remove auth token
-    navigate("/login"); // Redirect to login page
+    navigate("/home"); // Redirect to login page
   };
 
   return (

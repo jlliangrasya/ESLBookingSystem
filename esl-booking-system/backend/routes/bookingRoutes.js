@@ -111,7 +111,7 @@ router.get("/api/student-bookings", async (req, res) => {
         JOIN student_packages sp ON b.student_package_id = sp.id
         JOIN users u ON sp.student_id = u.id
         JOIN tutorial_packages tp ON sp.package_id = tp.id
-        WHERE b.status = 'Done'
+        WHERE b.status = 'done'
         ORDER BY b.appointment_date DESC
       `);
   

@@ -194,11 +194,32 @@ const StudentDashboard = () => {
       alert("Failed to confirm booking. Please try again.");
     }
   };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token"); // Remove auth token
+    navigate("/home"); // Redirect to login page
+  };
+
   return (
     <div className="container mt-4">
       <div className="header-section">
-        <Navbar expand="lg" className="justify-content-center">
-          <img src={logo} alt="Logo" height="40" className="d-block mx-auto" />
+        <Navbar expand="lg" className="align-items-center px-3 py-2">
+          <div className="container-fluid position-relative">
+            {/* Centered Logo */}
+            <Navbar.Brand className="position-absolute top-50 start-50 translate-middle">
+              <img src={logo} alt="Logo" height="40" />
+            </Navbar.Brand>
+
+            {/* Logout Button aligned to the right */}
+            <div className="ms-auto">
+              <button
+                className="btn btn-sm btn-outline-pink custom-logout-btn"
+                onClick={handleLogout}
+              >
+                Logout
+              </button>
+            </div>
+          </div>
         </Navbar>
 
         <div>

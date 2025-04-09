@@ -4,6 +4,7 @@
   font-family: 'Poppins', sans-serif !important;
 }
 
+
 .nav-links {
   display: flex;
   justify-content: space-between;
@@ -207,6 +208,19 @@
   font-weight: bold;
   text-align: center;
   border: 1px solid #25ce4d;
+
+  /* Custom pink outline button */
+.btn-outline-pink {
+  border: 1px solid #ff69b4;
+  color: #ff69b4;
+  background-color: transparent;
+  transition: all 0.3s ease;
+}
+
+.btn-outline-pink:hover {
+  background-color: #ff69b4;
+  color: white;
+}
 }
 
 /* Hover effect for bookedByUser slots */
@@ -239,3 +253,42 @@ button {
   padding: 10px 5px;
   border-radius: 8px;
 }
+
+/* Custom pink outline button */
+.btn-outline-pink {
+  border: 1px solid #ff69b4 !important;
+  color: #ff69b4 !important;
+  background-color: transparent;
+  transition: all 0.3s ease;
+}
+
+.btn-outline-pink:hover {
+  background-color: #ff69b4 !important;
+  color: white !important;
+}
+
+.feature-box {
+  background-color: #f8f9fa;
+  border-radius: 15px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between; /* Ensure space is distributed evenly */
+  min-height: 300px; /* Ensures that the boxes have at least this height */
+}
+
+.feature-box:hover {
+  transform: translateY(-10px);
+}
+
+.feature-box h5 {
+  color: #3a87a3;
+  font-weight: bold;
+}
+
+.feature-box p {
+  color: #333;
+  font-size: 1rem;
+}
+

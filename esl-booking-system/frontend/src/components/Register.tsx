@@ -1,6 +1,7 @@
 import { useState } from "react";
 import axios, { AxiosError } from "axios";
 import { useNavigate } from "react-router-dom";
+import { Button, Form, Alert } from "react-bootstrap";
 
 const Register = () => {
   const [studentName, setStudentName] = useState("");
@@ -33,40 +34,58 @@ const Register = () => {
 
   return (
     <div>
-      <h2>Student Sign Up</h2>
-      {error && <p style={{ color: "red" }}>{error}</p>}
-      {success && <p style={{ color: "green" }}>{success}</p>}
-      <form onSubmit={handleRegister}>
-        <input
-          type="text"
-          placeholder="Full Name"
-          value={studentName}
-          onChange={(e) => setStudentName(e.target.value)}
-          required
-        />
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <input
-          type="text"
-          placeholder="Guardian's Name"
-          value={guardianName}
-          onChange={(e) => setGuardianName(e.target.value)}
-          required
-        />
-        <button type="submit">Register</button>
-      </form>
+      {error && <Alert variant="danger">{error}</Alert>}
+      {success && <Alert variant="success">{success}</Alert>}
+
+      <Form onSubmit={handleRegister}>
+        <Form.Group className="mb-3">
+          <Form.Label>Full Name</Form.Label>
+          <Form.Control
+            type="text"
+            placeholder="Enter full name"
+            value={studentName}
+            onChange={(e) => setStudentName(e.target.value)}
+            required
+          />
+        </Form.Group>
+
+        <Form.Group className="mb-3">
+          <Form.Label>Email Address</Form.Label>
+          <Form.Control
+            type="email"
+            placeholder="Enter email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </Form.Group>
+
+        <Form.Group className="mb-3">
+          <Form.Label>Password</Form.Label>
+          <Form.Control
+            type="password"
+            placeholder="Enter password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </Form.Group>
+
+        <Form.Group className="mb-3">
+          <Form.Label>Guardian's Name</Form.Label>
+          <Form.Control
+            type="text"
+            placeholder="Enter guardian's name"
+            value={guardianName}
+            onChange={(e) => setGuardianName(e.target.value)}
+            required
+          />
+        </Form.Group>
+
+        <Button type="submit" className="w-100" variant="success">
+          Register
+        </Button>
+      </Form>
     </div>
   );
 };

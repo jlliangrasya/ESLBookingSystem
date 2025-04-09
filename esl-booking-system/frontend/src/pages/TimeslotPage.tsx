@@ -305,7 +305,7 @@ const TimeslotPage = () => {
                     : "student-timeslots" // Available slots
                 }`}
                 onClick={() => {
-                  alert("Slot clicked!");
+                  // alert("Slot clicked!");
 
                   console.log(" Slot clicked:", slot);
 
