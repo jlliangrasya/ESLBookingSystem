@@ -22,7 +22,7 @@ interface Student {
 interface Package {
   id: number;
   package_name: string;
-  session_limit: number;
+  sessions_remaining: number;
   price: number;
 }
 
@@ -41,6 +41,7 @@ const StudentDashboard = () => {
   >({});
   const [availablePackages, setAvailablePackages] = useState<Package[]>([]);
   const [selectedPackage, setSelectedPackage] = useState<number | null>(null);
+
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [showPackageModal, setShowPackageModal] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
@@ -264,7 +265,7 @@ const StudentDashboard = () => {
                 <h5 className="mt-4">
                   Remaining Sessions:
                   <span className="ms-1">
-                    {packageDetails.session_limit}
+                    {packageDetails.sessions_remaining}
                   </span>{" "}
                 </h5>
               </div>

@@ -63,6 +63,7 @@ const AdminDashboard = () => {
     StudentPackage[]
   >([]);
   const [studentPackages, setStudentPackages] = useState<StudentPackage[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [calendarBookings, setCalendarBookings] = useState<
     Record<string, string[]>
   >({});

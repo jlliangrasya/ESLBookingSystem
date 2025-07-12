@@ -21,7 +21,7 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
 
         // Fetch student's package details
         const packageQuery = await pool.query(
-            `SELECT tp.id, tp.package_name, sp.sessions_remaining as sessions, tp.price
+            `SELECT tp.id, tp.package_name, sp.sessions_remaining AS sessions_remaining, tp.price
              FROM student_packages sp
              JOIN tutorial_packages tp ON sp.package_id = tp.id
              WHERE sp.student_id = $1`, [userId]);

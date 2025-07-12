@@ -1,5 +1,5 @@
 import { Routes, Route } from "react-router-dom";
-//import Login from "./components/Login";
+import Login from "./components/Login";
 import Register from "./components/Register.tsx";
 import StudentDashboard from "./pages/StudentDashboard.tsx";
 import AdminDashboard from "./pages/AdminDashboard.tsx";
@@ -20,6 +20,7 @@ const AppRoutes = () => {
         {/* Public Routes */}
         {/* <Route path="/login" element={<Login />} /> */}
         <Route path="/register" element={<Register />} />
+        <Route path="/login" element={<Login />} />
 
         {/* Protected Routes */}
         <Route

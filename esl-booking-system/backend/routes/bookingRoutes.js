@@ -178,7 +178,7 @@ router.get("/api/student-bookings", async (req, res) => {
   
       // Mark the booking as "completed"
       await pool.query(
-        `UPDATE bookings SET status = 'completed' WHERE id = $1`,
+        `UPDATE bookings SET status = 'confirmed' WHERE id = $1`,
         [id]
       );
   

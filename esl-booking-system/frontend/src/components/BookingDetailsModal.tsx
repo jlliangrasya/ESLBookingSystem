@@ -14,7 +14,7 @@ interface BookingDetailsModalProps {
 }
 
 // Function to format date to "Month Day, Year at HH:mm AM/PM"
-const formatDateTime = (utcDateString: string, timeslot: string) => {
+const formatDateTime = (utcDateString: string) => {
   const date = new Date(utcDateString);
 
   return date.toLocaleString("en-US", {
@@ -45,8 +45,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
           <strong>Subject:</strong> {booking.subject}
         </p>
         <p>
-          <strong>Date:</strong>{" "}
-          {formatDateTime(booking.appointment_date, booking.timeslot)}
+          <strong>Date:</strong> {formatDateTime(booking.appointment_date)}
         </p>
       </Modal.Body>
       <Modal.Footer>

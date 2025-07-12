@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+//import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { Button } from "react-bootstrap";
 import Login from "../components/Login";
@@ -8,7 +8,7 @@ import TutorialPackages from "../components/TutorialPackages.tsx";
 import Footer from "../components/Footer.tsx";
 
 const Home = () => {
-  const navigate = useNavigate();
+  //const navigate = useNavigate();
   const [showRegister, setShowRegister] = useState(false);
 
   const toggleAuth = () => {
@@ -63,7 +63,7 @@ const Home = () => {
             <h3 className="text-center mb-3 text-primary fw-semibold">
               {showRegister ? "Register" : "Login"}
             </h3>
-            {showRegister ? <Register /> : <Login />}
+            {showRegister ? <Register toggleAuth={toggleAuth} /> : <Login />}
 
             <Button
               variant="link"
