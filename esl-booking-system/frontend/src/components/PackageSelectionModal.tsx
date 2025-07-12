@@ -5,6 +5,7 @@ import "../index.css";
 interface Package {
   id: number;
   package_name: string;
+  sessions_remaining: number;
   session_limit: number;
   price: number;
 }

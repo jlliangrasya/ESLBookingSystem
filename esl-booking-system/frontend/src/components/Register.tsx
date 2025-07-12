@@ -3,7 +3,7 @@ import axios, { AxiosError } from "axios";
 import { Button, Form, Alert, Row, Col, Spinner } from "react-bootstrap";
 
 interface RegisterProps {
-  toggleAuth: () => void;
+  toggleAuth?: () => void;
 }
 
 const Register: React.FC<RegisterProps> = ({ toggleAuth }) => {
@@ -35,7 +35,7 @@ const Register: React.FC<RegisterProps> = ({ toggleAuth }) => {
       setError(null);
 
       setTimeout(() => {
-        toggleAuth(); // Switch to Login form
+        toggleAuth?.(); // Switch to Login form
         setSuccess(null);
         setIsLoading(false);
       }, 2000);

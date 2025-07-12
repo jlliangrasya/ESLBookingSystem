@@ -23,6 +23,7 @@ interface Package {
   id: number;
   package_name: string;
   sessions_remaining: number;
+  session_limit: number;
   price: number;
 }
 
@@ -42,7 +43,7 @@ const StudentDashboard = () => {
   const [availablePackages, setAvailablePackages] = useState<Package[]>([]);
   const [selectedPackage, setSelectedPackage] = useState<number | null>(null);
 
-  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [selectedSlot] = useState<string | null>(null);
   const [showPackageModal, setShowPackageModal] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
 
