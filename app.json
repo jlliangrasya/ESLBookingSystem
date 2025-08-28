@@ -1,10 +1,7 @@
 {
-    "name": "ESL Booking Backend",
+    "name": "esl-booking-backend",
     "env": {
-      "PROJECT_PATH": {
-        "description": "Path to backend folder for subdir buildpack",
-        "value": "backend"
-      }
+      "PROJECT_PATH": "backend"
     }
   }
   
