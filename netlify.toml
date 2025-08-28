@@ -1,9 +1,11 @@
 [build]
-  base = "esl-booking-system/frontend"
+  base    = "esl-booking-system/frontend"
   publish = "dist"
-  command = "npm run build"
+  command = "npm ci && npm run build"
 
-[dev]
-  command = "npm run dev"
-  targetPort = 5173
-  port = 8888
+[build.environment]
+  NODE_VERSION = "18"
+
+# (Optional) If you ever add Netlify Functions later:
+# [functions]
+#   directory = "netlify/functions"
