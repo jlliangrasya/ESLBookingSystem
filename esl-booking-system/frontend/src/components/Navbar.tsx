@@ -1,83 +1,103 @@
-import React from "react";
-import { Navbar, Nav, Container, Dropdown } from "react-bootstrap";
+import { useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import logo from "../assets/EuniTalk_Logo.png";
-import profile from "../assets/profile.png";
-import school from "../assets/school.png";
-import students from "../assets/students.png";
-import sched from "../assets/schedule.png";
+import { CalendarDays, Users, User, LogOut, LayoutDashboard } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import AuthContext from "@/context/AuthContext";
 
 const NavBar: React.FC = () => {
   const navigate = useNavigate();
+  const authContext = useContext(AuthContext);
+  const role = authContext?.user?.role;
 
   const handleLogout = () => {
-    localStorage.removeItem("token"); // Remove auth token
-    navigate("/home"); // Redirect to login page
+    authContext?.logout();
+    navigate("/");
   };
 
-  return (
-    <Navbar bg="white" expand="lg" className="shadow-sm shadow-#65C3E8">
-      <Container>
-        <Navbar.Brand as={Link} to="/admin-dashboard">
-          <img
-            src={logo}
-            alt="Logo"
-            height="40"
-            className="d-inline-block align-top"
-          />
-        </Navbar.Brand>
-        <Navbar.Toggle aria-controls="basic-navbar-nav" />
-        <Navbar.Collapse id="basic-navbar-nav">
-          <Nav className="ms-auto nav-links ">
-            <Nav.Link as={Link} to="/schedule">
-              <img
-                src={sched}
-                alt="Schedule"
-                height="30"
-                className="d-inline-block align-top"
-              />
-            </Nav.Link>
-            <Nav.Link as={Link} to="/students">
-              <img
-                src={students}
-                alt="Students"
-                height="28"
-                className="d-inline-block align-top"
-              />
-            </Nav.Link>
-            <Nav.Link as={Link} to="/school">
-              <img
-                src={school}
-                alt="School"
-                height="30"
-                className="d-inline-block align-top"
-              />
-            </Nav.Link>
-            {/* <Nav.Link as={Link} to="/profile">
-              <img
-                src={profile}
-                alt="Profile"
-                height="30"
-                className="d-inline-block align-top"
-              />
-            </Nav.Link> */}
+  const logoLink = role === "super_admin" ? "/super-admin" : "/admin-dashboard";
 
-            {/*  Profile Dropdown */}
-            <Dropdown align="end">
-              <Dropdown.Toggle as={Nav.Link} className="profile-dropdown">
-                <img src={profile} alt="Profile" height="30" />
-              </Dropdown.Toggle>
-              <Dropdown.Menu>
-                <Dropdown.Item as={Link} to="/profile">
-                  Profile
-                </Dropdown.Item>
-                <Dropdown.Item onClick={handleLogout}>Logout</Dropdown.Item>
-              </Dropdown.Menu>
-            </Dropdown>
-          </Nav>
-        </Navbar.Collapse>
-      </Container>
-    </Navbar>
+  return (
+    <header className="w-full bg-white shadow-sm border-b border-border sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        {/* Logo */}
+        <Link to={logoLink} className="flex items-center">
+          <img src={logo} alt="EuniTalk Logo" className="h-10 w-auto" />
+        </Link>
+
+        {/* Nav links */}
+        <nav className="flex items-center gap-6">
+          {role === "super_admin" ? (
+            <Link
+              to="/super-admin"
+              className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
+              title="Dashboard"
+            >
+              <LayoutDashboard className="h-6 w-6" />
+              <span className="text-[10px]">Dashboard</span>
+            </Link>
+          ) : (
+            <>
+              <Link
+                to="/admin-dashboard"
+                className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
+                title="Schedule"
+              >
+                <CalendarDays className="h-6 w-6" />
+                <span className="text-[10px]">Schedule</span>
+              </Link>
+
+              <Link
+                to="/students"
+                className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
+                title="Students"
+              >
+                <Users className="h-6 w-6" />
+                <span className="text-[10px]">Students</span>
+              </Link>
+            </>
+          )}
+
+          {/* Profile dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full h-9 w-9 text-muted-foreground hover:text-primary"
+              >
+                <User className="h-6 w-6" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              {role === "company_admin" && (
+                <DropdownMenuItem asChild>
+                  <Link to="/profile" className="cursor-pointer flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    Profile
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              {role === "company_admin" && <DropdownMenuSeparator />}
+              <DropdownMenuItem
+                onClick={handleLogout}
+                className="cursor-pointer text-destructive focus:text-destructive flex items-center gap-2"
+              >
+                <LogOut className="h-4 w-4" />
+                Logout
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </nav>
+      </div>
+    </header>
   );
 };
 

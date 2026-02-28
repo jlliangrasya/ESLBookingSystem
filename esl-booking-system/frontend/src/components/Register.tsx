@@ -1,13 +1,21 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import axios, { AxiosError } from "axios";
-import { Button, Form, Alert, Row, Col, Spinner } from "react-bootstrap";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 
 interface RegisterProps {
   toggleAuth?: () => void;
 }
 
 const Register: React.FC<RegisterProps> = ({ toggleAuth }) => {
-  const [studentName, setStudentName] = useState("");
+  const [searchParams] = useSearchParams();
+  const companyId = searchParams.get("company_id");
+
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [guardianName, setGuardianName] = useState("");
@@ -21,21 +29,22 @@ const Register: React.FC<RegisterProps> = ({ toggleAuth }) => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      await axios.post("http://localhost:5000/api/auth/register", {
-        student_name: studentName,
+      await axios.post(`${import.meta.env.VITE_API_URL}/api/auth/register`, {
+        name,
         email,
         password,
         guardian_name: guardianName,
         age,
         nationality,
-        is_admin: false, // Prevent students from registering as admin
+        role: "student",
+        company_id: companyId ? Number(companyId) : undefined,
       });
 
       setSuccess("Registration successful! Redirecting to login...");
       setError(null);
 
       setTimeout(() => {
-        toggleAuth?.(); // Switch to Login form
+        toggleAuth?.();
         setSuccess(null);
         setIsLoading(false);
       }, 2000);
@@ -48,90 +57,108 @@ const Register: React.FC<RegisterProps> = ({ toggleAuth }) => {
   };
 
   return (
-    <div>
-      {error && <Alert variant="danger">{error}</Alert>}
-      {success && <Alert variant="success">{success}</Alert>}
+    <form onSubmit={handleRegister} className="space-y-3">
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {success && (
+        <Alert className="border-green-500 text-green-700 bg-green-50">
+          <CheckCircle2 className="h-4 w-4 text-green-600" />
+          <AlertDescription>{success}</AlertDescription>
+        </Alert>
+      )}
 
-      <Form onSubmit={handleRegister}>
-        <Form.Group className="mb-3">
-          <Form.Label>Full Name</Form.Label>
-          <Form.Control
+      <div className="space-y-1.5">
+        <Label htmlFor="reg-name">Full Name</Label>
+        <Input
+          id="reg-name"
+          type="text"
+          placeholder="Enter full name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="reg-email">Email Address</Label>
+        <Input
+          id="reg-email"
+          type="email"
+          placeholder="Enter email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="reg-password">Password</Label>
+        <Input
+          id="reg-password"
+          type="password"
+          placeholder="Enter password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="reg-guardian">Guardian's Name</Label>
+        <Input
+          id="reg-guardian"
+          type="text"
+          placeholder="Enter guardian's name"
+          value={guardianName}
+          onChange={(e) => setGuardianName(e.target.value)}
+          required
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="reg-age">Age</Label>
+          <Input
+            id="reg-age"
+            type="number"
+            placeholder="Age"
+            value={age}
+            onChange={(e) => setAge(e.target.value)}
+            required
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="reg-nationality">Nationality</Label>
+          <Input
+            id="reg-nationality"
             type="text"
-            placeholder="Enter full name"
-            value={studentName}
-            onChange={(e) => setStudentName(e.target.value)}
+            placeholder="Nationality"
+            value={nationality}
+            onChange={(e) => setNationality(e.target.value)}
             required
           />
-        </Form.Group>
+        </div>
+      </div>
 
-        <Form.Group className="mb-3">
-          <Form.Label>Email Address</Form.Label>
-          <Form.Control
-            type="email"
-            placeholder="Enter email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </Form.Group>
-
-        <Form.Group className="mb-3">
-          <Form.Label>Password</Form.Label>
-          <Form.Control
-            type="password"
-            placeholder="Enter password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </Form.Group>
-
-        <Form.Group className="mb-3">
-          <Form.Label>Guardian's Name</Form.Label>
-          <Form.Control
-            type="text"
-            placeholder="Enter guardian's name"
-            value={guardianName}
-            onChange={(e) => setGuardianName(e.target.value)}
-            required
-          />
-        </Form.Group>
-
-        <Form.Group className="mb-3">
-          <Row>
-            <Col>
-              <Form.Label>Age</Form.Label>
-              <Form.Control
-                type="number"
-                placeholder="Enter age"
-                value={age}
-                onChange={(e) => setAge(e.target.value)}
-                required
-              />
-            </Col>
-            <Col>
-              <Form.Label>Nationality</Form.Label>
-              <Form.Control
-                type="text"
-                placeholder="Enter nationality"
-                value={nationality}
-                onChange={(e) => setNationality(e.target.value)}
-                required
-              />
-            </Col>
-          </Row>
-        </Form.Group>
-
-        <Button
-          type="submit"
-          className="w-100"
-          variant="success"
-          disabled={isLoading}
-        >
-          {isLoading ? <Spinner animation="border" size="sm" /> : "Register"}
-        </Button>
-      </Form>
-    </div>
+      <Button
+        type="submit"
+        className="w-full bg-green-600 hover:bg-green-700 text-white"
+        disabled={isLoading}
+      >
+        {isLoading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Registering…
+          </>
+        ) : (
+          "Register"
+        )}
+      </Button>
+    </form>
   );
 };
 

@@ -1,50 +1,40 @@
 import { Routes, Route } from "react-router-dom";
-import Login from "./components/Login";
-import Register from "./components/Register.tsx";
+import { AuthProvider } from "./context/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
+
+import Home from "./pages/Home.tsx";
 import StudentDashboard from "./pages/StudentDashboard.tsx";
 import AdminDashboard from "./pages/AdminDashboard.tsx";
-import ProtectedRoute from "./components/ProtectedRoute";
-import { AuthProvider } from "./context/AuthContext";
 import TimeslotPage from "./pages/TimeslotPage.tsx";
-import Home from "./pages/Home.tsx";
 import StudentListPage from "./pages/StudentList.tsx";
 import AdminProfile from "./pages/AdminProfile.tsx";
+import SuperAdminDashboard from "./pages/SuperAdminDashboard.tsx";
+import CompanyRegisterPage from "./pages/CompanyRegisterPage.tsx";
+import TeacherDashboard from "./pages/TeacherDashboard.tsx";
 
 const AppRoutes = () => {
   return (
     <AuthProvider>
       <Routes>
-        {/* Home Page */}
+        {/* Public */}
         <Route path="/" element={<Home />} />
+        <Route path="/company/register" element={<CompanyRegisterPage />} />
 
-        {/* Public Routes */}
-        {/* <Route path="/login" element={<Login />} /> */}
-        <Route path="/register" element={<Register />} />
-        <Route path="/login" element={<Login />} />
-
-        {/* Protected Routes */}
+        {/* Super Admin */}
         <Route
-          path="/studentdashboard"
+          path="/super-admin"
           element={
-            <ProtectedRoute>
-              <StudentDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/timeslots/:date"
-          element={
-            <ProtectedRoute>
-              <TimeslotPage />
+            <ProtectedRoute allowedRoles={['super_admin']}>
+              <SuperAdminDashboard />
             </ProtectedRoute>
           }
         />
 
-        {/* Admin-Only Route */}
+        {/* Company Admin */}
         <Route
           path="/admin-dashboard"
           element={
-            <ProtectedRoute /*adminOnly*/>
+            <ProtectedRoute allowedRoles={['company_admin']}>
               <AdminDashboard />
             </ProtectedRoute>
           }
@@ -52,7 +42,7 @@ const AppRoutes = () => {
         <Route
           path="/students"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute allowedRoles={['company_admin']}>
               <StudentListPage />
             </ProtectedRoute>
           }
@@ -60,13 +50,41 @@ const AppRoutes = () => {
         <Route
           path="/profile"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute allowedRoles={['company_admin']}>
               <AdminProfile />
             </ProtectedRoute>
           }
         />
 
-        {/* Default Redirect */}
+        {/* Teacher */}
+        <Route
+          path="/teacher-dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <TeacherDashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Student */}
+        <Route
+          path="/studentdashboard"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <StudentDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/timeslots/:date"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <TimeslotPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Fallback */}
         <Route path="*" element={<Home />} />
       </Routes>
     </AuthProvider>

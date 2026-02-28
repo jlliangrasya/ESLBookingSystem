@@ -15,11 +15,10 @@ const authenticateToken = (req, res, next) => {
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        console.log("Token verified:", decoded);
-        req.user = decoded; // Attach user data to request
+        // decoded now contains: { id, role, company_id }
+        req.user = decoded;
         next();
     } catch (error) {
-        console.log("Invalid token:", error.message);
         return res.status(401).json({ message: "Invalid token" });
     }
 };

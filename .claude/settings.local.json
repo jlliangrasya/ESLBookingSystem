@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install -D tailwindcss postcss autoprefixer)",
+      "Bash(npm install class-variance-authority clsx tailwind-merge lucide-react)",
+      "Bash(npx shadcn@latest init --yes)",
+      "Bash(npm install -D @tailwindcss/vite)",
+      "Bash(npm install -D @types/node)",
+      "Bash(npx shadcn@latest init --yes --defaults)",
+      "Bash(npx shadcn@latest add button input label card alert badge table dialog select textarea separator dropdown-menu avatar --yes)",
+      "Bash(npm uninstall bootstrap react-bootstrap @popperjs/core)",
+      "Bash(npm run build)",
+      "Bash(npm install mysql2)",
+      "Bash(npm uninstall pg pg-promise)",
+      "Bash(node -e \"const b=require\\(''bcryptjs''\\);b.hash\\(''Admin@2024!'',10\\).then\\(h=>console.log\\(h\\)\\)\")"
+    ]
+  }
+}

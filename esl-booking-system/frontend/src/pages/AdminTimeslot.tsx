@@ -3,36 +3,26 @@ import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import BookingConfirmationModal from "../components/BookingConfirmationModal";
 
-const TimeslotPage = () => {
-  const { date } = useParams(); // Get selected date from URL
+const AdminTimeslotPage = () => {
+  const { date } = useParams();
   const navigate = useNavigate();
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
 
   useEffect(() => {
-    if (!localStorage.getItem("token")) {
-      console.error("No token found!");
-      navigate("/login");
-    }
+    if (!localStorage.getItem("token")) navigate("/login");
   }, [navigate]);
 
-  // Generate 30-minute slots from 8:00 AM to 9:00 PM
   const generateTimeSlots = () => {
     const slots: string[] = [];
-    const startTime = new Date(`${date}T08:00:00`);
-    const endTime = new Date(`${date}T21:00:00`);
-
+    const startTime = new Date(`${date}T07:00:00`);
+    const endTime = new Date(`${date}T23:00:00`);
     while (startTime < endTime) {
       slots.push(
-        startTime.toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true, // Ensure AM/PM format
-        })
+        startTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true })
       );
-      startTime.setMinutes(startTime.getMinutes() + 30); // Increment by 30 minutes
+      startTime.setMinutes(startTime.getMinutes() + 30);
     }
-
     return slots;
   };
 
@@ -42,49 +32,33 @@ const TimeslotPage = () => {
   };
 
   const confirmBooking = async () => {
-    if (!selectedSlot) {
-      alert("Please select a time slot.");
-      return;
-    }
-
+    if (!selectedSlot) return;
     try {
       const token = localStorage.getItem("token");
-      if (!token) {
-        console.error("No token found!");
-        navigate("/login");
-        return;
-      }
+      if (!token) { navigate("/login"); return; }
 
-      // Fetch student package ID using GET request
       const studentPackageResponse = await axios.get(
         `${import.meta.env.VITE_API_URL}/api/student/avail`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      console.log(import.meta.env.VITE_API_URL);
-
-      const studentPackageId = studentPackageResponse.data?.student_package_id; // Ensure correct key
+      const studentPackageId = studentPackageResponse.data?.student_package_id;
       if (!studentPackageId) {
         alert("No active package found. Please purchase a package.");
         return;
       }
 
-      // Combine date and selected slot and convert to ISO string
       const appointmentDate = new Date(`${date} ${selectedSlot}`).toISOString();
-      console.log("Formatted appointment date:", appointmentDate);
-
-      // Send booking request to backend
-      const response = await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/bookings`, // Corrected route
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/bookings`,
         {
           student_package_id: studentPackageId,
-          appointment_date: appointmentDate, // Combine date and time
+          appointment_date: appointmentDate,
           status: "pending",
           rescheduled_by_admin: false,
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      console.log("Booking saved:", response.data);
       alert("Booking confirmed successfully!");
       setShowBookingModal(false);
     } catch (error) {
@@ -94,13 +68,15 @@ const TimeslotPage = () => {
   };
 
   return (
-    <div className="container mt-4">
-      <h2>Available Time Slots for {date}</h2>
-      <div className="grid grid-cols-3 gap-2 mt-4">
+    <div className="max-w-5xl mx-auto px-4 py-8">
+      <h2 className="text-2xl font-bold mb-2">Time Slots</h2>
+      <p className="text-muted-foreground text-sm mb-6">{date}</p>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
         {generateTimeSlots().map((slot, index) => (
           <button
             key={index}
-            className="p-2 px-5 rounded hover:bg-blue-700 transition"
+            className="p-2 rounded-lg border text-sm font-medium bg-white hover:bg-primary hover:text-white transition-colors"
             onClick={() => handleSlotClick(slot)}
           >
             {slot}
@@ -108,7 +84,6 @@ const TimeslotPage = () => {
         ))}
       </div>
 
-      {/* Booking Confirmation Modal */}
       <BookingConfirmationModal
         show={showBookingModal}
         onHide={() => setShowBookingModal(false)}
@@ -118,4 +93,4 @@ const TimeslotPage = () => {
   );
 };
 
-export default TimeslotPage;
+export default AdminTimeslotPage;

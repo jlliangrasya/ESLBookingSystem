@@ -1,22 +1,29 @@
 import { useState, useEffect } from "react";
-import { Row, Col, Table, Button } from "react-bootstrap";
-//import Calendar from "react-calendar";
-import "react-calendar/dist/Calendar.css";
 import { useNavigate } from "react-router-dom";
 import NavBar from "../components/Navbar";
 import axios from "axios";
 import "../index.css";
 import WeeklyCalendar from "../components/WeeklyCalendar";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Users, UserCheck } from "lucide-react";
 
 interface Student {
   id: number;
-  student_name: string;
+  name: string;
   email: string;
   guardian_name: string;
   nationality: string;
   age: number;
   created_at: string;
-  is_admin: boolean;
 }
 
 interface Booking {
@@ -41,9 +48,9 @@ interface StudentPackage {
 
 type ClosedSlot = {
   id: number;
-  date: string; // or Date if you want to store it as a Date object
+  date: string;
   time: string;
-  created_at?: string; // Optional
+  created_at?: string;
 };
 
 interface CompletedBooking {
@@ -59,131 +66,75 @@ interface CompletedBooking {
 const AdminDashboard = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [paidStudentPackages, setPaidStudentPackages] = useState<
-    StudentPackage[]
-  >([]);
+  const [paidStudentPackages, setPaidStudentPackages] = useState<StudentPackage[]>([]);
   const [studentPackages, setStudentPackages] = useState<StudentPackage[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_calendarBookings, setCalendarBookings] = useState<
-    Record<string, string[]>
-  >({});
   const navigate = useNavigate();
   const [closedSlots, setClosedSlots] = useState<ClosedSlot[]>([]);
-  const [completedBookings, setCompletedBookings] = useState<
-    CompletedBooking[]
-  >([]);
+  const [completedBookings, setCompletedBookings] = useState<CompletedBooking[]>([]);
 
   useEffect(() => {
     fetchDashboardData();
+    fetchClosedSlots();
   }, []);
 
   const fetchDashboardData = async () => {
     try {
       const token = localStorage.getItem("token");
       if (!token) {
-        console.error("No token found. Redirecting to login...");
         navigate("/login");
         return;
       }
+      const headers = { Authorization: `Bearer ${token}` };
+      const base = import.meta.env.VITE_API_URL;
 
-      const studentsRes = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/student/students`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      const bookingsRes = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/student-bookings`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      const studentPackagesRes = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/student/student-packages/pending`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      const studentPackagesPaidRes = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/student/student-packages/paid`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      const completedBookingsRes = await axios.get<CompletedBooking[]>(
-        `${import.meta.env.VITE_API_URL}/api/completed-bookings`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      console.log("Fetched Students:", studentsRes.data);
-      console.log("Fetched Bookings:", bookingsRes.data);
-      console.log("Fetched Student Packages:", studentPackagesRes.data);
-      console.log(
-        "Fetched Paid Student Packages:",
-        studentPackagesPaidRes.data
-      );
-      console.log("Fetched Completed Bookings:", completedBookingsRes.data);
+      const [studentsRes, bookingsRes, pendingRes, paidRes, completedRes] =
+        await Promise.all([
+          axios.get(`${base}/api/student/students`, { headers }),
+          axios.get(`${base}/api/student-bookings`, { headers }),
+          axios.get(`${base}/api/student/student-packages/pending`, { headers }),
+          axios.get(`${base}/api/student/student-packages/paid`, { headers }),
+          axios.get<CompletedBooking[]>(`${base}/api/completed-bookings`, { headers }),
+        ]);
 
       setStudents(studentsRes.data);
       setBookings(bookingsRes.data);
-      setStudentPackages(studentPackagesRes.data);
-      setPaidStudentPackages(studentPackagesPaidRes.data);
-      organizeCalendarData(bookingsRes.data);
-      setCompletedBookings(completedBookingsRes.data);
+      setStudentPackages(pendingRes.data);
+      setPaidStudentPackages(paidRes.data);
+      setCompletedBookings(completedRes.data);
     } catch (err) {
       console.error("Error fetching data", err);
     }
   };
 
-  const organizeCalendarData = (bookings: Booking[]) => {
-    const formattedBookings: Record<string, string[]> = {};
-
-    bookings.forEach((booking) => {
-      const localDate = new Date(booking.appointment_date); // Convert to Date object
-      const dateKey = new Date(
-        localDate.getTime() - localDate.getTimezoneOffset() * 60000
-      )
-        .toISOString()
-        .split("T")[0]; // Ensure it's in local time
-
-      if (!formattedBookings[dateKey]) formattedBookings[dateKey] = [];
-      formattedBookings[dateKey].push(booking.student_name);
-    });
-
-    setCalendarBookings(formattedBookings);
-  };
-
   const handleConfirm = async (id: number) => {
     try {
       await axios.post(
-        `http://localhost:5000/api/student/package/confirm/${id}`
+        `${import.meta.env.VITE_API_URL}/api/student/package/confirm/${id}`
       );
       fetchDashboardData();
     } catch (error) {
-      console.error("Error confirming booking:", error);
+      console.error("Error confirming package:", error);
     }
   };
 
   const handleReject = async (id: number) => {
     try {
       await axios.post(
-        `http://localhost:5000/api/student/package/reject/${id}`
+        `${import.meta.env.VITE_API_URL}/api/student/package/reject/${id}`
       );
       fetchDashboardData();
     } catch (error) {
-      console.error("Error rejecting booking:", error);
+      console.error("Error rejecting package:", error);
     }
   };
 
-  const handleMarkAsDone = async (
-    bookingId: number,
-    studentPackageId: number
-  ) => {
+  const handleMarkAsDone = async (bookingId: number, studentPackageId: number) => {
     try {
-      await axios.post(`http://localhost:5000/api/bookings/done/${bookingId}`, {
-        student_package_id: studentPackageId,
-      });
-      fetchDashboardData(); // Refresh data
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/bookings/done/${bookingId}`,
+        { student_package_id: studentPackageId }
+      );
+      fetchDashboardData();
     } catch (error) {
       console.error("Error marking class as done:", error);
     }
@@ -192,214 +143,193 @@ const AdminDashboard = () => {
   const handleCancelBooking = async (bookingId: number) => {
     try {
       await axios.post(
-        `http://localhost:5000/api/bookings/cancel/${bookingId}`
+        `${import.meta.env.VITE_API_URL}/api/bookings/cancel/${bookingId}`
       );
-      fetchDashboardData(); // Refresh data
+      fetchDashboardData();
     } catch (error) {
       console.error("Error cancelling class:", error);
     }
   };
-
-  // const handleDateClick = (date: Date) => {
-  //   const localDate = new Date(
-  //     date.getTime() - date.getTimezoneOffset() * 60000
-  //   )
-  //     .toISOString()
-  //     .split("T")[0]; // Ensures local time zone
-
-  //   navigate(`/timeslots/${localDate}`);
-  // };
-
-  // **Filter Logic**
-  // Total Students (only non-admin users)
-  const totalStudents = students.filter((s) => !s.is_admin).length;
-  // Enrolled Students: paid and sessions_remaining > 0
-
-  const enrolledStudents = paidStudentPackages.filter(
-    (sp) => sp.payment_status === "paid" && sp.sessions_remaining > 0
-  ).length;
-  // Pending Enrollees: unpaid and sessions_remaining > 0
-  const pendingEnrollees = studentPackages.filter(
-    (sp) => sp.payment_status === "unpaid" && sp.sessions_remaining > 0
-  );
-  // New Schedules: bookings with status "pending"
-  const newSchedules = bookings.filter((b) => b.status === "pending");
-  //Past apoointments
-  const confirmSchedules = newSchedules.filter(
-    (booking) => new Date(booking.appointment_date) < new Date()
-  );
-  console.log("All bookings:", newSchedules); // Log all fetched schedules
-  console.log("Filtered past schedules:", confirmSchedules); // Log only past schedules
-  console.log("Current date:", new Date()); // Log current time for comparison
 
   const fetchClosedSlots = async () => {
     try {
       const token = localStorage.getItem("token");
       const res = await axios.get(
         `${import.meta.env.VITE_API_URL}/api/admin/closed-slots`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-      //  console.log("Closed Slots Data:", res.data);
-
-      // Convert the data to the format expected by your calendar
       const formattedSlots = res.data.map((slot: ClosedSlot) => ({
-        date: new Date(slot.date).toLocaleDateString("en-CA"), // YYYY-MM-DD format without timezone shift
+        date: new Date(slot.date).toLocaleDateString("en-CA"),
         time: slot.time,
       }));
-
-      console.log("Formatted Closed Slots:", formattedSlots);
-
       setClosedSlots(formattedSlots);
     } catch (err) {
       console.error("Error fetching closed slots", err);
     }
   };
 
-  useEffect(() => {
-    fetchClosedSlots();
-  }, []);
+  const totalStudents = students.length;
+  const enrolledStudents = paidStudentPackages.filter(
+    (sp) => sp.payment_status === "paid" && sp.sessions_remaining > 0
+  ).length;
+  const pendingEnrollees = studentPackages.filter(
+    (sp) => sp.payment_status === "unpaid" && sp.sessions_remaining > 0
+  );
 
   return (
     <>
       <NavBar />
-      {/* Full-width layout, but with padding for spacing */}
-      <div className="px-5 pt-4">
-        {/* Main Layout Row */}
-        <Row>
-          {/* Left Section (40% width) */}
-          <Col md={5}>
-            <h5 className="mt-4">Total Students: {totalStudents}</h5>
-            <h5 className="mt-4">Enrolled Students: {enrolledStudents}</h5>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+        {/* Stats row */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <Users className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Total Students</p>
+              <p className="text-2xl font-bold">{totalStudents}</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <UserCheck className="h-5 w-5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Enrolled</p>
+              <p className="text-2xl font-bold">{enrolledStudents}</p>
+            </div>
+          </div>
+        </div>
 
-            <h5 className="mt-4">Pending Enrollees</h5>
-            <Table striped bordered hover responsive>
-              <thead>
-                <tr>
-                  <th>Student Name</th>
-                  <th>Package</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pendingEnrollees.map((enrollee, index) => (
-                  <tr key={index}>
-                    <td>
-                      {students.find((s) => s.id === enrollee.student_id)
-                        ?.student_name || "Unknown"}
-                    </td>
-                    <td>{enrollee.package_id}</td>
-                    <td>
-                      <Button
-                        variant="success"
-                        className="ms-2 btn-xs"
-                        onClick={() => handleConfirm(enrollee.id)}
-                      >
-                        Confirm
-                      </Button>
-                      <Button
-                        variant="danger"
-                        className="ms-2 btn-xs"
-                        onClick={() => handleReject(enrollee.id)}
-                      >
-                        Reject
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          </Col>
+        {/* Two-column layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* Pending Enrollees */}
+          <div className="lg:col-span-2 bg-white rounded-xl border shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b bg-muted/40">
+              <h2 className="font-semibold text-sm">Pending Enrollees</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Student</TableHead>
+                    <TableHead>Package</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pendingEnrollees.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center text-muted-foreground py-6 text-sm">
+                        No pending enrollees
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    pendingEnrollees.map((enrollee) => (
+                      <TableRow key={enrollee.id}>
+                        <TableCell className="text-sm">
+                          {students.find((s) => s.id === enrollee.student_id)
+                            ?.name || "Unknown"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{enrollee.package_id}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right space-x-1">
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="bg-green-600 hover:bg-green-700 h-7 px-2 text-xs"
+                            onClick={() => handleConfirm(enrollee.id)}
+                          >
+                            Confirm
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => handleReject(enrollee.id)}
+                          >
+                            Reject
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
 
-          {/* Right Section (60% width) */}
-          <Col md={7} className="ml-4">
-            <div className="pl-4">
-              {/* <h4 className="">CALENDAR</h4> */}
-              {/* <Calendar
-                className="custom-calendar" // Apply custom styles
-                onClickDay={handleDateClick}
-                tileContent={({ date }) => {
-                  // Convert to local date before formatting
-                  const localDate = new Date(
-                    date.getTime() - date.getTimezoneOffset() * 60000
-                  )
-                    .toISOString()
-                    .split("T")[0];
-
-                  return calendarBookings[localDate] ? (
-                    <div className="booking-names">
-                      {calendarBookings[localDate].map((name, index) => (
-                        <div key={index} className="booking-name">
-                          {name}
-                        </div>
-                      ))}
-                    </div>
-                  ) : null;
-                }}
-              /> */}
-
-              <h5 className="mt-4">Confirm Classes</h5>
-              <Table striped bordered hover responsive>
-                <thead>
-                  <tr>
-                    <th>Student Name</th>
-                    <th>Date</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
+          {/* Confirm Classes */}
+          <div className="lg:col-span-3 bg-white rounded-xl border shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b bg-muted/40">
+              <h2 className="font-semibold text-sm">Confirm Classes</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Student</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {completedBookings.length === 0 ? (
-                    <tr>
-                      <td colSpan={3}>No completed bookings</td>
-                    </tr>
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center text-muted-foreground py-6 text-sm">
+                        No completed bookings
+                      </TableCell>
+                    </TableRow>
                   ) : (
                     completedBookings.map((booking) => (
-                      <tr key={booking.id}>
-                        <td>{booking.student_name}</td>
-                        <td>
+                      <TableRow key={booking.id}>
+                        <TableCell className="text-sm font-medium">
+                          {booking.student_name}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
                           {new Date(booking.appointment_date).toLocaleString(
                             "en-US",
                             {
-                              year: "numeric",
-                              month: "long",
+                              month: "short",
                               day: "numeric",
+                              year: "numeric",
                               hour: "2-digit",
                               minute: "2-digit",
                               hour12: true,
                             }
                           )}
-                        </td>
-                        <td>
+                        </TableCell>
+                        <TableCell className="text-right space-x-1">
                           <Button
-                            variant="success"
-                            className="ms-2 btn-xs"
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700 h-7 px-2 text-xs"
                             onClick={() =>
-                              handleMarkAsDone(
-                                booking.id,
-                                booking.student_package_id
-                              )
+                              handleMarkAsDone(booking.id, booking.student_package_id)
                             }
                           >
                             Done
                           </Button>
                           <Button
-                            variant="danger"
-                            className="ms-2 btn-xs"
+                            size="sm"
+                            variant="destructive"
+                            className="h-7 px-2 text-xs"
                             onClick={() => handleCancelBooking(booking.id)}
                           >
-                            Cancelled
+                            Cancel
                           </Button>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))
                   )}
-                </tbody>
+                </TableBody>
               </Table>
             </div>
-          </Col>
-        </Row>
-        {/* 📅 Weekly Calendar */}
+          </div>
+        </div>
+
+        {/* Weekly Calendar */}
         <WeeklyCalendar
           bookings={bookings}
           closedSlots={closedSlots}

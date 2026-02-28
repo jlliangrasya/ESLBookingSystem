@@ -1,47 +1,53 @@
-import { FaBook, FaRegLightbulb, FaClock, FaPencilAlt } from "react-icons/fa";
-import "../index.css";
+import { BookOpen, Lightbulb, Clock, PencilLine } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+
+const features = [
+  {
+    icon: BookOpen,
+    title: "Services Offered",
+    description: "We offer online English tutorials for all ages and levels.",
+  },
+  {
+    icon: Lightbulb,
+    title: "Personalized Lessons",
+    description: "Each lesson is customized to the student's needs and pace.",
+  },
+  {
+    icon: Clock,
+    title: "Flexible Schedule",
+    description: "Book your classes at your convenience with flexible hours.",
+  },
+  {
+    icon: PencilLine,
+    title: "Subjects",
+    description:
+      "Grammar, Speaking, Reading Comprehension, Vocabulary, and more.",
+  },
+];
 
 const LearnMore = () => {
   return (
-    <section className="py-5 bg-light" style={{ height: "80vh" }}>
-      <div className="container text-center">
-        <h2 className="mb-5 text-primary font-weight-bold">
-          Why Choose Eunitalk?
-        </h2>
-        <div className="row justify-content-center">
-          <div className="col-lg-3 col-md-4 col-12 mb-4">
-            <div className="feature-box p-4 bg-white rounded shadow-lg d-flex flex-column align-items-center">
-              <FaBook size={50} color="#65C3E8" />
-              <h5 className="mt-3">📚 Services Offered</h5>
-              <p>We offer online English tutorials for all ages and levels.</p>
-            </div>
-          </div>
-          <div className="col-lg-3 col-md-4 col-12 mb-4">
-            <div className="feature-box p-4 bg-white rounded shadow-lg d-flex flex-column align-items-center">
-              <FaRegLightbulb size={50} color="#65C3E8" />
-              <h5 className="mt-3">🎯 Personalized Lessons</h5>
-              <p>Each lesson is customized to the student's needs and pace.</p>
-            </div>
-          </div>
-          <div className="col-lg-3 col-md-4 col-12 mb-4">
-            <div className="feature-box p-4 bg-white rounded shadow-lg d-flex flex-column align-items-center">
-              <FaClock size={50} color="#65C3E8" />
-              <h5 className="mt-3">⏰ Flexible Schedule</h5>
-              <p>Book your classes at your convenience with flexible hours.</p>
-            </div>
-          </div>
-          <div className="col-lg-3 col-md-4 col-12 mb-4">
-            <div className="feature-box p-4 bg-white rounded shadow-lg d-flex flex-column align-items-center">
-              <FaPencilAlt size={50} color="#65C3E8" />
-              <h5 className="mt-3">📝 Subjects</h5>
-              <p>
-                Grammar, Speaking, Reading Comprehension, Vocabulary, and more.
-              </p>
-            </div>
-          </div>
-        </div>
+    <div className="max-w-6xl mx-auto px-4 text-center">
+      <h2 className="text-3xl font-bold text-primary mb-10">
+        Why Choose Eunitalk?
+      </h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {features.map(({ icon: Icon, title, description }) => (
+          <Card
+            key={title}
+            className="group hover:-translate-y-2 transition-transform duration-300 shadow-md border-0 bg-white"
+          >
+            <CardContent className="flex flex-col items-center text-center pt-8 pb-6 px-5 gap-3">
+              <div className="p-3 bg-sky-100 rounded-full">
+                <Icon className="h-8 w-8 text-primary" />
+              </div>
+              <h3 className="font-semibold text-primary text-base">{title}</h3>
+              <p className="text-muted-foreground text-sm">{description}</p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
-    </section>
+    </div>
   );
 };
 

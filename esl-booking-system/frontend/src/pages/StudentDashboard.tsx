@@ -1,25 +1,28 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
-import { Button, Row, Col, Navbar } from "react-bootstrap";
 import logo from "../assets/EuniTalk_Logo.png";
 import "../index.css";
-import Form from "react-bootstrap/Form";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { LogOut, Package, CalendarDays, User } from "lucide-react";
 import PackageSelectionModal from "../components/PackageSelectionModal";
 import BookingConfirmationModal from "../components/BookingConfirmationModal";
+import AuthContext from "@/context/AuthContext";
 
 interface Student {
   id: number;
-  student_name: string;
+  name: string;
   guardian_name: string;
   nationality: string;
   age: number;
   created_at: string;
 }
 
-interface Package {
+interface PackageDetails {
   id: number;
   package_name: string;
   sessions_remaining: number;
@@ -36,61 +39,40 @@ interface Booking {
 
 const StudentDashboard = () => {
   const [student, setStudent] = useState<Student | null>(null);
-  const [packageDetails, setPackageDetails] = useState<Package | null>(null);
-  const [calendarBookings, setCalendarBookings] = useState<
-    Record<string, string[]>
-  >({});
-  const [availablePackages, setAvailablePackages] = useState<Package[]>([]);
+  const [packageDetails, setPackageDetails] = useState<PackageDetails | null>(null);
+  const [calendarBookings, setCalendarBookings] = useState<Record<string, string[]>>({});
+  const [availablePackages, setAvailablePackages] = useState<PackageDetails[]>([]);
   const [selectedPackage, setSelectedPackage] = useState<number | null>(null);
-
-  const [selectedSlot] = useState<string | null>(null);
   const [showPackageModal, setShowPackageModal] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
 
   const navigate = useNavigate();
-  const token = localStorage.getItem("token"); // Retrieve token from local storage
+  const authContext = useContext(AuthContext);
+  const token = localStorage.getItem("token");
 
   useEffect(() => {
-    if (!token) {
-      console.error("No token found in localStorage");
-      return;
-    }
+    if (!token) return;
 
     const fetchStudentData = async () => {
       try {
-        console.log("Sending token:", token);
-
         const response = await axios.get(
           `${import.meta.env.VITE_API_URL}/api/student/dashboard`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
+          { headers: { Authorization: `Bearer ${token}` } }
         );
-
-        console.log("API Response:", response.data);
 
         setStudent(response.data.student);
         setPackageDetails(response.data.package || null);
 
-        // Get current date & time in the same format as bookings
         const now = new Date();
-
-        // Process bookings to match calendar format
         const processedBookings: Record<string, string[]> = {};
 
         response.data.bookings.forEach((booking: Booking) => {
-          // Combine date and time for accurate comparison
           const appointmentDateTime = new Date(
             `${booking.appointment_date} ${booking.timeslot}`
           );
-
-          // 🔥 Remove past appointments
           if (appointmentDateTime >= now) {
             const dateKey = booking.appointment_date;
-
-            if (!processedBookings[dateKey]) {
-              processedBookings[dateKey] = [];
-            }
+            if (!processedBookings[dateKey]) processedBookings[dateKey] = [];
             processedBookings[dateKey].push(booking.timeslot);
           }
         });
@@ -115,23 +97,15 @@ const StudentDashboard = () => {
       console.error("Error fetching packages:", error);
     }
   };
+
   const confirmPackage = async (selectedSubject: string) => {
-    if (!student || !selectedPackage) {
-      alert("Student or package not selected.");
-      return;
-    }
-
+    if (!student || !selectedPackage) return;
     try {
-      const response = await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/student/avail`,
-        {
-          student_id: student.id,
-          package_id: selectedPackage,
-          subject: selectedSubject,
-        }
-      );
-
-      console.log("Response:", response.data);
+      await axios.post(`${import.meta.env.VITE_API_URL}/api/student/avail`, {
+        student_id: student.id,
+        package_id: selectedPackage,
+        subject: selectedSubject,
+      });
       alert("Package confirmed!");
     } catch (error) {
       console.error("Error confirming package:", error);
@@ -140,177 +114,136 @@ const StudentDashboard = () => {
   };
 
   const handleDateClick = (date: Date) => {
-    const localDate = new Date(
-      date.getTime() - date.getTimezoneOffset() * 60000
-    )
+    const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
       .toISOString()
-      .split("T")[0]; // Ensures local time zone
-
+      .split("T")[0];
     navigate(`/timeslots/${localDate}`);
   };
 
   const confirmBooking = async () => {
-    if (!selectedSlot) {
-      alert("Please select a time slot.");
-      return;
-    }
-
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        console.error("No token found!");
-        navigate("/login");
-        return;
-      }
-
-      // Fetch student package ID using GET request
-      const studentPackageResponse = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/student/avail`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      console.log(import.meta.env.VITE_API_URL);
-
-      const studentPackageId = studentPackageResponse.data?.student_package_id; // Ensure correct key
-      if (!studentPackageId) {
-        alert("No active package found. Please purchase a package.");
-        return;
-      }
-
-      // Send booking request to backend
-      const response = await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/student/book`,
-        {
-          student_package_id: studentPackageId,
-          appointment_date: `${Date} ${selectedSlot}`, // Combine date and time
-          status: "pending",
-          rescheduled_by_admin: false,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      console.log("Booking saved:", response.data);
-      alert("Booking confirmed successfully!");
-      setShowBookingModal(false);
-    } catch (error) {
-      console.error("Error confirming booking:", error);
-      alert("Failed to confirm booking. Please try again.");
-    }
+    // Booking is handled directly from TimeslotPage; this modal is a placeholder
+    setShowBookingModal(false);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("token"); // Remove auth token
-    navigate("/home"); // Redirect to login page
+    authContext?.logout();
+    navigate("/");
   };
 
   return (
-    <div className="container mt-4">
-      <div className="header-section">
-        <Navbar expand="lg" className="align-items-center px-3 py-2">
-          <div className="container-fluid position-relative">
-            {/* Centered Logo */}
-            <Navbar.Brand className="position-absolute top-50 start-50 translate-middle">
-              <img src={logo} alt="Logo" height="40" />
-            </Navbar.Brand>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-primary/20 border-b border-primary/30">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+          <img src={logo} alt="EuniTalk Logo" className="h-10 w-auto" />
 
-            {/* Logout Button aligned to the right */}
-            <div className="ms-auto">
-              <button
-                className="btn btn-sm btn-outline-pink custom-logout-btn"
-                onClick={handleLogout}
-              >
-                Logout
-              </button>
-            </div>
+          <div className="hidden md:flex flex-col items-end">
+            <p className="text-xs text-muted-foreground">
+              Nationality: {student?.nationality || "N/A"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Age: {student?.age || "N/A"}
+            </p>
           </div>
-        </Navbar>
 
-        <div>
-          {/* Header Section */}
-          <Row className="px-5">
-            {/* Left Section - 50% of the screen */}
-            <Col md={10}>
-              <h4 className="m-0">Hi, I am</h4>
-              <h1>{student?.student_name || "Student"}</h1>
-            </Col>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleLogout}
+            className="border-pink-400 text-pink-500 hover:bg-pink-50"
+          >
+            <LogOut className="h-4 w-4 mr-1" />
+            Logout
+          </Button>
+        </div>
 
-            {/* Right Section - 50% of the screen */}
-            <Col md={2}>
-              <p className="m-0">
-                Nationality: {student?.nationality || "N/A"}
-              </p>
-              <p className="m-0">Age: {student?.age || "N/A"}</p>
-              {/* <p className="m-0">Level: Beginner</p> */}
-            </Col>
-          </Row>
+        <div className="max-w-7xl mx-auto px-4 pb-4">
+          <p className="text-sm text-muted-foreground">Hi, I am</p>
+          <h1 className="text-3xl font-bold text-gray-800">
+            {student?.name || "Student"}
+          </h1>
         </div>
       </div>
-      <div className="main-content pb-5">
-        {/* Main Content */}
-        <Row>
-          {/* Left Section - 50% of the screen */}
-          <Col md={6}>
-            <h5>Guardian: {student?.guardian_name || "N/A"}</h5>
-            <h5 className="mt-4">
-              Date Enrolled:{" "}
+
+      {/* Main content */}
+      <div className="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Left — profile info */}
+        <div className="space-y-5">
+          <div className="flex items-center gap-2 text-sm">
+            <User className="h-4 w-4 text-primary" />
+            <span className="text-muted-foreground">Guardian:</span>
+            <span className="font-medium">{student?.guardian_name || "N/A"}</span>
+          </div>
+
+          <div className="flex items-center gap-2 text-sm">
+            <CalendarDays className="h-4 w-4 text-primary" />
+            <span className="text-muted-foreground">Date Enrolled:</span>
+            <span className="font-medium">
               {student?.created_at
                 ? new Date(student.created_at).toLocaleDateString("en-US")
-                : "//"}
-            </h5>
+                : "—"}
+            </span>
+          </div>
 
-            {packageDetails ? (
-              <div>
-                <h5 className="mt-4">
-                  Availed Package:
-                  <span className="ms-1"> {packageDetails.package_name}</span>
-                </h5>
-                <h5 className="mt-4">
-                  Remaining Sessions:
-                  <span className="ms-1">
-                    {packageDetails.sessions_remaining}
-                  </span>{" "}
-                </h5>
+          {packageDetails ? (
+            <div className="bg-white rounded-xl p-4 shadow-sm border space-y-2">
+              <div className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-primary" />
+                <span className="font-semibold text-sm">
+                  {packageDetails.package_name}
+                </span>
               </div>
-            ) : (
-              <h5 className="mt-4">No package availed</h5>
-            )}
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">
+                  {packageDetails.sessions_remaining} sessions remaining
+                </Badge>
+              </div>
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm italic">
+              No package availed yet.
+            </p>
+          )}
 
-            <h5 className="mt-4">Feedback:</h5>
-
-            <Form.Control
-              as="textarea"
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Feedback</label>
+            <Textarea
               rows={3}
-              placeholder="Enter your feedback here..."
+              placeholder="Leave your feedback here..."
+              className="resize-none"
             />
-          </Col>
+          </div>
+        </div>
 
-          {/* Right Section - 50% of the screen */}
-          <Col md={6} className="px-5">
-            <Button onClick={handleAvailPackage} className="custom-button">
-              AVAIL A PACKAGE
-            </Button>
+        {/* Right — calendar */}
+        <div className="space-y-4">
+          <Button
+            onClick={handleAvailPackage}
+            className="w-full shadow"
+          >
+            Avail a Package
+          </Button>
 
-            <h4 className="mt-4">Booked Classes</h4>
-            <Calendar
-              className="custom-calendar "
-              onClickDay={handleDateClick}
-              tileContent={({ date }) => {
-                const dateString = date.toLocaleDateString("en-CA"); // "YYYY-MM-DD"
-                return calendarBookings[dateString] ? (
-                  <div className="booking-name">
-                    {calendarBookings[dateString].map((slot, index) => (
-                      <p key={index} className="m-0">
-                        {slot}
-                      </p>
-                    ))}
-                  </div>
-                ) : null;
-              }}
-            />
-          </Col>
-        </Row>
+          <h4 className="font-semibold text-gray-700">Booked Classes</h4>
+          <Calendar
+            className="custom-calendar"
+            onClickDay={handleDateClick}
+            tileContent={({ date }) => {
+              const dateString = date.toLocaleDateString("en-CA");
+              return calendarBookings[dateString] ? (
+                <div className="booking-name">
+                  {calendarBookings[dateString].map((slot, i) => (
+                    <p key={i} className="m-0">
+                      {slot}
+                    </p>
+                  ))}
+                </div>
+              ) : null;
+            }}
+          />
+        </div>
       </div>
 
-      {/* Package Selection Modal */}
       <PackageSelectionModal
         show={showPackageModal}
         onHide={() => setShowPackageModal(false)}
@@ -319,7 +252,6 @@ const StudentDashboard = () => {
         confirmPackage={confirmPackage}
       />
 
-      {/* Booking Confirmation Modal */}
       <BookingConfirmationModal
         show={showBookingModal}
         onHide={() => setShowBookingModal(false)}

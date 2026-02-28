@@ -1,33 +1,38 @@
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-family-sans: 'Poppins', sans-serif;
+  --color-brand: #65C3E8;
+  --color-brand-dark: #3a87a3;
+}
+
+/* ─── Base ──────────────────────────────────────────────────────── */
 * {
-  font-family: 'Poppins', sans-serif !important;
+  font-family: 'Poppins', sans-serif;
 }
 
-
-.nav-links {
-  display: flex;
-  justify-content: space-between;
-  gap: 60px; /* Adjust space as needed */
-}
-
+/* ─── React Calendar ─────────────────────────────────────────────── */
 .custom-calendar {
-  width: 100% !important;  /* Make calendar take full width */
-  max-width: 100%; /* Ensure it doesn't overflow */
-  font-size: 1.2rem; /* Increase text size */
-
+  width: 100% !important;
+  max-width: 100%;
+  font-size: 1.1rem;
 }
 
 .booking-names {
   display: flex;
   flex-direction: column;
-  gap: 5px; /* Add spacing between names */
+  gap: 5px;
   padding: 5px;
 }
 
 .custom-calendar .booking-name p {
-  background-color: rgb(91, 176, 209); 
-  color: white; /* White text */
+  background-color: #65C3E8;
+  color: white;
   border-radius: 5px;
   text-align: center;
   padding: 2px;
@@ -36,150 +41,69 @@
   flex-direction: column;
 }
 
-.btn-xs {
-  font-size: 10px !important; /* Smaller text */
-  padding: 2px 6px !important;; /* Less padding */
-}
-
-.header-section {
-  position: absolute; /* Positions it at the top */
-  top: 0;
-  left: 0;
-  width: 100%; /* Ensures full width */
-  background-color: rgba(101, 195, 232, 0.25); /* Bootstrap primary blue (change as needed) */
-  color: rgb(0, 0, 0); /* Ensures text is visible */
-  padding-top: 10px; /* Adds spacing inside */
-  padding-left: 10px;
-  padding-right: 10px;
-}
-
-.main-content {
-  margin-top: 180px; /* Adjust this based on your header height */
- 
-}
-
-.custom-button {
-  width: 100%;
-  background-color: #65C3E8 !important;
-  border: none !important;
-  color: white;
-  box-shadow: 0px 10px 10px rgba(0, 0, 0, 0.1);
-  transition: background-color 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
-}
-
-.custom-button:hover {
-  background-color: #3a87a3 ;
-  box-shadow: 0px 6px 10px rgba(0, 0, 0, 0.15);
-}
-
-.custom-table {
-  font-family: "Poppins", sans-serif !important;
-  border-bottom: 2px solid #65C3E8 !important;
-}
-
-/* Header Styling */
-.custom-table thead {
-  background-color: #65C3E8;
-  color: white;
-}
-
-/* Default Row Styling */
-.custom-table tbody tr {
-  transition: background-color 0.3s ease, box-shadow 0.2s ease-in-out;
-}
-
-/* Hover Effect */
-.custom-table tbody tr:hover {
-  background-color: rgba(101, 195, 232, 0.3) !important;
-}
-
-/* Selected Row Effect */
-.custom-table .selected-row {
-  background-color: rgba(101, 195, 232, 0.50) !important; /* Stronger blue */
-  color: white !important;
-  font-weight: bold;
-  box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1); /* Subtle shadow */
-}
-
-/* Ensure the text inside the selected row remains white */
-.custom-table .selected-row td {
-  background-color: rgba(101, 195, 232, 0.25) !important;
-}
-
+/* ─── Weekly Calendar ────────────────────────────────────────────── */
 .weekly-calendar {
   font-family: "Poppins", sans-serif;
 }
 
-/* Table Styling */
 .weekly-calendar table {
   border-collapse: collapse;
   width: 100%;
   border: 2px solid #65C3E8;
-  table-layout: fixed; /* Prevents uneven column widths */
+  table-layout: fixed;
 }
 
-/* Header Row (Days) */
-.weekly-calendar th{
+.weekly-calendar th {
   background-color: #65c3e870 !important;
   color: rgb(0, 0, 0);
   text-align: center;
 }
 
-/* Time Column */
 .weekly-calendar th:first-child {
   background-color: #65C3E8;
   color: rgb(0, 0, 0);
   font-weight: bold !important;
 }
 
-/* Vertical Divider for Time Column */
 .weekly-calendar td:first-child,
 .weekly-calendar th:first-child {
   border-right: 4px solid #65C3E8;
   font-weight: bold !important;
 }
 
-/* Default Time Slot Style */
 .weekly-calendar td {
   text-align: center;
   padding: 12px;
   cursor: pointer;
   transition: background 0.3s ease-in-out;
-  
 }
 
-/* Reduce row height for all rows except the header */
 .weekly-calendar tbody tr td {
-  height: 25px !important;  /* Adjust this for desired row size */
-  padding: 3px !important; /* Reduce padding for a more compact look */
-  line-height: 1.5; /* Ensures text is properly aligned */
+  height: 25px !important;
+  padding: 3px !important;
+  line-height: 1.5;
 }
 
-/* Available Time Slot */
 .weekly-calendar .available {
   background-color: white;
 }
 
-/* Hover Effect on Available Slots */
 .weekly-calendar .available:hover {
   background-color: rgba(101, 195, 232, 0.2);
 }
 
-/* Selected Time Slot */
 .weekly-calendar .selected {
   background-color: #28a745 !important;
   color: white;
   font-weight: bold;
 }
 
-/* Booked Time Slot */
 .weekly-calendar .booked {
   background-color: #0437F2 !important;
   color: white;
   font-weight: bold;
 }
 
-/* Closed Time Slot */
 .weekly-calendar .closed {
   background-color: #929292 !important;
   color: white;
@@ -187,13 +111,12 @@
   cursor: not-allowed;
 }
 
-/* Borders */
 .weekly-calendar td,
 .weekly-calendar th {
   border: 1px solid #65C3E8;
 }
 
-/* Styling for closed timeslots */
+/* ─── Timeslot status styles ─────────────────────────────────────── */
 .closed-timeslot {
   background-color: #929292b6 !important;
   color: rgb(0, 0, 0);
@@ -201,37 +124,21 @@
   text-align: center;
 }
 
-/* Styling for timeslots booked by user */
 .bookedByUser-timeslot {
   background-color: #25ce4cc7 !important;
   color: rgb(0, 0, 0);
   font-weight: bold;
   text-align: center;
   border: 1px solid #25ce4d;
-
-  /* Custom pink outline button */
-.btn-outline-pink {
-  border: 1px solid #ff69b4;
-  color: #ff69b4;
-  background-color: transparent;
-  transition: all 0.3s ease;
 }
 
-.btn-outline-pink:hover {
-  background-color: #ff69b4;
-  color: white;
-}
-}
-
-/* Hover effect for bookedByUser slots */
 .bookedByUser-timeslot:hover {
   background-color: #00bbff;
   color: rgba(0, 0, 0, 0.918);
-  transform: scale(1.05); /* Slight hover effect */
+  transform: scale(1.05);
   transition: all 0.2s ease-in-out;
 }
 
-/* Styling for available student timeslots */
 .student-timeslots {
   background-color: #6bd4fd54 !important;
   color: rgb(0, 0, 0);
@@ -239,56 +146,128 @@
   border: 1px solid #6bd4fd;
 }
 
-/* Hover effect for available slots */
 .student-timeslots:hover {
   background-color: #00bbff;
   color: rgba(0, 0, 0, 0.918);
-  transform: scale(1.05); /* Slight hover effect */
+  transform: scale(1.05);
   transition: all 0.2s ease-in-out;
 }
 
-/* Ensure buttons are responsive */
-button {
-  font-size: 1rem;
-  padding: 10px 5px;
-  border-radius: 8px;
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* Custom pink outline button */
-.btn-outline-pink {
-  border: 1px solid #ff69b4 !important;
-  color: #ff69b4 !important;
-  background-color: transparent;
-  transition: all 0.3s ease;
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.77 0.1 215);       /* #65C3E8 brand blue */
+  --primary-foreground: oklch(1 0 0);   /* white text on primary */
+  --secondary: oklch(0.94 0.03 215);
+  --secondary-foreground: oklch(0.3 0.05 215);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.94 0.03 215);
+  --accent-foreground: oklch(0.3 0.05 215);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.77 0.1 215);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
 }
 
-.btn-outline-pink:hover {
-  background-color: #ff69b4 !important;
-  color: white !important;
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
 }
 
-.feature-box {
-  background-color: #f8f9fa;
-  border-radius: 15px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-  transition: transform 0.3s ease;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between; /* Ensure space is distributed evenly */
-  min-height: 300px; /* Ensures that the boxes have at least this height */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
 }
-
-.feature-box:hover {
-  transform: translateY(-10px);
-}
-
-.feature-box h5 {
-  color: #3a87a3;
-  font-weight: bold;
-}
-
-.feature-box p {
-  color: #333;
-  font-size: 1rem;
-}
-

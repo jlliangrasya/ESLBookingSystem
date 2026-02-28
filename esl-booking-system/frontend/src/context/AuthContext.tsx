@@ -1,9 +1,12 @@
 import { createContext, useState } from "react";
 
-interface User {
+export type UserRole = 'super_admin' | 'company_admin' | 'teacher' | 'student';
+
+export interface User {
   id: number;
-  student_name: string;
-  isAdmin: boolean;
+  name: string;
+  role: UserRole;
+  company_id: number | null;
 }
 
 interface AuthContextType {
@@ -28,7 +31,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const login = (token: string, user: User) => {
     setToken(token);
     setUser(user);
-
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(user));
   };

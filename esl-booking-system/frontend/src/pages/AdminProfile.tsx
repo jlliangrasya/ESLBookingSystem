@@ -1,45 +1,38 @@
-import React, { useState, useEffect } from "react";
-import { Form, Button, Container, Card } from "react-bootstrap";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import NavBar from "../components/Navbar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Pencil, Save } from "lucide-react";
 
 const AdminProfile: React.FC = () => {
   const [admin, setAdmin] = useState({
-    student_name: "",
+    name: "",
     email: "",
-    password: "********", // Initially displayed as dots
+    password: "********",
   });
-  const [isEditing, setIsEditing] = useState(false); // Tracks edit mode
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
-    // ✅ Fetch logged-in admin details
     const fetchAdmin = async () => {
       try {
         const token = localStorage.getItem("token");
         const response = await axios.get(
           `${import.meta.env.VITE_API_URL}/api/admin/profile`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
+          { headers: { Authorization: `Bearer ${token}` } }
         );
-
-        console.log("Admin Data:", response.data); // ✅ Debugging
-
         setAdmin({
-          student_name: response.data.student_name || "",
+          name: response.data.name || "",
           email: response.data.email || "",
-          password: "********", // Always hide password initially
+          password: "********",
         });
       } catch (error: unknown) {
         if (axios.isAxiosError(error)) {
-          console.error(
-            "Error fetching profile:",
-            error.response?.data || error.message
-          );
+          console.error("Error fetching profile:", error.response?.data || error.message);
         } else if (error instanceof Error) {
           console.error("Error fetching profile:", error.message);
-        } else {
-          console.error("An unknown error occurred");
         }
       }
     };
@@ -53,47 +46,34 @@ const AdminProfile: React.FC = () => {
 
   const handleEdit = () => {
     setIsEditing(true);
-    setAdmin((prev) => ({ ...prev, password: "" })); // Allow password change when editing
+    setAdmin((prev) => ({ ...prev, password: "" }));
   };
 
   const handleSave = async () => {
     try {
       const token = localStorage.getItem("token");
-
-      //  Send password only if changed
       const updatedData = {
-        student_name: admin.student_name,
+        name: admin.name,
         email: admin.email,
-        ...(admin.password !== "" &&
-          admin.password !== "********" && { password: admin.password }),
+        ...(admin.password !== "" && admin.password !== "********" && {
+          password: admin.password,
+        }),
       };
-
-      console.log("Sending Data:", updatedData); // ✅ Debugging
 
       await axios.put(
         `${import.meta.env.VITE_API_URL}/api/admin/profile`,
         updatedData,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
       alert("Profile updated successfully!");
       setIsEditing(false);
-      setAdmin((prev) => ({
-        ...prev,
-        password: "********", // Reset password display after saving
-      }));
+      setAdmin((prev) => ({ ...prev, password: "********" }));
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
-        console.error(
-          "Error updating profile:",
-          error.response?.data || error.message
-        );
+        console.error("Error updating profile:", error.response?.data || error.message);
       } else if (error instanceof Error) {
         console.error("Error updating profile:", error.message);
-      } else {
-        console.error("An unknown error occurred");
       }
     }
   };
@@ -101,54 +81,65 @@ const AdminProfile: React.FC = () => {
   return (
     <>
       <NavBar />
-      <Container>
-        <Card className="mt-5 p-4">
-          <h3>Admin Profile</h3>
-          <Form>
-            <Form.Group className="mb-3">
-              <Form.Label>Name</Form.Label>
-              <Form.Control
+      <div className="max-w-lg mx-auto px-4 py-10">
+        <Card className="shadow-md">
+          <CardHeader>
+            <CardTitle className="text-lg">Admin Profile</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="profile-name">Name</Label>
+              <Input
+                id="profile-name"
                 type="text"
-                name="student_name"
-                value={admin.student_name}
+                name="name"
+                value={admin.name}
                 onChange={handleChange}
-                disabled={!isEditing} // Editable only in edit mode
+                disabled={!isEditing}
               />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Email</Form.Label>
-              <Form.Control
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="profile-email">Email</Label>
+              <Input
+                id="profile-email"
                 type="email"
                 name="email"
                 value={admin.email}
                 onChange={handleChange}
                 disabled={!isEditing}
               />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Password</Form.Label>
-              <Form.Control
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="profile-password">Password</Label>
+              <Input
+                id="profile-password"
                 type="password"
                 name="password"
                 value={admin.password}
                 onChange={handleChange}
                 disabled={!isEditing}
+                placeholder={isEditing ? "Enter new password" : ""}
               />
-            </Form.Group>
+            </div>
 
-            {/* ✅ Toggle between Edit and Save button */}
-            {isEditing ? (
-              <Button variant="success" onClick={handleSave}>
-                Save
-              </Button>
-            ) : (
-              <Button variant="primary" onClick={handleEdit}>
-                Edit
-              </Button>
-            )}
-          </Form>
+            <div className="pt-2">
+              {isEditing ? (
+                <Button onClick={handleSave} className="gap-2">
+                  <Save className="h-4 w-4" />
+                  Save
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={handleEdit} className="gap-2">
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </Button>
+              )}
+            </div>
+          </CardContent>
         </Card>
-      </Container>
+      </div>
     </>
   );
 };
