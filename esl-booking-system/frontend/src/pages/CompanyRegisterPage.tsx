@@ -124,6 +124,7 @@ const CompanyRegisterPage = () => {
             {plans.map((plan, i) => {
               const Icon = planIcons[i % planIcons.length];
               const isSelected = selectedPlan === plan.id;
+              const isFreeTrial = plan.price_monthly === 0;
               return (
                 <Card
                   key={plan.id}
@@ -131,23 +132,40 @@ const CompanyRegisterPage = () => {
                   className={`cursor-pointer transition-all border-2 ${
                     isSelected
                       ? "border-primary shadow-md"
+                      : isFreeTrial
+                      ? "border-green-300 hover:border-green-400"
                       : "border-transparent hover:border-primary/40"
                   }`}
                 >
                   <CardHeader className="pb-2">
-                    <div className="flex items-center gap-2">
-                      <Icon className="h-5 w-5 text-primary" />
-                      <CardTitle className="text-base">{plan.name}</CardTitle>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-5 w-5 text-primary" />
+                        <CardTitle className="text-base">{plan.name}</CardTitle>
+                      </div>
+                      {isFreeTrial && (
+                        <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                          Free Trial
+                        </span>
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-2">
-                    <p className="text-2xl font-bold text-primary">
-                      ₱{plan.price_monthly.toLocaleString()}
-                      <span className="text-sm font-normal text-muted-foreground">/mo</span>
-                    </p>
+                    {isFreeTrial ? (
+                      <p className="text-2xl font-bold text-green-600">
+                        Free
+                        <span className="text-sm font-normal text-muted-foreground ml-1">for 30 days</span>
+                      </p>
+                    ) : (
+                      <p className="text-2xl font-bold text-primary">
+                        ₱{plan.price_monthly.toLocaleString()}
+                        <span className="text-sm font-normal text-muted-foreground">/mo</span>
+                      </p>
+                    )}
                     <ul className="text-sm text-muted-foreground space-y-1">
-                      <li>✓ Up to {plan.max_students} students</li>
-                      <li>✓ Up to {plan.max_teachers} teachers</li>
+                      <li>✓ Up to {plan.max_students} student{plan.max_students !== 1 ? "s" : ""}</li>
+                      <li>✓ Up to {plan.max_teachers} teacher{plan.max_teachers !== 1 ? "s" : ""}</li>
+                      {isFreeTrial && <li className="text-green-600 font-medium">✓ 30-day trial period</li>}
                     </ul>
                     <p className="text-xs text-muted-foreground">{plan.description}</p>
                     {isSelected && (

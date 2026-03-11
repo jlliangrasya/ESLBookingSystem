@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2, Eye, EyeOff } from "lucide-react";
 
 interface RegisterProps {
   toggleAuth?: () => void;
@@ -18,6 +18,7 @@ const Register: React.FC<RegisterProps> = ({ toggleAuth }) => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [guardianName, setGuardianName] = useState("");
   const [age, setAge] = useState("");
   const [nationality, setNationality] = useState("");
@@ -97,14 +98,25 @@ const Register: React.FC<RegisterProps> = ({ toggleAuth }) => {
 
       <div className="space-y-1.5">
         <Label htmlFor="reg-password">Password</Label>
-        <Input
-          id="reg-password"
-          type="password"
-          placeholder="Enter password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+        <div className="relative">
+          <Input
+            id="reg-password"
+            type={showPassword ? "text" : "password"}
+            placeholder="Enter password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            className="pr-10"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            tabIndex={-1}
+          >
+            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
 
       <div className="space-y-1.5">

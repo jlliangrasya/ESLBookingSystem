@@ -12,7 +12,8 @@ export interface User {
 interface AuthContextType {
   token: string | null;
   user: User | null;
-  login: (token: string, user: User) => void;
+  trialExpired: boolean;
+  login: (token: string, user: User, trialExpired?: boolean) => void;
   logout: () => void;
 }
 
@@ -27,23 +28,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(
     storedUser ? JSON.parse(storedUser) : null
   );
+  const [trialExpired, setTrialExpired] = useState<boolean>(
+    localStorage.getItem("trial_expired") === "true"
+  );
 
-  const login = (token: string, user: User) => {
+  const login = (token: string, user: User, expired = false) => {
     setToken(token);
     setUser(user);
+    setTrialExpired(expired);
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(user));
+    localStorage.setItem("trial_expired", String(expired));
   };
 
   const logout = () => {
     setToken(null);
     setUser(null);
+    setTrialExpired(false);
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    localStorage.removeItem("trial_expired");
   };
 
   return (
-    <AuthContext.Provider value={{ token, user, login, logout }}>
+    <AuthContext.Provider value={{ token, user, trialExpired, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

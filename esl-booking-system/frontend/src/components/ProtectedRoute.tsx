@@ -12,9 +12,12 @@ const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) => {
 
   if (!authContext) return <Navigate to="/" />;
 
-  const { token, user } = authContext;
+  const { token, user, trialExpired } = authContext;
 
   if (!token || !user) return <Navigate to="/" />;
+
+  // If company admin's trial has expired, force to upgrade page
+  if (user.role === 'company_admin' && trialExpired) return <Navigate to="/upgrade" />;
 
   if (!allowedRoles.includes(user.role)) {
     // Redirect to the correct dashboard for this role

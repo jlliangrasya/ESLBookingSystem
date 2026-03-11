@@ -1,7 +1,7 @@
 import { useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import logo from "../assets/EuniTalk_Logo.png";
-import { CalendarDays, Users, User, LogOut, LayoutDashboard } from "lucide-react";
+import { CalendarDays, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import AuthContext from "@/context/AuthContext";
+import NotificationBell from "@/components/NotificationBell";
 
 const NavBar: React.FC = () => {
   const navigate = useNavigate();
@@ -55,6 +56,15 @@ const NavBar: React.FC = () => {
               </Link>
 
               <Link
+                to="/packages"
+                className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
+                title="Packages"
+              >
+                <Package className="h-6 w-6" />
+                <span className="text-[10px]">Packages</span>
+              </Link>
+
+              <Link
                 to="/students"
                 className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
                 title="Students"
@@ -62,8 +72,28 @@ const NavBar: React.FC = () => {
                 <Users className="h-6 w-6" />
                 <span className="text-[10px]">Students</span>
               </Link>
+
+              <Link
+                to="/teachers"
+                className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
+                title="Teachers"
+              >
+                <GraduationCap className="h-6 w-6" />
+                <span className="text-[10px]">Teachers</span>
+              </Link>
+
+              <Link
+                to="/admin-users"
+                className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
+                title="Admins"
+              >
+                <UserCog className="h-6 w-6" />
+                <span className="text-[10px]">Admins</span>
+              </Link>
             </>
           )}
+
+          <NotificationBell />
 
           {/* Profile dropdown */}
           <DropdownMenu>
@@ -77,15 +107,26 @@ const NavBar: React.FC = () => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-              {role === "company_admin" && (
+              {(role === "company_admin" || role === "teacher") && (
                 <DropdownMenuItem asChild>
-                  <Link to="/profile" className="cursor-pointer flex items-center gap-2">
+                  <Link
+                    to={role === "teacher" ? "/teacher-profile" : "/profile"}
+                    className="cursor-pointer flex items-center gap-2"
+                  >
                     <User className="h-4 w-4" />
                     Profile
                   </Link>
                 </DropdownMenuItem>
               )}
-              {role === "company_admin" && <DropdownMenuSeparator />}
+              {(role === "company_admin" || role === "super_admin") && (
+                <DropdownMenuItem asChild>
+                  <Link to="/activity-log" className="cursor-pointer flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4" />
+                    Activity Log
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              {(role === "company_admin" || role === "teacher") && <DropdownMenuSeparator />}
               <DropdownMenuItem
                 onClick={handleLogout}
                 className="cursor-pointer text-destructive focus:text-destructive flex items-center gap-2"

@@ -1,21 +1,14 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Login from "../components/Login";
-import Register from "../components/Register";
 import LearnMore from "../components/LearnMore";
 import TutorialPackages from "../components/TutorialPackages";
 import Footer from "../components/Footer";
 import { Building2, ArrowRight } from "lucide-react";
 
 const Home = () => {
-  const [showRegister, setShowRegister] = useState(false);
   const navigate = useNavigate();
-
-  const toggleAuth = () => {
-    setShowRegister((prev) => !prev);
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-50 to-white">
@@ -59,15 +52,12 @@ const Home = () => {
           <Card className="shadow-xl rounded-2xl">
             <CardHeader className="pb-2">
               <CardTitle className="text-center text-primary text-xl font-semibold">
-                {showRegister ? "Create Account" : "Welcome Back"}
+                Welcome Back
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {showRegister ? (
-                <Register toggleAuth={toggleAuth} />
-              ) : (
-                <Login />
-              )}
+              <Login />
+              {/* Self-registration disabled — admins add students manually
               <Button
                 variant="ghost"
                 onClick={toggleAuth}
@@ -77,6 +67,7 @@ const Home = () => {
                   ? "Already have an account? Log in here."
                   : "Are you a new student? Register here."}
               </Button>
+              */}
             </CardContent>
           </Card>
         </div>

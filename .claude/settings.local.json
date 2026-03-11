@@ -12,7 +12,20 @@
       "Bash(npm run build)",
       "Bash(npm install mysql2)",
       "Bash(npm uninstall pg pg-promise)",
-      "Bash(node -e \"const b=require\\(''bcryptjs''\\);b.hash\\(''Admin@2024!'',10\\).then\\(h=>console.log\\(h\\)\\)\")"
+      "Bash(node -e \"const b=require\\(''bcryptjs''\\);b.hash\\(''Admin@2024!'',10\\).then\\(h=>console.log\\(h\\)\\)\")",
+      "Bash(node -e \"require\\(''bcryptjs''\\).hash\\(''Friends20!'', 10\\).then\\(h => console.log\\(h\\)\\)\")",
+      "Bash(npm install socket.io)",
+      "Bash(npm install socket.io-client)",
+      "Bash(npx shadcn@latest add switch --yes)",
+      "Read(//c/Users/Lenovo/.claude/projects/c--Users-Lenovo-Documents-GitHub-ESLBookingSystem/**)",
+      "Bash(npm install node-cron)",
+      "Bash(npm install nodemailer --save)",
+      "Bash(\"c:\\\\Users\\\\Lenovo\\\\Documents\\\\GitHub\\\\ESLBookingSystem\\\\esl-booking-system\\\\backend\\\\.env\":*)",
+      "Bash(npm install recharts date-fns-tz --save)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\Lenovo\\.claude\\projects\\c--Users-Lenovo-Documents-GitHub-ESLBookingSystem\\memory",
+      "C:\\Users\\Lenovo\\Documents\\GitHub\\ESLBookingSystem"
     ]
   }
 }

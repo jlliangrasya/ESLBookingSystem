@@ -229,7 +229,7 @@ const TimeslotPage = () => {
         {
           student_package_id: studentPackageId,
           appointment_date: appointmentDate,
-          status: "pending",
+          status: "confirmed",
           rescheduled_by_admin: false,
         },
         { headers: { Authorization: `Bearer ${token}` } }
