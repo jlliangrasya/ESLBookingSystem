@@ -41,23 +41,23 @@ CREATE TABLE subscription_plans (
 -- Companies / ESL Centers
 -- ─────────────────────────────────────────
 CREATE TABLE companies (
-  id                         INT AUTO_INCREMENT PRIMARY KEY,
-  name                       VARCHAR(255) NOT NULL,
-  email                      VARCHAR(255) UNIQUE NOT NULL,
-  phone                      VARCHAR(50),
-  address                    TEXT,
-  subscription_plan_id       INT,
-  status                     ENUM('pending','active','suspended','rejected','locked') DEFAULT 'pending',
-  approved_by                INT NULL,
-  approved_at                TIMESTAMP NULL,
-  trial_ends_at              TIMESTAMP NULL,          -- set when approved on Free Trial plan
-  next_due_date              DATE NULL,               -- monthly billing due date (set on paid plan approval)
-  last_paid_at               TIMESTAMP NULL,          -- when super admin last marked as paid
-  allow_student_pick_teacher    BOOLEAN DEFAULT TRUE,    -- students can choose their own teacher
-  payment_qr_image              LONGTEXT NULL,           -- base64 QR code for GCash/PayMaya
-  cancellation_hours            INT NOT NULL DEFAULT 1,  -- hours before class that cancellation is blocked
-  cancellation_penalty_enabled  BOOLEAN DEFAULT FALSE,   -- show penalty notice to teachers
-  created_at                    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  id                           INT AUTO_INCREMENT PRIMARY KEY,
+  name                         VARCHAR(255) NOT NULL,
+  email                        VARCHAR(255) UNIQUE NOT NULL,
+  phone                        VARCHAR(50),
+  address                      TEXT,
+  subscription_plan_id         INT,
+  status                       ENUM('pending','active','suspended','rejected','locked') DEFAULT 'pending',
+  approved_by                  INT NULL,          -- references users.id (no FK to avoid circular dep)
+  approved_at                  TIMESTAMP NULL,
+  trial_ends_at                TIMESTAMP NULL,
+  next_due_date                DATE NULL,
+  last_paid_at                 TIMESTAMP NULL,
+  allow_student_pick_teacher   BOOLEAN DEFAULT TRUE,
+  payment_qr_image             LONGTEXT NULL,
+  cancellation_hours           INT NOT NULL DEFAULT 1,
+  cancellation_penalty_enabled BOOLEAN DEFAULT FALSE,
+  created_at                   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (subscription_plan_id) REFERENCES subscription_plans(id)
 );
 
@@ -65,28 +65,24 @@ CREATE TABLE companies (
 -- Users (all roles)
 -- ─────────────────────────────────────────
 CREATE TABLE users (
-  id            INT AUTO_INCREMENT PRIMARY KEY,
-  company_id    INT NULL,           -- NULL for super_admin
-  role          ENUM('super_admin','company_admin','teacher','student') NOT NULL,
-  name          VARCHAR(255) NOT NULL,
-  email         VARCHAR(255) UNIQUE NOT NULL,
-  password      VARCHAR(255) NOT NULL,
-  is_owner      BOOLEAN DEFAULT FALSE,   -- TRUE for the founding company admin
-  is_active     BOOLEAN DEFAULT TRUE,    -- FALSE = soft-deleted (cannot login, hidden from lists)
-  guardian_name VARCHAR(255),           -- students only
-  nationality   VARCHAR(100),           -- students only
-  age           INT,                    -- students only
-  reset_token         VARCHAR(255) NULL,        -- password reset token
-  reset_token_expires DATETIME NULL,            -- token expiry (1 hour)
-  timezone      VARCHAR(50) DEFAULT 'UTC',      -- user's IANA timezone (e.g. Asia/Manila)
-  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  id                  INT AUTO_INCREMENT PRIMARY KEY,
+  company_id          INT NULL,
+  role                ENUM('super_admin','company_admin','teacher','student') NOT NULL,
+  name                VARCHAR(255) NOT NULL,
+  email               VARCHAR(255) UNIQUE NOT NULL,
+  password            VARCHAR(255) NOT NULL,
+  is_owner            BOOLEAN DEFAULT FALSE,
+  is_active           BOOLEAN DEFAULT TRUE,
+  guardian_name       VARCHAR(255),
+  nationality         VARCHAR(100),
+  age                 INT,
+  reset_token         VARCHAR(255) NULL,
+  reset_token_expires DATETIME NULL,
+  timezone            VARCHAR(50) DEFAULT 'UTC',
+  created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (company_id) REFERENCES companies(id),
   INDEX idx_users_company_role_active (company_id, role, is_active)
 );
-
--- Add approved_by FK now that users table exists
-ALTER TABLE companies
-  ADD CONSTRAINT fk_approved_by FOREIGN KEY (approved_by) REFERENCES users(id);
 
 -- ─────────────────────────────────────────
 -- Admin Permissions (per sub-admin user)
@@ -101,7 +97,7 @@ CREATE TABLE admin_permissions (
 );
 
 -- ─────────────────────────────────────────
--- Notifications (in-app, real-time via socket.io)
+-- Notifications
 -- ─────────────────────────────────────────
 CREATE TABLE notifications (
   id         INT AUTO_INCREMENT PRIMARY KEY,
@@ -144,7 +140,7 @@ CREATE TABLE student_packages (
   subject            VARCHAR(255) NOT NULL DEFAULT '',
   sessions_remaining INT NOT NULL,
   payment_status     ENUM('unpaid','paid','rejected') DEFAULT 'unpaid',
-  receipt_image      LONGTEXT NULL,   -- base64 payment receipt uploaded by student
+  receipt_image      LONGTEXT NULL,
   purchased_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (company_id) REFERENCES companies(id),
   FOREIGN KEY (student_id) REFERENCES users(id),
@@ -165,10 +161,10 @@ CREATE TABLE bookings (
   appointment_date     DATETIME NOT NULL,
   status               VARCHAR(50) DEFAULT 'pending',
   rescheduled_by_admin BOOLEAN DEFAULT FALSE,
-  class_mode           VARCHAR(50) NULL,    -- e.g. Voov, Classin, Google Meet, Zoom, Others
-  meeting_link         VARCHAR(500) NULL,   -- URL to the meeting
-  student_absent       BOOLEAN DEFAULT FALSE,  -- teacher marks student absent (15 min after class start)
-  teacher_absent       BOOLEAN DEFAULT FALSE,  -- student marks teacher absent (15 min after class start)
+  class_mode           VARCHAR(50) NULL,
+  meeting_link         VARCHAR(500) NULL,
+  student_absent       BOOLEAN DEFAULT FALSE,
+  teacher_absent       BOOLEAN DEFAULT FALSE,
   created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (company_id)         REFERENCES companies(id),
   FOREIGN KEY (student_package_id) REFERENCES student_packages(id),
@@ -183,7 +179,7 @@ CREATE TABLE bookings (
 CREATE TABLE closed_slots (
   id         INT AUTO_INCREMENT PRIMARY KEY,
   company_id INT NOT NULL,
-  teacher_id INT NULL,    -- NULL = company-wide closed slot
+  teacher_id INT NULL,
   date       DATE NOT NULL,
   time       VARCHAR(20) NOT NULL,
   UNIQUE KEY unique_slot (company_id, teacher_id, date, time),
@@ -211,12 +207,12 @@ CREATE TABLE teacher_leaves (
 );
 
 -- ─────────────────────────────────────────
--- Class Reports (teacher submits after each completed class)
+-- Class Reports
 -- ─────────────────────────────────────────
 CREATE TABLE class_reports (
   id         INT AUTO_INCREMENT PRIMARY KEY,
   company_id INT NOT NULL,
-  booking_id INT NOT NULL UNIQUE,   -- one report per booking
+  booking_id INT NOT NULL UNIQUE,
   teacher_id INT NOT NULL,
   student_id INT NOT NULL,
   new_words  TEXT NULL,
@@ -230,9 +226,6 @@ CREATE TABLE class_reports (
   FOREIGN KEY (student_id) REFERENCES users(id)
 );
 
--- ─────────────────────────────────────────
--- Upgrade Requests (company admin → super_admin approval)
--- ─────────────────────────────────────────
 -- ─────────────────────────────────────────
 -- Student Feedback
 -- ─────────────────────────────────────────
@@ -248,12 +241,15 @@ CREATE TABLE student_feedback (
   FOREIGN KEY (teacher_id) REFERENCES users(id)
 );
 
+-- ─────────────────────────────────────────
+-- Upgrade Requests
+-- ─────────────────────────────────────────
 CREATE TABLE upgrade_requests (
   id                   INT AUTO_INCREMENT PRIMARY KEY,
   company_id           INT NOT NULL,
   subscription_plan_id INT NOT NULL,
   status               ENUM('pending','approved','rejected') DEFAULT 'pending',
-  notes                TEXT NULL,      -- JSON: { reference_number, contact_name, contact_email }
+  notes                TEXT NULL,
   processed_by         INT NULL,
   processed_at         TIMESTAMP NULL,
   created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -263,7 +259,7 @@ CREATE TABLE upgrade_requests (
 );
 
 -- ─────────────────────────────────────────
--- Audit Logs (action history per company)
+-- Audit Logs
 -- ─────────────────────────────────────────
 CREATE TABLE audit_logs (
   id          INT AUTO_INCREMENT PRIMARY KEY,
@@ -272,11 +268,9 @@ CREATE TABLE audit_logs (
   action      VARCHAR(100) NOT NULL,
   target_type VARCHAR(50) NULL,
   target_id   INT NULL,
-  details     TEXT NULL,          -- JSON string with extra context
+  details     TEXT NULL,
   created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_company_created (company_id, created_at),
-  FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
-  FOREIGN KEY (user_id)    REFERENCES users(id)     ON DELETE SET NULL
+  INDEX idx_company_created (company_id, created_at)
 );
 
 -- ─────────────────────────────────────────
@@ -291,20 +285,7 @@ INSERT INTO subscription_plans (name, max_students, max_teachers, max_admins, pr
 -- ─────────────────────────────────────────
 -- Seed: Super Admin
 -- Default password: Admin@2024!
--- To generate a new hash:
---   node -e "const b=require('bcryptjs'); b.hash('YOUR_PASSWORD',10).then(console.log)"
 -- ─────────────────────────────────────────
 INSERT INTO users (company_id, role, name, email, password) VALUES
   (NULL, 'super_admin', 'Platform Admin', 'admin@eunitalk.com',
    '$2b$10$E6LmSNalJn6/m0LbNJY9HO4gWjnIfncBRFjYlNDHaBrLs7j7SKSlW');
-
--- ─────────────────────────────────────────
--- Live DB: Add missing indexes (Session 8)
--- Run on existing database (skips if already present)
--- ─────────────────────────────────────────
--- ALTER TABLE users        ADD INDEX idx_users_company_role_active (company_id, role, is_active);
--- ALTER TABLE notifications ADD INDEX idx_notif_user_read_created  (user_id, is_read, created_at);
--- ALTER TABLE student_packages ADD INDEX idx_sp_company_payment    (company_id, payment_status);
--- ALTER TABLE student_packages ADD INDEX idx_sp_student_payment    (student_id, payment_status);
--- ALTER TABLE bookings      ADD INDEX idx_bookings_company_date_status (company_id, appointment_date, status);
--- ALTER TABLE bookings      ADD INDEX idx_bookings_teacher_date    (teacher_id, appointment_date);

@@ -1,7 +1,7 @@
 import { useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import logo from "../assets/EuniTalk_Logo.png";
-import { CalendarDays, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList } from "lucide-react";
+import { CalendarDays, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,14 +36,24 @@ const NavBar: React.FC = () => {
         {/* Nav links */}
         <nav className="flex items-center gap-6">
           {role === "super_admin" ? (
-            <Link
-              to="/super-admin"
-              className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
-              title="Dashboard"
-            >
-              <LayoutDashboard className="h-6 w-6" />
-              <span className="text-[10px]">Dashboard</span>
-            </Link>
+            <>
+              <Link
+                to="/super-admin"
+                className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
+                title="Dashboard"
+              >
+                <LayoutDashboard className="h-6 w-6" />
+                <span className="text-[10px]">Dashboard</span>
+              </Link>
+              <Link
+                to="/super-admin/plans"
+                className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
+                title="Subscription Plans"
+              >
+                <PackagePlus className="h-6 w-6" />
+                <span className="text-[10px]">Plans</span>
+              </Link>
+            </>
           ) : (
             <>
               <Link

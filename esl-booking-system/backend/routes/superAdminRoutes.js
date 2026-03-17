@@ -31,7 +31,12 @@ router.get('/dashboard', authenticateToken, requireRole('super_admin'), async (r
 // List all subscription plans (for super_admin management)
 router.get('/plans', authenticateToken, requireRole('super_admin'), async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM subscription_plans ORDER BY price_monthly ASC');
+        const [rows] = await pool.query(`
+            SELECT sp.*,
+                   (SELECT COUNT(*) FROM companies c WHERE c.subscription_plan_id = sp.id AND c.status = 'active') AS company_count
+            FROM subscription_plans sp
+            ORDER BY sp.price_monthly ASC
+        `);
         res.json(rows);
     } catch (err) {
         res.status(500).json({ message: 'Server error' });
