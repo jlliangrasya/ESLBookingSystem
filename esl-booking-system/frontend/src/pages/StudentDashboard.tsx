@@ -18,6 +18,7 @@ import PackageSelectionModal from "../components/PackageSelectionModal";
 import BookingConfirmationModal from "../components/BookingConfirmationModal";
 import AuthContext from "@/context/AuthContext";
 import NotificationBell from "@/components/NotificationBell";
+import { fmtDate, fmtDateOnly, fmtTime, parseUTC } from "@/utils/timezone";
 
 interface Student {
   id: number;
@@ -114,7 +115,7 @@ const StudentDashboard = () => {
 
   const navigate = useNavigate();
   const authContext = useContext(AuthContext);
-  const token = localStorage.getItem("token");
+  const token = authContext?.token ?? null;
 
   useEffect(() => {
     if (!token) return;
@@ -138,8 +139,14 @@ const StudentDashboard = () => {
         const processedBookings: Record<string, string[]> = {};
         const todayAndFutureBookings: Booking[] = [];
 
-        dashRes.data.bookings.forEach((booking: Booking) => {
-          const appointmentDateTime = new Date(booking.appointment_datetime);
+        const normalizedBookings = (dashRes.data.bookings as Booking[]).map((booking) => {
+          const localDate = fmtDate(booking.appointment_datetime, "yyyy-MM-dd");
+          const localTime = fmtTime(booking.appointment_datetime).toUpperCase();
+          return { ...booking, appointment_date: localDate, timeslot: localTime };
+        });
+
+        normalizedBookings.forEach((booking: Booking) => {
+          const appointmentDateTime = parseUTC(booking.appointment_datetime) ?? new Date(booking.appointment_datetime);
           // Include all of today's classes (even past ones) plus future classes
           if (appointmentDateTime >= today) {
             const dateKey = booking.appointment_date;
@@ -179,7 +186,7 @@ const StudentDashboard = () => {
       const [pkgRes, settingsRes, teachersRes] = await Promise.all([
         axios.get(`${base}/api/student/packages`, { headers }),
         axios.get(`${base}/api/admin/company-settings`, { headers }),
-        axios.get(`${base}/api/admin/teachers`, { headers }),
+        axios.get(`${base}/api/student/teachers`, { headers }),
       ]);
       setAvailablePackages(pkgRes.data);
       setAllowPickTeacher(settingsRes.data.allow_student_pick_teacher);
@@ -220,9 +227,13 @@ const StudentDashboard = () => {
       );
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const updated = (response.data.bookings as Booking[]).filter(
-        (b) => new Date(b.appointment_datetime) >= today
-      );
+      const updated = (response.data.bookings as Booking[])
+        .map((booking) => {
+          const localDate = fmtDate(booking.appointment_datetime, "yyyy-MM-dd");
+          const localTime = fmtTime(booking.appointment_datetime).toUpperCase();
+          return { ...booking, appointment_date: localDate, timeslot: localTime };
+        })
+        .filter((b) => (parseUTC(b.appointment_datetime) ?? new Date(b.appointment_datetime)) >= today);
       setRawBookings(updated);
       // Update the modal's selected bookings too
       setSelectedDateBookings((prev) =>
@@ -237,7 +248,8 @@ const StudentDashboard = () => {
   };
 
   const handleStudentCancel = (bookingId: number, appointmentDatetime: string) => {
-    const hoursUntil = (new Date(appointmentDatetime).getTime() - Date.now()) / (1000 * 60 * 60);
+    const apptTime = parseUTC(appointmentDatetime)?.getTime() ?? 0;
+    const hoursUntil = (apptTime - Date.now()) / (1000 * 60 * 60);
     if (cancellationHours > 0 && hoursUntil < cancellationHours) {
       // Within window — notify teacher via backend (fire-and-forget), show policy modal
       axios.delete(`${import.meta.env.VITE_API_URL}/api/bookings/${bookingId}`, {
@@ -272,15 +284,21 @@ const StudentDashboard = () => {
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const processedBookings: Record<string, string[]> = {};
       const todayAndFutureBookings: Booking[] = [];
-      dashRes.data.bookings.forEach((booking: Booking) => {
-        const dt = new Date(booking.appointment_datetime);
-        if (dt >= today) {
-          const dk = booking.appointment_date;
-          if (!processedBookings[dk]) processedBookings[dk] = [];
-          processedBookings[dk].push(booking.timeslot);
-          todayAndFutureBookings.push(booking);
-        }
-      });
+      (dashRes.data.bookings as Booking[])
+        .map((booking) => {
+          const localDate = fmtDate(booking.appointment_datetime, "yyyy-MM-dd");
+          const localTime = fmtTime(booking.appointment_datetime).toUpperCase();
+          return { ...booking, appointment_date: localDate, timeslot: localTime };
+        })
+        .forEach((booking: Booking) => {
+          const dt = parseUTC(booking.appointment_datetime) ?? new Date(booking.appointment_datetime);
+          if (dt >= today) {
+            const dk = booking.appointment_date;
+            if (!processedBookings[dk]) processedBookings[dk] = [];
+            processedBookings[dk].push(booking.timeslot);
+            todayAndFutureBookings.push(booking);
+          }
+        });
       setCalendarBookings(processedBookings);
       setRawBookings(todayAndFutureBookings);
     } catch (err: unknown) {
@@ -295,13 +313,7 @@ const StudentDashboard = () => {
     const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
       .toISOString()
       .split("T")[0];
-    const dayBookings = rawBookings.filter(b => b.appointment_date === localDate);
-    if (dayBookings.length > 0) {
-      setSelectedDateBookings(dayBookings);
-      setShowClassModal(true);
-    } else {
-      navigate(`/timeslots/${localDate}`);
-    }
+    navigate(`/timeslots/${localDate}`);
   };
 
   const confirmBooking = async () => {
@@ -393,7 +405,7 @@ const StudentDashboard = () => {
             <span className="text-muted-foreground">Date Enrolled:</span>
             <span className="font-medium">
               {student?.created_at
-                ? new Date(student.created_at).toLocaleDateString("en-US")
+                ? fmtDateOnly(student.created_at)
                 : "—"}
             </span>
           </div>
@@ -493,9 +505,7 @@ const StudentDashboard = () => {
                   >
                     <div>
                       <span className="font-medium text-sm">
-                        {new Date(r.appointment_date).toLocaleDateString("en-US", {
-                          month: "long", day: "numeric", year: "numeric",
-                        })}
+                        {fmtDateOnly(r.appointment_date)}
                       </span>
                       <span className="text-xs text-muted-foreground ml-2">
                         by {r.teacher_name}
@@ -563,10 +573,7 @@ const StudentDashboard = () => {
                   {absences.map((a) => (
                     <TableRow key={a.id}>
                       <TableCell className="text-sm">
-                        {new Date(a.appointment_date).toLocaleString("en-US", {
-                          month: "short", day: "numeric", year: "numeric",
-                          hour: "2-digit", minute: "2-digit",
-                        })}
+                        {fmtDate(a.appointment_date, "MMM d, yyyy h:mm a")}
                       </TableCell>
                       <TableCell className="text-sm">{a.teacher_name || "—"}</TableCell>
                       <TableCell>
@@ -654,7 +661,7 @@ const StudentDashboard = () => {
           </DialogHeader>
           <div className="space-y-4 py-2">
             {selectedDateBookings.map((b) => {
-              const classTime = new Date(b.appointment_datetime).getTime();
+              const classTime = parseUTC(b.appointment_datetime)?.getTime() ?? 0;
               const canMarkTeacherAbsent = Date.now() >= classTime + 15 * 60 * 1000 && !b.teacher_absent;
               return (
                 <div key={b.id} className="rounded-lg border p-4 space-y-2.5">
@@ -730,7 +737,7 @@ const StudentDashboard = () => {
                     </div>
                   ) : null}
                   {/* Cancel button — only shown for future classes */}
-                  {Date.now() < new Date(b.appointment_datetime).getTime() && (
+                  {Date.now() < (parseUTC(b.appointment_datetime)?.getTime() ?? 0) && (
                     <div className="pt-1">
                       <Button
                         size="sm"

@@ -9,15 +9,7 @@ require('dotenv').config();
 
 const router = express.Router();
 
-// Rate limiters for sensitive auth endpoints
-const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 10,
-    message: { message: 'Too many login attempts. Please try again in 15 minutes.' },
-    standardHeaders: true,
-    legacyHeaders: false,
-});
-
+// Rate limiters for sensitive auth endpoints (login is intentionally unlimited)
 const registerLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
     max: 20,
@@ -138,7 +130,7 @@ router.post('/register', registerLimiter, async (req, res) => {
 });
 
 // Login
-router.post('/login', loginLimiter, async (req, res) => {
+router.post('/login', async (req, res) => {
     try {
         const { email, password } = req.body;
 
@@ -193,6 +185,7 @@ router.post('/login', loginLimiter, async (req, res) => {
                 name: user.name,
                 role: user.role,
                 company_id: user.company_id,
+                timezone: user.timezone || 'UTC',
             },
             trial_expired: trialExpired,
         });

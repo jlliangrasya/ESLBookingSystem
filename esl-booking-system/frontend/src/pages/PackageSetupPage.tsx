@@ -6,16 +6,40 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Package, Plus, Pencil, EyeOff, Eye, Settings2, QrCode } from "lucide-react";
+import {
+  Loader2,
+  Package,
+  Plus,
+  Pencil,
+  EyeOff,
+  Eye,
+  Settings2,
+  QrCode,
+} from "lucide-react";
 
 interface TutorialPackage {
   id: number;
@@ -71,8 +95,13 @@ const PackageSetupPage = () => {
   const fetchAll = async () => {
     try {
       const [pkgRes, settingsRes] = await Promise.all([
-        axios.get(`${import.meta.env.VITE_API_URL}/api/student/packages`, { headers }),
-        axios.get(`${import.meta.env.VITE_API_URL}/api/admin/company-settings`, { headers }),
+        axios.get(`${import.meta.env.VITE_API_URL}/api/student/packages`, {
+          headers,
+        }),
+        axios.get(
+          `${import.meta.env.VITE_API_URL}/api/admin/company-settings`,
+          { headers },
+        ),
       ]);
       setPackages(pkgRes.data);
       setSettings(settingsRes.data);
@@ -84,7 +113,9 @@ const PackageSetupPage = () => {
     }
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => {
+    fetchAll();
+  }, []);
 
   const openAdd = () => {
     setEditPackage(null);
@@ -119,9 +150,17 @@ const PackageSetupPage = () => {
         is_active: form.is_active,
       };
       if (editPackage) {
-        await axios.put(`${import.meta.env.VITE_API_URL}/api/student/packages/${editPackage.id}`, payload, { headers });
+        await axios.put(
+          `${import.meta.env.VITE_API_URL}/api/student/packages/${editPackage.id}`,
+          payload,
+          { headers },
+        );
       } else {
-        await axios.post(`${import.meta.env.VITE_API_URL}/api/student/packages`, payload, { headers });
+        await axios.post(
+          `${import.meta.env.VITE_API_URL}/api/student/packages`,
+          payload,
+          { headers },
+        );
       }
       setShowModal(false);
       fetchAll();
@@ -135,9 +174,16 @@ const PackageSetupPage = () => {
   const handleToggleActive = async (pkg: TutorialPackage) => {
     try {
       if (pkg.is_active) {
-        await axios.delete(`${import.meta.env.VITE_API_URL}/api/student/packages/${pkg.id}`, { headers });
+        await axios.delete(
+          `${import.meta.env.VITE_API_URL}/api/student/packages/${pkg.id}`,
+          { headers },
+        );
       } else {
-        await axios.put(`${import.meta.env.VITE_API_URL}/api/student/packages/${pkg.id}`, { ...pkg, is_active: true }, { headers });
+        await axios.put(
+          `${import.meta.env.VITE_API_URL}/api/student/packages/${pkg.id}`,
+          { ...pkg, is_active: true },
+          { headers },
+        );
       }
       fetchAll();
     } catch (err) {
@@ -152,7 +198,7 @@ const PackageSetupPage = () => {
     reader.onload = (ev) => {
       const base64 = ev.target?.result as string;
       setQrPreview(base64);
-      setSettings(prev => ({ ...prev, payment_qr_image: base64 }));
+      setSettings((prev) => ({ ...prev, payment_qr_image: base64 }));
     };
     reader.readAsDataURL(file);
   };
@@ -160,12 +206,16 @@ const PackageSetupPage = () => {
   const handleSaveSettings = async () => {
     setSettingsSaving(true);
     try {
-      await axios.put(`${import.meta.env.VITE_API_URL}/api/admin/company-settings`, {
-        allow_student_pick_teacher: settings.allow_student_pick_teacher,
-        payment_qr_image: settings.payment_qr_image,
-        cancellation_hours: settings.cancellation_hours,
-        cancellation_penalty_enabled: settings.cancellation_penalty_enabled,
-      }, { headers });
+      await axios.put(
+        `${import.meta.env.VITE_API_URL}/api/admin/company-settings`,
+        {
+          allow_student_pick_teacher: settings.allow_student_pick_teacher,
+          payment_qr_image: settings.payment_qr_image,
+          cancellation_hours: settings.cancellation_hours,
+          cancellation_penalty_enabled: settings.cancellation_penalty_enabled,
+        },
+        { headers },
+      );
     } catch (err) {
       console.error(err);
     } finally {
@@ -185,7 +235,6 @@ const PackageSetupPage = () => {
     <>
       <NavBar />
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
-
         {/* Class Packages Card */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
@@ -213,39 +262,78 @@ const PackageSetupPage = () => {
               <TableBody>
                 {packages.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground text-sm py-10">
-                      No packages yet. Click "Add Package" to create your first package.
+                    <TableCell
+                      colSpan={7}
+                      className="text-center text-muted-foreground text-sm py-10"
+                    >
+                      No packages yet. Click "Add Package" to create your first
+                      package.
                     </TableCell>
                   </TableRow>
                 ) : (
                   packages.map((pkg) => (
-                    <TableRow key={pkg.id} className={!pkg.is_active ? "opacity-50" : ""}>
+                    <TableRow
+                      key={pkg.id}
+                      className={!pkg.is_active ? "opacity-50" : ""}
+                    >
                       <TableCell className="font-medium">
                         <div>{pkg.package_name}</div>
                         {pkg.description && (
-                          <div className="text-xs text-muted-foreground mt-0.5 max-w-[200px] truncate">{pkg.description}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5 max-w-[200px] truncate">
+                            {pkg.description}
+                          </div>
                         )}
                       </TableCell>
-                      <TableCell className="text-sm">{pkg.subject || <span className="text-muted-foreground">—</span>}</TableCell>
-                      <TableCell className="text-sm">{pkg.session_limit} sessions</TableCell>
-                      <TableCell className="text-sm">{pkg.duration_minutes} min</TableCell>
-                      <TableCell className="text-sm">₱{Number(pkg.price).toLocaleString()}</TableCell>
+                      <TableCell className="text-sm">
+                        {pkg.subject || (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {pkg.session_limit} sessions
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {pkg.duration_minutes} min
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        ₱{Number(pkg.price).toLocaleString()}
+                      </TableCell>
                       <TableCell>
-                        {pkg.is_active
-                          ? <Badge className="bg-green-100 text-green-700 text-xs">Active</Badge>
-                          : <Badge variant="secondary" className="text-xs">Inactive</Badge>}
+                        {pkg.is_active ? (
+                          <Badge className="bg-green-100 text-green-700 text-xs">
+                            Active
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs">
+                            Inactive
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          <Button size="sm" variant="outline" className="h-7 text-xs"
-                            onClick={() => openEdit(pkg)}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => openEdit(pkg)}
+                          >
                             <Pencil className="h-3 w-3 mr-1" /> Edit
                           </Button>
-                          <Button size="sm" variant="outline" className="h-7 text-xs"
-                            onClick={() => handleToggleActive(pkg)}>
-                            {pkg.is_active
-                              ? <><EyeOff className="h-3 w-3 mr-1" /> Deactivate</>
-                              : <><Eye className="h-3 w-3 mr-1" /> Activate</>}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => handleToggleActive(pkg)}
+                          >
+                            {pkg.is_active ? (
+                              <>
+                                <EyeOff className="h-3 w-3 mr-1" /> Deactivate
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="h-3 w-3 mr-1" /> Activate
+                              </>
+                            )}
                           </Button>
                         </div>
                       </TableCell>
@@ -269,14 +357,22 @@ const PackageSetupPage = () => {
             {/* Teacher picker toggle */}
             <div className="flex items-center justify-between border rounded-lg p-4">
               <div>
-                <p className="font-medium text-sm">Allow students to select their own teacher</p>
+                <p className="font-medium text-sm">
+                  Allow students to select their own teacher
+                </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  When enabled, students can pick a teacher during enrollment. When disabled, the admin assigns teachers.
+                  When enabled, students can pick a teacher during enrollment.
+                  When disabled, the admin assigns teachers.
                 </p>
               </div>
               <Switch
                 checked={settings.allow_student_pick_teacher}
-                onCheckedChange={(v) => setSettings(prev => ({ ...prev, allow_student_pick_teacher: v }))}
+                onCheckedChange={(v) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    allow_student_pick_teacher: v,
+                  }))
+                }
               />
             </div>
 
@@ -285,12 +381,19 @@ const PackageSetupPage = () => {
               <p className="font-medium text-sm">Cancellation Policy</p>
               <div className="flex items-center gap-3">
                 <div className="flex-1">
-                  <Label className="text-xs text-muted-foreground">Cancellation Window (hours)</Label>
+                  <Label className="text-xs text-muted-foreground">
+                    Cancellation Window (hours)
+                  </Label>
                   <Input
                     type="number"
                     min="0"
                     value={settings.cancellation_hours}
-                    onChange={(e) => setSettings(prev => ({ ...prev, cancellation_hours: Number(e.target.value) }))}
+                    onChange={(e) =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        cancellation_hours: Number(e.target.value),
+                      }))
+                    }
                     className="mt-1"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
@@ -300,14 +403,22 @@ const PackageSetupPage = () => {
               </div>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm">Show penalty notice for late teacher cancellations</p>
+                  <p className="text-sm">
+                    Show penalty notice for late teacher cancellations
+                  </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    When enabled, teachers cancelling within the window will see a penalty warning.
+                    When enabled, teachers cancelling within the window will see
+                    a penalty warning.
                   </p>
                 </div>
                 <Switch
                   checked={settings.cancellation_penalty_enabled}
-                  onCheckedChange={(v) => setSettings(prev => ({ ...prev, cancellation_penalty_enabled: v }))}
+                  onCheckedChange={(v) =>
+                    setSettings((prev) => ({
+                      ...prev,
+                      cancellation_penalty_enabled: v,
+                    }))
+                  }
                 />
               </div>
             </div>
@@ -319,11 +430,16 @@ const PackageSetupPage = () => {
                 <p className="font-medium text-sm">Payment QR Code</p>
               </div>
               <p className="text-xs text-muted-foreground">
-                Students will see this QR code when enrolling in a package. Upload your GCash/PayMaya QR.
+                Students will see this QR code when enrolling in a package.
+                Upload your GCash/PayMaya QR.
               </p>
               {qrPreview && (
                 <div className="flex justify-center">
-                  <img src={qrPreview} alt="Payment QR" className="max-w-[180px] rounded-lg border" />
+                  <img
+                    src={qrPreview}
+                    alt="Payment QR"
+                    className="max-w-[180px] rounded-lg border"
+                  />
                 </div>
               )}
               <div>
@@ -335,20 +451,34 @@ const PackageSetupPage = () => {
                     onChange={handleQrUpload}
                   />
                   <Button variant="outline" size="sm" asChild>
-                    <span>{qrPreview ? "Replace QR Code" : "Upload QR Code"}</span>
+                    <span>
+                      {qrPreview ? "Replace QR Code" : "Upload QR Code"}
+                    </span>
                   </Button>
                 </Label>
               </div>
               {qrPreview && (
-                <Button variant="ghost" size="sm" className="text-xs text-destructive"
-                  onClick={() => { setQrPreview(null); setSettings(prev => ({ ...prev, payment_qr_image: null })); }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-destructive"
+                  onClick={() => {
+                    setQrPreview(null);
+                    setSettings((prev) => ({
+                      ...prev,
+                      payment_qr_image: null,
+                    }));
+                  }}
+                >
                   Remove QR Code
                 </Button>
               )}
             </div>
 
             <Button onClick={handleSaveSettings} disabled={settingsSaving}>
-              {settingsSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {settingsSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
               Save Settings
             </Button>
           </CardContent>
@@ -359,65 +489,123 @@ const PackageSetupPage = () => {
       <Dialog open={showModal} onOpenChange={(o) => !o && setShowModal(false)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editPackage ? "Edit Package" : "Add Package"}</DialogTitle>
+            <DialogTitle>
+              {editPackage ? "Edit Package" : "Add Package"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
-              <Label>Package Name <span className="text-destructive">*</span></Label>
-              <Input placeholder="e.g. Basic English 10" value={form.package_name}
-                onChange={(e) => setForm({ ...form, package_name: e.target.value })} />
+              <Label>
+                Package Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                placeholder="e.g. Basic English 10"
+                value={form.package_name}
+                onChange={(e) =>
+                  setForm({ ...form, package_name: e.target.value })
+                }
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Subject</Label>
-              <Input placeholder="e.g. English Conversation, Math" value={form.subject}
-                onChange={(e) => setForm({ ...form, subject: e.target.value })} />
+              <Input
+                placeholder="e.g. English Conversation, Math"
+                value={form.subject}
+                onChange={(e) => setForm({ ...form, subject: e.target.value })}
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Number of Sessions <span className="text-destructive">*</span></Label>
-                <Input type="number" min="1" placeholder="10" value={form.session_limit}
-                  onChange={(e) => setForm({ ...form, session_limit: e.target.value })} />
+                <Label>
+                  Number of Sessions <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  type="number"
+                  min="1"
+                  placeholder="10"
+                  value={form.session_limit}
+                  onChange={(e) =>
+                    setForm({ ...form, session_limit: e.target.value })
+                  }
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Duration per Session</Label>
-                <Select value={form.duration_minutes}
-                  onValueChange={(v) => setForm({ ...form, duration_minutes: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Select
+                  value={form.duration_minutes}
+                  onValueChange={(v) =>
+                    setForm({ ...form, duration_minutes: v })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="30">30 minutes</SelectItem>
-                    <SelectItem value="45">45 minutes</SelectItem>
-                    <SelectItem value="60">60 minutes</SelectItem>
-                    <SelectItem value="90">90 minutes</SelectItem>
+                    <SelectItem value="25">25 minutes</SelectItem>
+                    <SelectItem value="50">50 minutes</SelectItem>
+                    <SelectItem value="75">75 minutes</SelectItem>
+                    <SelectItem value="100">100 minutes</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Price (₱) <span className="text-destructive">*</span></Label>
-              <Input type="number" min="0" placeholder="2000" value={form.price}
-                onChange={(e) => setForm({ ...form, price: e.target.value })} />
+              <Label>
+                Price (₱) <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                placeholder="2000"
+                value={form.price}
+                onChange={(e) => setForm({ ...form, price: e.target.value })}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Description (optional)</Label>
-              <Textarea placeholder="Short description of what this package includes..."
+              <Textarea
+                placeholder="Short description of what this package includes..."
                 value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                rows={2} />
+                onChange={(e) =>
+                  setForm({ ...form, description: e.target.value })
+                }
+                rows={2}
+              />
             </div>
             {editPackage && (
               <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="checkbox" checked={form.is_active}
-                  onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-                  className="accent-primary" />
+                <input
+                  type="checkbox"
+                  checked={form.is_active}
+                  onChange={(e) =>
+                    setForm({ ...form, is_active: e.target.checked })
+                  }
+                  className="accent-primary"
+                />
                 Active (visible to students)
               </label>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
-            <Button onClick={handleSavePackage}
-              disabled={formLoading || !form.package_name || !form.session_limit || !form.price}>
-              {formLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : editPackage ? "Save Changes" : "Create Package"}
+            <Button variant="outline" onClick={() => setShowModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSavePackage}
+              disabled={
+                formLoading ||
+                !form.package_name ||
+                !form.session_limit ||
+                !form.price
+              }
+            >
+              {formLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : editPackage ? (
+                "Save Changes"
+              ) : (
+                "Create Package"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

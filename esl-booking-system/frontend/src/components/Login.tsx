@@ -28,11 +28,12 @@ const Login = () => {
   const { login } = authContext;
   const navigate = useNavigate();
 
-  // Dev auto-login
+  // Dev auto-login (opt-in)
   useEffect(() => {
     const devEmail = import.meta.env.VITE_DEV_EMAIL;
     const devPassword = import.meta.env.VITE_DEV_PASSWORD;
-    if (import.meta.env.DEV && devEmail && devPassword) {
+    const devAutoLoginEnabled = import.meta.env.VITE_DEV_AUTO_LOGIN === "true";
+    if (import.meta.env.DEV && devAutoLoginEnabled && devEmail && devPassword) {
       axios
         .post(`${import.meta.env.VITE_API_URL}/api/auth/login`, {
           email: devEmail,

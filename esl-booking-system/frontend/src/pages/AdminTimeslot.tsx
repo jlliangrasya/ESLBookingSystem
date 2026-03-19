@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import BookingConfirmationModal from "../components/BookingConfirmationModal";
+import { localToMysql } from "@/utils/timezone";
 
 const AdminTimeslotPage = () => {
   const { date } = useParams();
@@ -47,7 +48,22 @@ const AdminTimeslotPage = () => {
         return;
       }
 
-      const appointmentDate = new Date(`${date} ${selectedSlot}`).toISOString();
+      const to24Hour = (slot: string) => {
+        const match = slot.match(/^(\d{1,2}):(\d{2})\s?(AM|PM)$/i);
+        if (!match) return null;
+        let hour = parseInt(match[1], 10);
+        const minute = match[2];
+        const meridiem = match[3].toUpperCase();
+        if (meridiem === "AM" && hour === 12) hour = 0;
+        if (meridiem === "PM" && hour < 12) hour += 12;
+        return `${String(hour).padStart(2, "0")}:${minute}`;
+      };
+      const time24 = to24Hour(selectedSlot);
+      if (!time24) {
+        alert("Invalid time slot selected. Please try again.");
+        return;
+      }
+      const appointmentDate = localToMysql(date as string, time24);
       await axios.post(
         `${import.meta.env.VITE_API_URL}/api/bookings`,
         {

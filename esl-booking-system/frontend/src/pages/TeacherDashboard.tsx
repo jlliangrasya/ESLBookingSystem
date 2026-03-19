@@ -10,6 +10,7 @@ import { CalendarDays, Users, LogOut, Loader2, FileText, CalendarOff, Plus, X, M
 import logo from "../assets/EuniTalk_Logo.png";
 import NotificationBell from "@/components/NotificationBell";
 import ReportModal from "@/components/ReportModal";
+import { fmtDate, fmtDateOnly, parseUTC } from "@/utils/timezone";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -496,15 +497,12 @@ const TeacherDashboard = () => {
                   </TableRow>
                 ) : (
                   bookings.map((b) => {
-                    const classTime = new Date(b.appointment_date).getTime();
+                    const classTime = parseUTC(b.appointment_date)?.getTime() ?? 0;
                     const canMarkAbsent = Date.now() >= classTime + 15 * 60 * 1000;
                     return (
                       <TableRow key={b.id}>
                         <TableCell className="text-sm">
-                          {new Date(b.appointment_date).toLocaleString("en-US", {
-                            month: "short", day: "numeric",
-                            hour: "2-digit", minute: "2-digit", hour12: true,
-                          })}
+                          {fmtDate(b.appointment_date, "MMM d, h:mm a")}
                         </TableCell>
                         <TableCell className="font-medium">{b.student_name}</TableCell>
                         <TableCell className="text-xs">{b.package_name}</TableCell>
@@ -549,7 +547,8 @@ const TeacherDashboard = () => {
                             variant="ghost"
                             className="text-xs h-7 text-destructive hover:text-destructive"
                             onClick={() => {
-                              const hoursUntil = (new Date(b.appointment_date).getTime() - Date.now()) / (1000 * 60 * 60);
+                              const apptTime = parseUTC(b.appointment_date)?.getTime() ?? 0;
+                              const hoursUntil = (apptTime - Date.now()) / (1000 * 60 * 60);
                               if (cancellationHours > 0 && hoursUntil < cancellationHours) {
                                 // Fire API to trigger admin notification (will return 403)
                                 axios.post(
@@ -606,10 +605,7 @@ const TeacherDashboard = () => {
                   completedBookings.map((b) => (
                     <TableRow key={b.id}>
                       <TableCell className="text-sm">
-                        {new Date(b.appointment_date).toLocaleString("en-US", {
-                          month: "short", day: "numeric",
-                          hour: "2-digit", minute: "2-digit", hour12: true,
-                        })}
+                        {fmtDate(b.appointment_date, "MMM d, h:mm a")}
                       </TableCell>
                       <TableCell className="font-medium">{b.student_name}</TableCell>
                       <TableCell className="text-xs">{b.package_name}</TableCell>
@@ -763,7 +759,7 @@ const TeacherDashboard = () => {
                   leaves.map((lv) => (
                     <TableRow key={lv.id}>
                       <TableCell className="text-sm font-medium">
-                        {new Date(lv.leave_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        {new Date(`${lv.leave_date}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                       </TableCell>
                       <TableCell className="text-sm capitalize">{lv.reason_type}</TableCell>
                       <TableCell className="text-xs text-muted-foreground">{lv.notes || "—"}</TableCell>
@@ -803,9 +799,7 @@ const TeacherDashboard = () => {
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-sm">{f.student_name}</span>
                     <span className="text-xs text-muted-foreground">
-                      {new Date(f.created_at).toLocaleDateString("en-US", {
-                        month: "short", day: "numeric", year: "numeric",
-                      })}
+                      {fmtDateOnly(f.created_at)}
                     </span>
                   </div>
                   <p className="text-sm text-gray-700 whitespace-pre-wrap">{f.message}</p>

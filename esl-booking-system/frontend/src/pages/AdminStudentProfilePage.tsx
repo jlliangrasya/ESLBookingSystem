@@ -19,6 +19,7 @@ import {
 import {
   ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil,
 } from "lucide-react";
+import { fmtDate, fmtDateOnly, localToMysql } from "@/utils/timezone";
 
 interface ClassReport {
   id: number;
@@ -219,7 +220,7 @@ const AdminStudentProfilePage = () => {
     setAddLoading(true);
     setAddError(null);
     try {
-      const appointmentDate = `${addForm.date}T${addForm.time}:00`;
+      const appointmentDate = localToMysql(addForm.date, addForm.time);
       await axios.post(`${base}/api/admin/bookings`, {
         student_package_id: activePackage.id,
         appointment_date: appointmentDate,
@@ -304,11 +305,7 @@ const AdminStudentProfilePage = () => {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Enrolled</p>
-              <p className="font-medium">
-                {new Date(student.created_at).toLocaleDateString("en-US", {
-                  month: "long", day: "numeric", year: "numeric",
-                })}
-              </p>
+              <p className="font-medium">{fmtDateOnly(student.created_at)}</p>
             </div>
           </CardContent>
         </Card>
@@ -391,10 +388,7 @@ const AdminStudentProfilePage = () => {
                   bookings.map((b) => (
                     <TableRow key={b.id}>
                       <TableCell className="text-sm">
-                        {new Date(b.appointment_date).toLocaleString("en-US", {
-                          month: "short", day: "numeric", year: "numeric",
-                          hour: "2-digit", minute: "2-digit", hour12: true,
-                        })}
+                        {fmtDate(b.appointment_date, "MMM d, yyyy h:mm a")}
                       </TableCell>
                       <TableCell className="text-sm">{b.teacher_name || "—"}</TableCell>
                       <TableCell>
@@ -550,11 +544,7 @@ const AdminStudentProfilePage = () => {
             <div className="space-y-3 text-sm py-1">
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>{viewingReport.teacher_name ? `Teacher: ${viewingReport.teacher_name}` : ""}</span>
-                <span>
-                  {new Date(viewingReport.appointment_date).toLocaleDateString("en-US", {
-                    month: "short", day: "numeric", year: "numeric",
-                  })}
-                </span>
+                <span>{fmtDateOnly(viewingReport.appointment_date)}</span>
               </div>
               {[
                 { label: "New Words", value: viewingReport.new_words },

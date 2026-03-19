@@ -213,6 +213,21 @@ router.post('/feedback', authenticateToken, requireRole('student'), async (req, 
     }
 });
 
+// List active teachers in this student's company (for optional teacher selection)
+router.get('/teachers', authenticateToken, requireRole('student'), async (req, res) => {
+    try {
+        const companyId = req.user.company_id;
+        const [rows] = await pool.query(
+            "SELECT id, name FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE ORDER BY name ASC",
+            [companyId]
+        );
+        res.json(rows);
+    } catch (err) {
+        console.error("Error fetching teachers for student:", err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // All students in this company (company_admin only)
 router.get("/students", authenticateToken, requireRole('company_admin'), async (req, res) => {
     try {

@@ -1,4 +1,5 @@
 import { createContext, useState } from "react";
+import { setUserTimezone } from "@/utils/timezone";
 
 export type UserRole = 'super_admin' | 'company_admin' | 'teacher' | 'student';
 
@@ -7,6 +8,7 @@ export interface User {
   name: string;
   role: UserRole;
   company_id: number | null;
+  timezone?: string;
 }
 
 interface AuthContextType {
@@ -39,6 +41,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(user));
     localStorage.setItem("trial_expired", String(expired));
+    const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    if (user.timezone && user.timezone !== "UTC") {
+      setUserTimezone(user.timezone);
+    } else {
+      setUserTimezone(browserTz);
+    }
   };
 
   const logout = () => {
@@ -48,6 +56,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     localStorage.removeItem("trial_expired");
+    localStorage.removeItem("userTimezone");
   };
 
   return (

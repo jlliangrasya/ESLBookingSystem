@@ -137,6 +137,30 @@ router.get("/api/student-bookings", authenticateToken, requireRole('company_admi
     }
 });
 
+// Upcoming bookings (student view)
+router.get("/api/student/bookings", authenticateToken, requireRole('student'), async (req, res) => {
+    try {
+        const companyId = req.user.company_id;
+        const studentId = req.user.id;
+        const [rows] = await pool.query(
+            `SELECT b.id, b.appointment_date, b.status, b.rescheduled_by_admin, b.student_package_id,
+                    b.class_mode, b.meeting_link, b.teacher_absent, b.student_absent,
+                    t.name AS teacher_name
+             FROM bookings b
+             JOIN student_packages sp ON b.student_package_id = sp.id
+             LEFT JOIN users t ON b.teacher_id = t.id
+             WHERE sp.student_id = ? AND b.company_id = ?
+               AND b.status NOT IN ('cancelled')
+             ORDER BY b.appointment_date ASC`,
+            [studentId, companyId]
+        );
+        res.json(rows.length === 0 ? [] : rows);
+    } catch (err) {
+        console.error("Error fetching student bookings:", err);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
 // Completed bookings (auto-mark past pending as done)
 router.get("/api/completed-bookings", authenticateToken, requireRole('company_admin'), async (req, res) => {
     try {

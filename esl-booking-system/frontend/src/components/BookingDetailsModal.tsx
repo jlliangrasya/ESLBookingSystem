@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, BookOpen } from "lucide-react";
+import { fmtDate } from "@/utils/timezone";
 
 interface BookingDetailsModalProps {
   isOpen: boolean;
@@ -20,16 +21,6 @@ interface BookingDetailsModalProps {
   };
   onCancelBooking: (bookingId: number) => void;
 }
-
-const formatDateTime = (utcDateString: string) =>
-  new Date(utcDateString).toLocaleString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
 
 const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
   isOpen,
@@ -59,7 +50,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
             <CalendarDays className="h-4 w-4 text-primary flex-shrink-0" />
             <span>
               <span className="text-muted-foreground">Date: </span>
-              <strong>{formatDateTime(booking.appointment_date)}</strong>
+              <strong>{fmtDate(booking.appointment_date, "MMMM d, yyyy h:mm a")}</strong>
             </span>
           </div>
         </div>

@@ -15,6 +15,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, GraduationCap, CalendarDays, CheckCircle, XCircle, Clock, Plus, Pencil, Trash2, AlertCircle, UserCircle, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import AuthContext from "@/context/AuthContext";
+import { fmtDate, fmtDateOnly } from "@/utils/timezone";
 
 interface Teacher {
   id: number;
@@ -438,7 +439,7 @@ const TeacherManagementPage = () => {
                   <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-6">No upcoming classes</TableCell></TableRow>
                 ) : schedule.map((b) => (
                   <TableRow key={b.id}>
-                    <TableCell className="text-sm">{new Date(b.appointment_date).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</TableCell>
+                    <TableCell className="text-sm">{fmtDate(b.appointment_date, "MMM d, h:mm a")}</TableCell>
                     <TableCell>{b.student_name}</TableCell>
                     <TableCell className="text-xs">{b.package_name}</TableCell>
                     <TableCell><span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[b.status] || "bg-gray-100"}`}>{b.status}</span></TableCell>
@@ -463,7 +464,7 @@ const TeacherManagementPage = () => {
               ) : leaves.map((l) => (
                 <div key={l.id} className="border rounded-lg p-3 space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium text-sm">{new Date(l.leave_date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</span>
+                    <span className="font-medium text-sm">{fmtDateOnly(l.leave_date)}</span>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[l.status]}`}>{l.status}</span>
                   </div>
                   <p className="text-xs text-muted-foreground capitalize">Reason: {l.reason_type}</p>

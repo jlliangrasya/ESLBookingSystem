@@ -5,12 +5,12 @@ import {
   startOfWeek,
   isBefore,
   parse,
-  parseISO,
 } from "date-fns";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import "../index.css";
+import { fmtDate } from "@/utils/timezone";
 
 interface Booking {
   id: number;
@@ -53,7 +53,7 @@ const WeeklyCalendar: React.FC<WeeklyCalendarProps> = ({
   };
 
   const bookedSlots = bookings.map((booking) =>
-    format(parseISO(booking.appointment_date), "yyyy-MM-dd hh:mm a")
+    fmtDate(booking.appointment_date, "yyyy-MM-dd hh:mm a")
   );
 
   const toggleSlotSelection = (date: string, time: string) => {

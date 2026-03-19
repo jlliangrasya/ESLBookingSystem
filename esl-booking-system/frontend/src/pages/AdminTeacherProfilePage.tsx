@@ -16,6 +16,7 @@ import {
 import {
   ArrowLeft, UserCircle, CalendarDays, Loader2, Pencil, Save, Eye, EyeOff, BookOpen, KeyRound,
 } from "lucide-react";
+import { fmtDate, fmtDateOnly } from "@/utils/timezone";
 
 interface TeacherProfile {
   id: number;
@@ -192,11 +193,7 @@ const AdminTeacherProfilePage = () => {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Added</p>
-              <p className="font-medium">
-                {new Date(teacher.created_at).toLocaleDateString("en-US", {
-                  month: "long", day: "numeric", year: "numeric",
-                })}
-              </p>
+              <p className="font-medium">{fmtDateOnly(teacher.created_at)}</p>
             </div>
           </CardContent>
         </Card>
@@ -231,10 +228,7 @@ const AdminTeacherProfilePage = () => {
                   schedule.map((s) => (
                     <TableRow key={s.id}>
                       <TableCell className="text-sm">
-                        {new Date(s.appointment_date).toLocaleString("en-US", {
-                          month: "short", day: "numeric", year: "numeric",
-                          hour: "2-digit", minute: "2-digit", hour12: true,
-                        })}
+                        {fmtDate(s.appointment_date, "MMM d, yyyy h:mm a")}
                       </TableCell>
                       <TableCell className="text-sm font-medium">{s.student_name}</TableCell>
                       <TableCell className="text-sm">
@@ -285,9 +279,7 @@ const AdminTeacherProfilePage = () => {
                   leaves.map((l) => (
                     <TableRow key={l.id}>
                       <TableCell className="text-sm">
-                        {new Date(l.leave_date).toLocaleDateString("en-US", {
-                          month: "short", day: "numeric", year: "numeric",
-                        })}
+                        {fmtDateOnly(l.leave_date)}
                       </TableCell>
                       <TableCell className="text-sm capitalize">{l.reason_type.replace(/_/g, " ")}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{l.notes || "—"}</TableCell>

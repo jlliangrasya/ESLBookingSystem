@@ -1,17 +1,16 @@
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 
 const TZ_KEY = 'userTimezone';
+const FIXED_TZ = 'Asia/Manila';
 
 /** Get the user's timezone — from localStorage, or auto-detect from browser */
 export function getUserTimezone(): string {
-    return localStorage.getItem(TZ_KEY)
-        || Intl.DateTimeFormat().resolvedOptions().timeZone
-        || 'UTC';
+    return FIXED_TZ;
 }
 
 /** Persist a timezone choice */
 export function setUserTimezone(tz: string): void {
-    localStorage.setItem(TZ_KEY, tz);
+    localStorage.setItem(TZ_KEY, FIXED_TZ);
 }
 
 /**
@@ -24,11 +23,22 @@ export function fmtDate(utcStr: string, fmt = "MMM d, yyyy h:mm a", tz?: string)
     if (!utcStr) return '—';
     try {
         const timezone = tz || getUserTimezone();
-        // MySQL datetimes lack 'Z'; treat them as UTC by appending Z if needed
-        const normalized = utcStr.includes('Z') || utcStr.includes('+') ? utcStr : utcStr.replace(' ', 'T') + 'Z';
+        // Treat stored DATETIME as local (no UTC conversion)
+        const normalized = utcStr.includes('T') ? utcStr : utcStr.replace(' ', 'T');
         return formatInTimeZone(new Date(normalized), timezone, fmt);
     } catch {
         return utcStr;
+    }
+}
+
+/** Normalize a UTC string (ISO or MySQL DATETIME) into a Date object */
+export function parseUTC(utcStr: string): Date | null {
+    if (!utcStr) return null;
+    try {
+        const normalized = utcStr.includes('T') ? utcStr : utcStr.replace(' ', 'T');
+        return new Date(normalized);
+    } catch {
+        return null;
     }
 }
 
@@ -39,7 +49,7 @@ export function fmtDateOnly(utcStr: string, tz?: string): string {
 
 /** Format just the time portion */
 export function fmtTime(utcStr: string, tz?: string): string {
-    return fmtDate(utcStr, 'h:mm a', tz);
+    return fmtDate(utcStr, 'hh:mm a', tz);
 }
 
 /**
@@ -53,6 +63,11 @@ export function localToUTC(dateStr: string, timeStr: string, tz?: string): strin
     const localDatetime = `${dateStr}T${timeStr}:00`;
     const utcDate = fromZonedTime(localDatetime, timezone);
     return utcDate.toISOString();
+}
+
+/** Convert a UTC ISO string into MySQL DATETIME (UTC) */
+export function localToMysql(dateStr: string, timeStr: string): string {
+    return `${dateStr} ${timeStr}:00`;
 }
 
 /**

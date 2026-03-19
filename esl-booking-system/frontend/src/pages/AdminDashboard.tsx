@@ -22,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { fmtDate } from "@/utils/timezone";
 
 interface Feedback {
   id: number;
@@ -154,8 +155,11 @@ const AdminDashboard = () => {
 
   const handleConfirm = async (id: number) => {
     try {
+      const token = localStorage.getItem("token");
       await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/student/package/confirm/${id}`
+        `${import.meta.env.VITE_API_URL}/api/student/package/confirm/${id}`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       fetchDashboardData();
     } catch (error) {
@@ -165,8 +169,11 @@ const AdminDashboard = () => {
 
   const handleReject = async (id: number) => {
     try {
+      const token = localStorage.getItem("token");
       await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/student/package/reject/${id}`
+        `${import.meta.env.VITE_API_URL}/api/student/package/reject/${id}`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       fetchDashboardData();
     } catch (error) {
@@ -176,9 +183,11 @@ const AdminDashboard = () => {
 
   const handleMarkAsDone = async (bookingId: number, studentPackageId: number) => {
     try {
+      const token = localStorage.getItem("token");
       await axios.post(
         `${import.meta.env.VITE_API_URL}/api/bookings/done/${bookingId}`,
-        { student_package_id: studentPackageId }
+        { student_package_id: studentPackageId },
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       fetchDashboardData();
     } catch (error) {
@@ -188,8 +197,11 @@ const AdminDashboard = () => {
 
   const handleCancelBooking = async (bookingId: number) => {
     try {
+      const token = localStorage.getItem("token");
       await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/bookings/cancel/${bookingId}`
+        `${import.meta.env.VITE_API_URL}/api/bookings/cancel/${bookingId}`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       fetchDashboardData();
     } catch (error) {
@@ -358,17 +370,7 @@ const AdminDashboard = () => {
                           {booking.student_name}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {new Date(booking.appointment_date).toLocaleString(
-                            "en-US",
-                            {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              hour12: true,
-                            }
-                          )}
+                        {fmtDate(booking.appointment_date, "MMM d, yyyy h:mm a")}
                         </TableCell>
                         <TableCell className="text-right space-x-1">
                           <Button
@@ -426,10 +428,7 @@ const AdminDashboard = () => {
                     <TableRow key={b.id}>
                       <TableCell className="text-sm font-medium">{b.student_name}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {new Date(b.appointment_date).toLocaleString("en-US", {
-                          month: "short", day: "numeric", year: "numeric",
-                          hour: "2-digit", minute: "2-digit", hour12: true,
-                        })}
+                        {fmtDate(b.appointment_date, "MMM d, yyyy h:mm a")}
                       </TableCell>
                       <TableCell className="text-sm">{b.teacher_name || "—"}</TableCell>
                       <TableCell>

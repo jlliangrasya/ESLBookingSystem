@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useContext } from "react";
 import { io } from "socket.io-client";
 import axios from "axios";
 import { Bell } from "lucide-react";
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import AuthContext from "@/context/AuthContext";
 
 interface Notification {
   id: number;
@@ -23,7 +24,8 @@ interface Notification {
 
 const NotificationBell: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const token = localStorage.getItem("token");
+  const authContext = useContext(AuthContext);
+  const token = authContext?.token ?? null;
 
   const fetchNotifications = useCallback(async () => {
     if (!token) return;
@@ -41,7 +43,10 @@ const NotificationBell: React.FC = () => {
   useEffect(() => {
     fetchNotifications();
 
-    if (!token) return;
+    if (!token) {
+      setNotifications([]);
+      return;
+    }
 
     const socket = io(import.meta.env.VITE_API_URL, {
       auth: { token },
