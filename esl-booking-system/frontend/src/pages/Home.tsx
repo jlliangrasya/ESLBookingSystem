@@ -1,27 +1,34 @@
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Login from "../components/Login";
 import LearnMore from "../components/LearnMore";
 import TutorialPackages from "../components/TutorialPackages";
 import Footer from "../components/Footer";
+import LanguageToggle from "../components/LanguageToggle";
 import { Building2, ArrowRight } from "lucide-react";
 
 const Home = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-50 to-white">
+      {/* Language toggle for unauthenticated users */}
+      <div className="absolute top-4 right-4 z-50">
+        <LanguageToggle />
+      </div>
+
       {/* Hero section */}
       <div className="max-w-7xl mx-auto px-4 pt-16 pb-8 flex flex-col md:flex-row items-center gap-10 md:gap-16">
         {/* Left — branding */}
         <div className="hidden md:flex flex-col flex-1">
           <h1 className="text-5xl font-bold text-primary leading-tight">
-            Welcome to<br />Eunitalk
+            {t("home.welcome")}<br />{t("home.brand")}
           </h1>
           <p className="mt-4 text-lg text-muted-foreground">
-            Your gateway to personalized learning. Book lessons, manage your
-            sessions, and more.
+            {t("home.subtitle")}
           </p>
           <div className="mt-6 flex gap-3">
             <Button
@@ -32,7 +39,7 @@ const Home = () => {
                   ?.scrollIntoView({ behavior: "smooth" })
               }
             >
-              Learn More
+              {t("home.learnMore")}
             </Button>
             <Button
               variant="secondary"
@@ -42,7 +49,7 @@ const Home = () => {
                   ?.scrollIntoView({ behavior: "smooth" })
               }
             >
-              Tutorial Packages
+              {t("home.tutorialPackages")}
             </Button>
           </div>
         </div>
@@ -52,7 +59,7 @@ const Home = () => {
           <Card className="shadow-xl rounded-2xl">
             <CardHeader className="pb-2">
               <CardTitle className="text-center text-primary text-xl font-semibold">
-                Welcome Back
+                {t("home.welcomeBack")}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -90,14 +97,13 @@ const Home = () => {
             <Building2 className="h-10 w-10 text-primary" />
           </div>
           <h2 className="text-2xl font-bold text-gray-800">
-            Do you want to register as a company?
+            {t("home.companyCta")}
           </h2>
           <p className="text-muted-foreground">
-            Are you running an ESL center? Join the EuniTalk platform and manage your
-            students, teachers, and schedules — all in one place.
+            {t("home.companyCtaDesc")}
           </p>
           <Button onClick={() => navigate("/company/register")} size="lg" className="gap-2">
-            Register Your ESL Center <ArrowRight className="h-4 w-4" />
+            {t("home.registerCenter")} <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
       </section>

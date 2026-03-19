@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
-import logo from "../assets/EuniTalk_Logo.png";
+import logo from "../assets/Brightfolks_Logo.png";
 import "../index.css";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -337,7 +337,7 @@ const StudentDashboard = () => {
       {/* Header */}
       <div className="bg-primary/20 border-b border-primary/30">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <img src={logo} alt="EuniTalk Logo" className="h-10 w-auto" />
+          <img src={logo} alt="Brightfolks Logo" className="h-10 w-auto" />
 
           <div className="hidden md:flex flex-col items-end">
             <p className="text-xs text-muted-foreground">

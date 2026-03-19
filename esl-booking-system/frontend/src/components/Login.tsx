@@ -1,5 +1,6 @@
 import { useState, useContext, useEffect } from "react";
 import axios from "axios";
+import { useTranslation } from "react-i18next";
 import AuthContext, { UserRole } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const { t } = useTranslation();
 
   const authContext = useContext(AuthContext);
   if (!authContext) throw new Error("AuthContext must be used within an AuthProvider");
@@ -63,9 +65,9 @@ const Login = () => {
       navigate(ROLE_ROUTES[res.data.user.role as UserRole] ?? "/");
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response) {
-        setError(err.response.data.message || "Login failed");
+        setError(err.response.data.message || t("login.loginFailed"));
       } else {
-        setError("An unexpected error occurred");
+        setError(t("login.unexpectedError"));
       }
     } finally {
       setIsLoading(false);
@@ -82,11 +84,11 @@ const Login = () => {
       )}
 
       <div className="space-y-1.5">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email">{t("login.email")}</Label>
         <Input
           id="email"
           type="email"
-          placeholder="Enter your email"
+          placeholder={t("login.emailPlaceholder")}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
@@ -94,12 +96,12 @@ const Login = () => {
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="password">Password</Label>
+        <Label htmlFor="password">{t("login.password")}</Label>
         <div className="relative">
           <Input
             id="password"
             type={showPassword ? "text" : "password"}
-            placeholder="Enter your password"
+            placeholder={t("login.passwordPlaceholder")}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
@@ -120,10 +122,10 @@ const Login = () => {
         {isLoading ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Logging in…
+            {t("login.loggingIn")}
           </>
         ) : (
-          "Login"
+          t("login.loginButton")
         )}
       </Button>
 

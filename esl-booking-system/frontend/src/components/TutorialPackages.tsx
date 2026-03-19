@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,23 +36,24 @@ const adultsPackages = [
 const TutorialPackages = () => {
   const [currency, setCurrency] = useState<Currency>("RMB");
   const [subject, setSubject] = useState<"English" | "Math">("English");
+  const { t } = useTranslation();
 
   return (
     <div className="max-w-6xl mx-auto px-4 text-center">
       <h2 className="text-3xl font-bold text-primary mb-6">
-        Our Tutorial Packages
+        {t("packages.title")}
       </h2>
 
       {/* Filters */}
       <div className="flex flex-wrap justify-center items-center gap-4 mb-10">
         <Select value={currency} onValueChange={(v) => setCurrency(v as Currency)}>
           <SelectTrigger className="w-44">
-            <SelectValue placeholder="Currency" />
+            <SelectValue placeholder={t("packages.viewIn")} />
           </SelectTrigger>
           <SelectContent>
             {currencyOptions.map((cur) => (
               <SelectItem key={cur} value={cur}>
-                View in {cur}
+                {t("packages.viewIn")} {cur}
               </SelectItem>
             ))}
           </SelectContent>
@@ -63,21 +65,21 @@ const TutorialPackages = () => {
             onClick={() => setSubject("English")}
             className="rounded-full px-5"
           >
-            English
+            {t("packages.english")}
           </Button>
           <Button
             variant={subject === "Math" ? "default" : "outline"}
             onClick={() => setSubject("Math")}
             className="rounded-full px-5"
           >
-            Math
+            {t("packages.math")}
           </Button>
         </div>
       </div>
 
       {/* Kids */}
       <h3 className="text-green-600 font-bold text-xl mb-4">
-        For Kids &amp; Teens (Ages 3–17)
+        {t("packages.kidsTitle")}
       </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
         {kidsPackages.map((pkg, i) => {
@@ -87,10 +89,10 @@ const TutorialPackages = () => {
               <CardContent className="flex flex-col items-center py-6 gap-2">
                 <span className="text-3xl">🎒</span>
                 <CardTitle className="text-base font-bold mt-1">
-                  {pkg.sessions} + {pkg.free} Free sessions
+                  {t("packages.freeSessions", { sessions: pkg.sessions, free: pkg.free })}
                 </CardTitle>
                 <p className="text-muted-foreground text-sm">
-                  Subject: <strong>{subject}</strong>
+                  {t("packages.subject")} <strong>{subject === "English" ? t("packages.english") : t("packages.math")}</strong>
                 </p>
                 <p className="text-green-600 text-lg font-semibold">
                   {convertPrice(price, currency)}
@@ -103,7 +105,7 @@ const TutorialPackages = () => {
 
       {/* Adults */}
       <h3 className="text-gray-600 font-bold text-xl mb-4">
-        For Adults (18+)
+        {t("packages.adultsTitle")}
       </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {adultsPackages.map((pkg, i) => (
@@ -111,10 +113,10 @@ const TutorialPackages = () => {
             <CardContent className="flex flex-col items-center py-6 gap-2">
               <span className="text-3xl">📘</span>
               <CardTitle className="text-base font-bold mt-1">
-                {pkg.sessions} + {pkg.free} Free sessions
+                {t("packages.freeSessions", { sessions: pkg.sessions, free: pkg.free })}
               </CardTitle>
               <p className="text-muted-foreground text-sm">
-                Subject: <strong>{subject}</strong>
+                {t("packages.subject")} <strong>{subject === "English" ? t("packages.english") : t("packages.math")}</strong>
               </p>
               <p className="text-primary text-lg font-semibold">
                 {convertPrice(pkg.price, currency)}

@@ -1,6 +1,7 @@
 import { useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import logo from "../assets/EuniTalk_Logo.png";
+import { useTranslation } from "react-i18next";
+import logo from "../assets/Brightfolks_Logo.png";
 import { CalendarDays, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus } from "lucide-react";
 import {
   DropdownMenu,
@@ -12,9 +13,11 @@ import {
 import { Button } from "@/components/ui/button";
 import AuthContext from "@/context/AuthContext";
 import NotificationBell from "@/components/NotificationBell";
+import LanguageToggle from "@/components/LanguageToggle";
 
 const NavBar: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const authContext = useContext(AuthContext);
   const role = authContext?.user?.role;
 
@@ -30,7 +33,7 @@ const NavBar: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link to={logoLink} className="flex items-center">
-          <img src={logo} alt="EuniTalk Logo" className="h-10 w-auto" />
+          <img src={logo} alt="Brightfolks Logo" className="h-10 w-auto" />
         </Link>
 
         {/* Nav links */}
@@ -40,18 +43,18 @@ const NavBar: React.FC = () => {
               <Link
                 to="/super-admin"
                 className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
-                title="Dashboard"
+                title={t("nav.dashboard")}
               >
                 <LayoutDashboard className="h-6 w-6" />
-                <span className="text-[10px]">Dashboard</span>
+                <span className="text-[10px]">{t("nav.dashboard")}</span>
               </Link>
               <Link
                 to="/super-admin/plans"
                 className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
-                title="Subscription Plans"
+                title={t("nav.plans")}
               >
                 <PackagePlus className="h-6 w-6" />
-                <span className="text-[10px]">Plans</span>
+                <span className="text-[10px]">{t("nav.plans")}</span>
               </Link>
             </>
           ) : (
@@ -59,50 +62,51 @@ const NavBar: React.FC = () => {
               <Link
                 to="/admin-dashboard"
                 className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
-                title="Schedule"
+                title={t("nav.schedule")}
               >
                 <CalendarDays className="h-6 w-6" />
-                <span className="text-[10px]">Schedule</span>
+                <span className="text-[10px]">{t("nav.schedule")}</span>
               </Link>
 
               <Link
                 to="/packages"
                 className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
-                title="Packages"
+                title={t("nav.packages")}
               >
                 <Package className="h-6 w-6" />
-                <span className="text-[10px]">Packages</span>
+                <span className="text-[10px]">{t("nav.packages")}</span>
               </Link>
 
               <Link
                 to="/students"
                 className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
-                title="Students"
+                title={t("nav.students")}
               >
                 <Users className="h-6 w-6" />
-                <span className="text-[10px]">Students</span>
+                <span className="text-[10px]">{t("nav.students")}</span>
               </Link>
 
               <Link
                 to="/teachers"
                 className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
-                title="Teachers"
+                title={t("nav.teachers")}
               >
                 <GraduationCap className="h-6 w-6" />
-                <span className="text-[10px]">Teachers</span>
+                <span className="text-[10px]">{t("nav.teachers")}</span>
               </Link>
 
               <Link
                 to="/admin-users"
                 className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
-                title="Admins"
+                title={t("nav.admins")}
               >
                 <UserCog className="h-6 w-6" />
-                <span className="text-[10px]">Admins</span>
+                <span className="text-[10px]">{t("nav.admins")}</span>
               </Link>
             </>
           )}
 
+          <LanguageToggle />
           <NotificationBell />
 
           {/* Profile dropdown */}
@@ -124,7 +128,7 @@ const NavBar: React.FC = () => {
                     className="cursor-pointer flex items-center gap-2"
                   >
                     <User className="h-4 w-4" />
-                    Profile
+                    {t("nav.profile")}
                   </Link>
                 </DropdownMenuItem>
               )}
@@ -132,7 +136,7 @@ const NavBar: React.FC = () => {
                 <DropdownMenuItem asChild>
                   <Link to="/activity-log" className="cursor-pointer flex items-center gap-2">
                     <ClipboardList className="h-4 w-4" />
-                    Activity Log
+                    {t("nav.activityLog")}
                   </Link>
                 </DropdownMenuItem>
               )}
@@ -142,7 +146,7 @@ const NavBar: React.FC = () => {
                 className="cursor-pointer text-destructive focus:text-destructive flex items-center gap-2"
               >
                 <LogOut className="h-4 w-4" />
-                Logout
+                {t("nav.logout")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

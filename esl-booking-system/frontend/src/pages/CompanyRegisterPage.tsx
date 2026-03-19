@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CheckCircle2, Loader2, AlertCircle, Users, BookOpen, Star } from "lucide-react";
-import logo from "../assets/EuniTalk_Logo.png";
+import logo from "../assets/Brightfolks_Logo.png";
 
 interface Plan {
   id: number;
@@ -99,7 +99,7 @@ const CompanyRegisterPage = () => {
     <div className="min-h-screen bg-gradient-to-br from-primary/10 to-blue-50">
       {/* Header */}
       <div className="bg-white border-b px-4 py-3 flex items-center justify-between max-w-7xl mx-auto">
-        <img src={logo} alt="EuniTalk Logo" className="h-10 w-auto cursor-pointer"
+        <img src={logo} alt="Brightfolks Logo" className="h-10 w-auto cursor-pointer"
           onClick={() => navigate("/")} />
         <Button variant="outline" size="sm" onClick={() => navigate("/")}>
           Back to Home
@@ -113,7 +113,7 @@ const CompanyRegisterPage = () => {
             Register Your ESL Center
           </h1>
           <p className="text-muted-foreground max-w-xl mx-auto">
-            Join the EuniTalk platform. Manage your students, teachers, and schedules — all in one place.
+            Join the Brightfolks platform. Manage your students, teachers, and schedules — all in one place.
           </p>
         </div>
 
