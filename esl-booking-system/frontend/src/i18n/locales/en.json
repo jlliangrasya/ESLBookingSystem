@@ -1,0 +1,65 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "plans": "Plans",
+    "schedule": "Schedule",
+    "packages": "Packages",
+    "students": "Students",
+    "teachers": "Teachers",
+    "admins": "Admins",
+    "profile": "Profile",
+    "activityLog": "Activity Log",
+    "logout": "Logout"
+  },
+  "home": {
+    "welcome": "Welcome to",
+    "brand": "Brightfolks",
+    "subtitle": "Your gateway to personalized learning. Book lessons, manage your sessions, and more.",
+    "learnMore": "Learn More",
+    "tutorialPackages": "Tutorial Packages",
+    "welcomeBack": "Welcome Back",
+    "companyCta": "Do you want to register as a company?",
+    "companyCtaDesc": "Are you running an ESL center? Join the Brightfolks platform and manage your students, teachers, and schedules — all in one place.",
+    "registerCenter": "Register Your ESL Center"
+  },
+  "login": {
+    "email": "Email",
+    "password": "Password",
+    "emailPlaceholder": "Enter your email",
+    "passwordPlaceholder": "Enter your password",
+    "loginButton": "Login",
+    "loggingIn": "Logging in…",
+    "loginFailed": "Login failed",
+    "unexpectedError": "An unexpected error occurred",
+    "forgotPassword": "Forgot Password?"
+  },
+  "learnMore": {
+    "title": "Why Choose Brightfolks?",
+    "servicesTitle": "Services Offered",
+    "servicesDesc": "We offer online English tutorials for all ages and levels.",
+    "personalizedTitle": "Personalized Lessons",
+    "personalizedDesc": "Each lesson is customized to the student's needs and pace.",
+    "flexibleTitle": "Flexible Schedule",
+    "flexibleDesc": "Book your classes at your convenience with flexible hours.",
+    "subjectsTitle": "Subjects",
+    "subjectsDesc": "Grammar, Speaking, Reading Comprehension, Vocabulary, and more."
+  },
+  "packages": {
+    "title": "Our Tutorial Packages",
+    "viewIn": "View in",
+    "english": "English",
+    "math": "Math",
+    "kidsTitle": "For Kids & Teens (Ages 3–17)",
+    "adultsTitle": "For Adults (18+)",
+    "freeSessions": "{{sessions}} + {{free}} Free sessions",
+    "subject": "Subject:"
+  },
+  "footer": {
+    "rights": "© {{year}} Brightfolks. All rights reserved."
+  },
+  "language": {
+    "en": "English",
+    "ko": "한국어",
+    "zh": "中文"
+  }
+}

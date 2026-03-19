@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CalendarDays, Users, LogOut, Loader2, FileText, CalendarOff, Plus, X, MessageSquare, Ban, CheckCircle } from "lucide-react";
-import logo from "../assets/EuniTalk_Logo.png";
+import logo from "../assets/Brightfolks_Logo.png";
 import NotificationBell from "@/components/NotificationBell";
 import ReportModal from "@/components/ReportModal";
 import { fmtDate, fmtDateOnly, parseUTC } from "@/utils/timezone";
@@ -349,7 +349,7 @@ const TeacherDashboard = () => {
       {/* Header */}
       <div className="bg-primary/20 border-b border-primary/30">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <img src={logo} alt="EuniTalk Logo" className="h-10 w-auto" />
+          <img src={logo} alt="Brightfolks Logo" className="h-10 w-auto" />
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="text-xs">Teacher</Badge>
             <NotificationBell />

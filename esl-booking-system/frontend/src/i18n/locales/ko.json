@@ -1,0 +1,65 @@
+{
+  "nav": {
+    "dashboard": "대시보드",
+    "plans": "구독 플랜",
+    "schedule": "수업 일정",
+    "packages": "패키지",
+    "students": "학생",
+    "teachers": "강사",
+    "admins": "관리자",
+    "profile": "프로필",
+    "activityLog": "활동 기록",
+    "logout": "로그아웃"
+  },
+  "home": {
+    "welcome": "환영합니다",
+    "brand": "Brightfolks",
+    "subtitle": "맞춤형 학습의 시작. 수업을 예약하고, 세션을 관리하세요.",
+    "learnMore": "더 알아보기",
+    "tutorialPackages": "수업 패키지",
+    "welcomeBack": "다시 오신 것을 환영합니다",
+    "companyCta": "회사로 등록하시겠습니까?",
+    "companyCtaDesc": "ESL 센터를 운영하고 계신가요? Brightfolks 플랫폼에 가입하여 학생, 강사, 일정을 한 곳에서 관리하세요.",
+    "registerCenter": "ESL 센터 등록하기"
+  },
+  "login": {
+    "email": "이메일",
+    "password": "비밀번호",
+    "emailPlaceholder": "이메일을 입력하세요",
+    "passwordPlaceholder": "비밀번호를 입력하세요",
+    "loginButton": "로그인",
+    "loggingIn": "로그인 중…",
+    "loginFailed": "로그인 실패",
+    "unexpectedError": "예기치 않은 오류가 발생했습니다",
+    "forgotPassword": "비밀번호를 잊으셨나요?"
+  },
+  "learnMore": {
+    "title": "Brightfolks을 선택하는 이유",
+    "servicesTitle": "제공 서비스",
+    "servicesDesc": "모든 연령과 수준에 맞는 온라인 영어 수업을 제공합니다.",
+    "personalizedTitle": "맞춤형 수업",
+    "personalizedDesc": "학생의 필요와 속도에 맞춘 수업을 제공합니다.",
+    "flexibleTitle": "유연한 일정",
+    "flexibleDesc": "편리한 시간에 수업을 예약하세요.",
+    "subjectsTitle": "과목",
+    "subjectsDesc": "문법, 회화, 독해, 어휘 등 다양한 과목을 제공합니다."
+  },
+  "packages": {
+    "title": "수업 패키지",
+    "viewIn": "통화",
+    "english": "영어",
+    "math": "수학",
+    "kidsTitle": "어린이 & 청소년 (3~17세)",
+    "adultsTitle": "성인 (18세 이상)",
+    "freeSessions": "{{sessions}} + {{free}} 무료 세션",
+    "subject": "과목:"
+  },
+  "footer": {
+    "rights": "© {{year}} Brightfolks. 모든 권리 보유."
+  },
+  "language": {
+    "en": "English",
+    "ko": "한국어",
+    "zh": "中文"
+  }
+}

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import logo from "../assets/EuniTalk_Logo.png";
+import logo from "../assets/Brightfolks_Logo.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -103,7 +103,7 @@ const StudentProfilePage = () => {
       {/* Header */}
       <div className="bg-primary/20 border-b border-primary/30">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <img src={logo} alt="EuniTalk Logo" className="h-10 w-auto" />
+          <img src={logo} alt="Brightfolks Logo" className="h-10 w-auto" />
         </div>
       </div>
 

@@ -1,0 +1,65 @@
+{
+  "nav": {
+    "dashboard": "仪表盘",
+    "plans": "订阅计划",
+    "schedule": "课程表",
+    "packages": "课程包",
+    "students": "学生",
+    "teachers": "教师",
+    "admins": "管理员",
+    "profile": "个人资料",
+    "activityLog": "活动日志",
+    "logout": "退出登录"
+  },
+  "home": {
+    "welcome": "欢迎来到",
+    "brand": "Brightfolks",
+    "subtitle": "您的个性化学习平台。预约课程，管理学习进度。",
+    "learnMore": "了解更多",
+    "tutorialPackages": "课程套餐",
+    "welcomeBack": "欢迎回来",
+    "companyCta": "想要注册为公司吗？",
+    "companyCtaDesc": "您在经营ESL中心吗？加入Brightfolks平台，在一个地方管理您的学生、教师和课程安排。",
+    "registerCenter": "注册您的ESL中心"
+  },
+  "login": {
+    "email": "邮箱",
+    "password": "密码",
+    "emailPlaceholder": "请输入邮箱",
+    "passwordPlaceholder": "请输入密码",
+    "loginButton": "登录",
+    "loggingIn": "登录中…",
+    "loginFailed": "登录失败",
+    "unexpectedError": "发生意外错误",
+    "forgotPassword": "忘记密码？"
+  },
+  "learnMore": {
+    "title": "为什么选择Brightfolks？",
+    "servicesTitle": "服务项目",
+    "servicesDesc": "我们为所有年龄和水平的学生提供在线英语课程。",
+    "personalizedTitle": "个性化课程",
+    "personalizedDesc": "每节课都根据学生的需求和进度量身定制。",
+    "flexibleTitle": "灵活排课",
+    "flexibleDesc": "在您方便的时间预约课程。",
+    "subjectsTitle": "科目",
+    "subjectsDesc": "语法、口语、阅读理解、词汇等多种科目。"
+  },
+  "packages": {
+    "title": "课程套餐",
+    "viewIn": "币种",
+    "english": "英语",
+    "math": "数学",
+    "kidsTitle": "儿童和青少年 (3-17岁)",
+    "adultsTitle": "成人 (18岁以上)",
+    "freeSessions": "{{sessions}} + {{free}} 免费课时",
+    "subject": "科目："
+  },
+  "footer": {
+    "rights": "© {{year}} Brightfolks. 保留所有权利。"
+  },
+  "language": {
+    "en": "English",
+    "ko": "한국어",
+    "zh": "中文"
+  }
+}

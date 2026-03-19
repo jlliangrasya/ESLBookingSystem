@@ -15,7 +15,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Loader2, AlertCircle, BookOpen, Users, Star, LogOut, Clock } from "lucide-react";
-import logo from "../assets/EuniTalk_Logo.png";
+import logo from "../assets/Brightfolks_Logo.png";
 
 interface Plan {
   id: number;
@@ -138,7 +138,7 @@ const UpgradePage = () => {
     <div className="min-h-screen bg-gradient-to-br from-primary/10 to-blue-50">
       {/* Header */}
       <div className="bg-white border-b px-4 py-3 flex items-center justify-between max-w-7xl mx-auto">
-        <img src={logo} alt="EuniTalk Logo" className="h-10 w-auto" />
+        <img src={logo} alt="Brightfolks Logo" className="h-10 w-auto" />
         <div className="text-center">
           <p className="text-sm font-semibold text-red-600">Your free trial has expired</p>
           <p className="text-xs text-muted-foreground">Choose a plan to continue</p>
@@ -153,7 +153,7 @@ const UpgradePage = () => {
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold text-gray-800">Upgrade Your Plan</h1>
           <p className="text-muted-foreground">
-            Select a subscription plan to restore full access to your EuniTalk dashboard.
+            Select a subscription plan to restore full access to your Brightfolks dashboard.
           </p>
         </div>
 
@@ -293,13 +293,13 @@ const UpgradePage = () => {
           <div className="space-y-3 text-sm text-muted-foreground max-h-64 overflow-y-auto py-2">
             <p>By proceeding with the <strong>{selectedPlan?.name}</strong> plan at <strong>₱{selectedPlan?.price_monthly.toLocaleString()}/month</strong>, you agree to the following terms:</p>
             <ul className="space-y-2 list-disc pl-4">
-              <li>Your subscription will be activated upon manual verification of your payment by EuniTalk support.</li>
+              <li>Your subscription will be activated upon manual verification of your payment by Brightfolks support.</li>
               <li>Monthly payments are required to maintain active access to the platform.</li>
               <li>Failure to renew may result in account suspension after your current period ends.</li>
               <li>Subscription fees are non-refundable once the plan is activated.</li>
-              <li>EuniTalk reserves the right to modify plan features or pricing with 30 days' notice.</li>
+              <li>Brightfolks reserves the right to modify plan features or pricing with 30 days' notice.</li>
               <li>Your data will be retained for 30 days after account suspension before deletion.</li>
-              <li>You are responsible for ensuring that your usage complies with EuniTalk's terms of service.</li>
+              <li>You are responsible for ensuring that your usage complies with Brightfolks's terms of service.</li>
             </ul>
             <p>By clicking "I Agree", you confirm that you have read and accepted these terms.</p>
           </div>
