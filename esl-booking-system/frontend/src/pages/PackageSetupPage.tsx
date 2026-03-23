@@ -74,6 +74,7 @@ const PackageSetupPage = () => {
   const headers = { Authorization: `Bearer ${token}` };
 
   const [packages, setPackages] = useState<TutorialPackage[]>([]);
+  const [monthlyStats, setMonthlyStats] = useState<Record<number, number>>({});
   const [settings, setSettings] = useState<CompanySettings>({
     allow_student_pick_teacher: true,
     payment_qr_image: null,
@@ -95,13 +96,8 @@ const PackageSetupPage = () => {
   const fetchAll = async () => {
     try {
       const [pkgRes, settingsRes] = await Promise.all([
-        axios.get(`${import.meta.env.VITE_API_URL}/api/student/packages`, {
-          headers,
-        }),
-        axios.get(
-          `${import.meta.env.VITE_API_URL}/api/admin/company-settings`,
-          { headers },
-        ),
+        axios.get(`${import.meta.env.VITE_API_URL}/api/student/packages`, { headers }),
+        axios.get(`${import.meta.env.VITE_API_URL}/api/admin/company-settings`, { headers }),
       ]);
       setPackages(pkgRes.data);
       setSettings(settingsRes.data);
@@ -110,6 +106,15 @@ const PackageSetupPage = () => {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+    // Monthly stats fetched separately so a failure doesn't block the main data
+    try {
+      const statsRes = await axios.get(`${import.meta.env.VITE_API_URL}/api/admin/package-monthly-stats`, { headers });
+      const statsMap: Record<number, number> = {};
+      for (const s of statsRes.data) statsMap[s.package_id] = s.availed_this_month;
+      setMonthlyStats(statsMap);
+    } catch {
+      // non-critical — monthly stats unavailable
     }
   };
 
@@ -255,6 +260,7 @@ const PackageSetupPage = () => {
                   <TableHead>Sessions</TableHead>
                   <TableHead>Duration</TableHead>
                   <TableHead>Price</TableHead>
+                  <TableHead>This Month</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -263,7 +269,7 @@ const PackageSetupPage = () => {
                 {packages.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={8}
                       className="text-center text-muted-foreground text-sm py-10"
                     >
                       No packages yet. Click "Add Package" to create your first
@@ -297,6 +303,11 @@ const PackageSetupPage = () => {
                       </TableCell>
                       <TableCell className="text-sm">
                         ₱{Number(pkg.price).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        <Badge variant="secondary" className="bg-blue-50 text-blue-700 text-xs">
+                          {monthlyStats[pkg.id] ?? 0} availed
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         {pkg.is_active ? (

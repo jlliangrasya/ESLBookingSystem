@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
-import logo from "../assets/Brightfolks_Logo.png";
+import BrandLogo from "@/components/BrandLogo";
 import "../index.css";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,6 +18,7 @@ import PackageSelectionModal from "../components/PackageSelectionModal";
 import BookingConfirmationModal from "../components/BookingConfirmationModal";
 import AuthContext from "@/context/AuthContext";
 import NotificationBell from "@/components/NotificationBell";
+import LanguageToggle from "@/components/LanguageToggle";
 import { fmtDate, fmtDateOnly, fmtTime, parseUTC } from "@/utils/timezone";
 
 interface Student {
@@ -84,7 +85,7 @@ const StudentDashboard = () => {
   const [student, setStudent] = useState<Student | null>(null);
   const [packageDetails, setPackageDetails] = useState<PackageDetails | null>(null);
   const [calendarBookings, setCalendarBookings] = useState<Record<string, string[]>>({});
-  const [rawBookings, setRawBookings] = useState<Booking[]>([]);
+  const [, setRawBookings] = useState<Booking[]>([]);
   const [selectedDateBookings, setSelectedDateBookings] = useState<Booking[]>([]);
   const [showClassModal, setShowClassModal] = useState(false);
   const [availablePackages, setAvailablePackages] = useState<AvailablePackage[]>([]);
@@ -347,9 +348,9 @@ const StudentDashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-primary/20 border-b border-primary/30">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <img src={logo} alt="Brightfolks Logo" className="h-10 w-auto" />
+      <div className="bg-white shadow-sm border-b border-border sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <BrandLogo />
 
           <div className="hidden md:flex flex-col items-end">
             <p className="text-xs text-muted-foreground">
@@ -361,6 +362,7 @@ const StudentDashboard = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <LanguageToggle />
             <NotificationBell />
             <Button
               variant="ghost"
@@ -371,10 +373,10 @@ const StudentDashboard = () => {
               <UserCircle className="h-5 w-5" />
             </Button>
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={handleLogout}
-              className="border-pink-400 text-pink-500 hover:bg-pink-50"
+              className="text-muted-foreground hover:text-destructive"
             >
               <LogOut className="h-4 w-4 mr-1" />
               Logout

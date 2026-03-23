@@ -15,7 +15,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Loader2, AlertCircle, BookOpen, Users, Star, LogOut, Clock } from "lucide-react";
-import logo from "../assets/Brightfolks_Logo.png";
+import BrandLogo from "@/components/BrandLogo";
 
 interface Plan {
   id: number;
@@ -138,12 +138,12 @@ const UpgradePage = () => {
     <div className="min-h-screen bg-gradient-to-br from-primary/10 to-blue-50">
       {/* Header */}
       <div className="bg-white border-b px-4 py-3 flex items-center justify-between max-w-7xl mx-auto">
-        <img src={logo} alt="Brightfolks Logo" className="h-10 w-auto" />
+        <BrandLogo />
         <div className="text-center">
           <p className="text-sm font-semibold text-red-600">Your free trial has expired</p>
           <p className="text-xs text-muted-foreground">Choose a plan to continue</p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleLogout} className="gap-1 border-pink-400 text-pink-500">
+        <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-1 text-muted-foreground hover:text-destructive">
           <LogOut className="h-4 w-4" /> Logout
         </Button>
       </div>

@@ -98,7 +98,7 @@ router.get('/upgrade-requests', authenticateToken, requireRole('super_admin'), a
     try {
         const [rows] = await pool.query(`
             SELECT ur.id, ur.status, ur.created_at, ur.notes,
-                   c.name AS company_name, c.email AS company_email,
+                   c.company_name, c.company_email,
                    sp_old.name AS current_plan,
                    sp_new.name AS requested_plan, sp_new.price_monthly
             FROM upgrade_requests ur
@@ -243,6 +243,98 @@ router.get('/analytics', authenticateToken, requireRole('super_admin'), async (r
     }
 });
 
+// GET /api/super-admin/companies/:id/profile — detailed company profile
+router.get('/companies/:id/profile', authenticateToken, requireRole('super_admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const [[company]] = await pool.query(`
+            SELECT c.*,
+                   sp.name AS plan_name, sp.price_monthly, sp.max_students, sp.max_teachers, sp.max_admins,
+                   u_approved.name AS approved_by_name,
+                   (SELECT COUNT(*) FROM users WHERE company_id = c.id AND role = 'student') AS student_count,
+                   (SELECT COUNT(*) FROM users WHERE company_id = c.id AND role = 'teacher') AS teacher_count,
+                   (SELECT COUNT(*) FROM bookings WHERE company_id = c.id AND status = 'done') AS completed_classes
+            FROM companies c
+            JOIN subscription_plans sp ON c.subscription_plan_id = sp.id
+            LEFT JOIN users u_approved ON c.approved_by = u_approved.id
+            WHERE c.id = ?
+        `, [id]);
+
+        if (!company) return res.status(404).json({ message: 'Company not found' });
+
+        const [users] = await pool.query(`
+            SELECT id, name, email, role, is_owner,
+                   COALESCE(is_active, 1) AS is_active,
+                   timezone, created_at
+            FROM users
+            WHERE company_id = ?
+            ORDER BY FIELD(role,'company_admin','teacher','student'), name ASC
+        `, [id]);
+
+        res.json({ company, users });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// GET /api/super-admin/all-users — every user across all companies (excluding super_admin)
+router.get('/all-users', authenticateToken, requireRole('super_admin'), async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT u.id, u.name, u.email, u.role, u.is_owner,
+                   COALESCE(u.is_active, 1) AS is_active,
+                   u.created_at,
+                   c.company_name, c.id AS company_id
+            FROM users u
+            LEFT JOIN companies c ON u.company_id = c.id
+            WHERE u.role != 'super_admin'
+            ORDER BY c.company_name ASC, FIELD(u.role,'company_admin','teacher','student'), u.name ASC
+        `);
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// PATCH /api/super-admin/users/:id/toggle-status — activate / deactivate any user
+router.patch('/users/:id/toggle-status', authenticateToken, requireRole('super_admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [[user]] = await pool.query('SELECT id, is_active FROM users WHERE id = ?', [id]);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        const newStatus = user.is_active ? 0 : 1;
+        await pool.query('UPDATE users SET is_active = ? WHERE id = ?', [newStatus, id]);
+        res.json({ message: newStatus ? 'Account activated' : 'Account deactivated', is_active: newStatus });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// GET /api/super-admin/companies/:id/payments — full payment history for one company
+router.get('/companies/:id/payments', authenticateToken, requireRole('super_admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [payments] = await pool.query(`
+            SELECT cp.id, cp.amount, cp.payment_date, cp.period_start, cp.period_end,
+                   cp.notes, cp.created_at,
+                   u.name AS recorded_by_name
+            FROM company_payments cp
+            LEFT JOIN users u ON cp.recorded_by = u.id
+            WHERE cp.company_id = ?
+            ORDER BY cp.payment_date DESC
+        `, [id]);
+        res.json(payments);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // GET /api/super-admin/audit-logs — all companies (super admin view)
 router.get('/audit-logs', authenticateToken, requireRole('super_admin'), async (req, res) => {
     try {
@@ -257,7 +349,7 @@ router.get('/audit-logs', authenticateToken, requireRole('super_admin'), async (
         const [rows] = await pool.query(
             `SELECT al.id, al.action, al.target_type, al.target_id, al.details, al.created_at,
                     u.name AS user_name, u.role AS user_role,
-                    c.name AS company_name
+                    c.company_name
              FROM audit_logs al
              LEFT JOIN users u ON al.user_id = u.id
              LEFT JOIN companies c ON al.company_id = c.id

@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import NavBar from "../components/Navbar";
 import axios from "axios";
 import "../index.css";
-import WeeklyCalendar from "../components/WeeklyCalendar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -14,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Users, UserCheck, Eye, MessageSquare, BarChart2 } from "lucide-react";
+import { Users, UserCheck, Eye, MessageSquare, BarChart2, GraduationCap, CalendarCheck, CalendarDays } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
@@ -67,22 +66,7 @@ interface StudentPackage {
   receipt_image: string | null;
 }
 
-type ClosedSlot = {
-  id: number;
-  date: string;
-  time: string;
-  created_at?: string;
-};
 
-interface CompletedBooking {
-  id: number;
-  student_name: string;
-  package_name: string;
-  appointment_date: string;
-  status: string;
-  student_package_id: number;
-  created_at: string;
-}
 
 const AdminDashboard = () => {
   const [students, setStudents] = useState<Student[]>([]);
@@ -90,8 +74,6 @@ const AdminDashboard = () => {
   const [paidStudentPackages, setPaidStudentPackages] = useState<StudentPackage[]>([]);
   const [studentPackages, setStudentPackages] = useState<StudentPackage[]>([]);
   const navigate = useNavigate();
-  const [closedSlots, setClosedSlots] = useState<ClosedSlot[]>([]);
-  const [completedBookings, setCompletedBookings] = useState<CompletedBooking[]>([]);
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -100,13 +82,21 @@ const AdminDashboard = () => {
     sessionsPerMonth: { month: string; sessions: number }[];
     studentGrowth: { month: string; students: number }[];
     packageStats: { package_name: string; total: number }[];
-    totals: { totalSessions: number; totalRevenue: number; activeStudents: number };
+    totals: {
+      totalSessions: number;
+      totalRevenue: number;
+      totalStudents: number;
+      teachersCount: number;
+      classesToday: number;
+      classesThisWeek: number;
+      classesThisMonth: number;
+    };
   }
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [teacherCount, setTeacherCount] = useState<number | null>(null);
 
   useEffect(() => {
     fetchDashboardData();
-    fetchClosedSlots();
     fetchAnalytics();
   }, []);
 
@@ -132,22 +122,22 @@ const AdminDashboard = () => {
       const headers = { Authorization: `Bearer ${token}` };
       const base = import.meta.env.VITE_API_URL;
 
-      const [studentsRes, bookingsRes, pendingRes, paidRes, completedRes, feedbackRes] =
+      const [studentsRes, bookingsRes, pendingRes, paidRes, feedbackRes, teachersRes] =
         await Promise.all([
           axios.get(`${base}/api/student/students`, { headers }),
           axios.get(`${base}/api/student-bookings`, { headers }),
           axios.get(`${base}/api/student/student-packages/pending`, { headers }),
           axios.get(`${base}/api/student/student-packages/paid`, { headers }),
-          axios.get<CompletedBooking[]>(`${base}/api/completed-bookings`, { headers }),
           axios.get<Feedback[]>(`${base}/api/admin/feedback`, { headers }),
+          axios.get(`${base}/api/admin/teachers`, { headers }),
         ]);
 
       setStudents(studentsRes.data);
       setBookings(bookingsRes.data);
       setStudentPackages(pendingRes.data);
       setPaidStudentPackages(paidRes.data);
-      setCompletedBookings(completedRes.data);
       setFeedback(feedbackRes.data);
+      setTeacherCount(teachersRes.data.length);
     } catch (err) {
       console.error("Error fetching data", err);
     }
@@ -181,19 +171,6 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleMarkAsDone = async (bookingId: number, studentPackageId: number) => {
-    try {
-      const token = localStorage.getItem("token");
-      await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/bookings/done/${bookingId}`,
-        { student_package_id: studentPackageId },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      fetchDashboardData();
-    } catch (error) {
-      console.error("Error marking class as done:", error);
-    }
-  };
 
   const handleCancelBooking = async (bookingId: number) => {
     try {
@@ -209,24 +186,7 @@ const AdminDashboard = () => {
     }
   };
 
-  const fetchClosedSlots = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const res = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/admin/closed-slots`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const formattedSlots = res.data.map((slot: ClosedSlot) => ({
-        date: new Date(slot.date).toLocaleDateString("en-CA"),
-        time: slot.time,
-      }));
-      setClosedSlots(formattedSlots);
-    } catch (err) {
-      console.error("Error fetching closed slots", err);
-    }
-  };
 
-  const totalStudents = students.length;
   const enrolledStudents = paidStudentPackages.filter(
     (sp) => sp.payment_status === "paid" && sp.sessions_remaining > 0
   ).length;
@@ -234,19 +194,33 @@ const AdminDashboard = () => {
     (sp) => sp.payment_status === "unpaid" && sp.sessions_remaining > 0
   );
 
+  const todayStr = new Date().toDateString();
+  const todayBookings = bookings.filter(
+    (b) => new Date(b.appointment_date).toDateString() === todayStr
+  );
+
   return (
     <>
       <NavBar />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         {/* Stats row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
             <div className="p-2 bg-primary/10 rounded-lg">
               <Users className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Total Students</p>
-              <p className="text-2xl font-bold">{totalStudents}</p>
+              <p className="text-xs text-muted-foreground">Students</p>
+              <p className="text-2xl font-bold">{analytics?.totals.totalStudents ?? students.length}</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <GraduationCap className="h-5 w-5 text-purple-600" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Teachers</p>
+              <p className="text-2xl font-bold">{teacherCount ?? "—"}</p>
             </div>
           </div>
           <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
@@ -258,135 +232,176 @@ const AdminDashboard = () => {
               <p className="text-2xl font-bold">{enrolledStudents}</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowFeedback(true)}
-            className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3 text-left hover:bg-muted/30 transition-colors col-span-2 sm:col-span-1"
-          >
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <MessageSquare className="h-5 w-5 text-blue-600" />
+          <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
+            <div className="p-2 bg-orange-100 rounded-lg">
+              <CalendarCheck className="h-5 w-5 text-orange-600" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Student Feedback</p>
+              <p className="text-xs text-muted-foreground">Classes Today</p>
+              <p className="text-2xl font-bold">{analytics?.totals.classesToday ?? "—"}</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <CalendarDays className="h-5 w-5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">This Month</p>
+              <p className="text-2xl font-bold">{analytics?.totals.classesThisMonth ?? "—"}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowFeedback(true)}
+            className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3 text-left hover:bg-muted/30 transition-colors"
+          >
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <MessageSquare className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Feedback</p>
               <p className="text-2xl font-bold">{feedback.length}</p>
             </div>
           </button>
         </div>
 
-        {/* Two-column layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Pending Enrollees */}
-          <div className="lg:col-span-2 bg-white rounded-xl border shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b bg-muted/40">
-              <h2 className="font-semibold text-sm">Pending Enrollees</h2>
-            </div>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
+        {/* Pending Enrollees */}
+        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b bg-muted/40">
+            <h2 className="font-semibold text-sm">Pending Enrollees</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Student</TableHead>
+                  <TableHead>Package</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingEnrollees.length === 0 ? (
                   <TableRow>
-                    <TableHead>Student</TableHead>
-                    <TableHead>Package</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
+                    <TableCell colSpan={3} className="text-center text-muted-foreground py-6 text-sm">
+                      No pending enrollees
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pendingEnrollees.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={3} className="text-center text-muted-foreground py-6 text-sm">
-                        No pending enrollees
+                ) : (
+                  pendingEnrollees.map((enrollee) => (
+                    <TableRow key={enrollee.id}>
+                      <TableCell className="text-sm font-medium">
+                        {enrollee.student_name || students.find((s) => s.id === enrollee.student_id)?.name || "Unknown"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="text-xs">
+                          {enrollee.package_name || `#${enrollee.package_id}`}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right space-x-1">
+                        {enrollee.receipt_image && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => setReceiptImage(enrollee.receipt_image)}
+                          >
+                            <Eye className="h-3 w-3 mr-1" /> Receipt
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="default"
+                          className="bg-green-600 hover:bg-green-700 h-7 px-2 text-xs"
+                          onClick={() => handleConfirm(enrollee.id)}
+                        >
+                          Confirm
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => handleReject(enrollee.id)}
+                        >
+                          Reject
+                        </Button>
                       </TableCell>
                     </TableRow>
-                  ) : (
-                    pendingEnrollees.map((enrollee) => (
-                      <TableRow key={enrollee.id}>
-                        <TableCell className="text-sm font-medium">
-                          {enrollee.student_name || students.find((s) => s.id === enrollee.student_id)?.name || "Unknown"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className="text-xs">
-                            {enrollee.package_name || `#${enrollee.package_id}`}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right space-x-1">
-                          {enrollee.receipt_image && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 px-2 text-xs"
-                              onClick={() => setReceiptImage(enrollee.receipt_image)}
-                            >
-                              <Eye className="h-3 w-3 mr-1" /> Receipt
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="default"
-                            className="bg-green-600 hover:bg-green-700 h-7 px-2 text-xs"
-                            onClick={() => handleConfirm(enrollee.id)}
-                          >
-                            Confirm
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            className="h-7 px-2 text-xs"
-                            onClick={() => handleReject(enrollee.id)}
-                          >
-                            Reject
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+
+
+        {/* Schedule Summary + Today's Upcoming Classes */}
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-white rounded-xl border shadow-sm p-3 text-center">
+              <p className="text-xs text-muted-foreground mb-1">Today's Classes</p>
+              <p className="text-xl font-bold text-orange-600">{analytics?.totals.classesToday ?? todayBookings.length}</p>
+            </div>
+            <div className="bg-white rounded-xl border shadow-sm p-3 text-center">
+              <p className="text-xs text-muted-foreground mb-1">This Week</p>
+              <p className="text-xl font-bold text-blue-600">{analytics?.totals.classesThisWeek ?? "—"}</p>
+            </div>
+            <div className="bg-white rounded-xl border shadow-sm p-3 text-center">
+              <p className="text-xs text-muted-foreground mb-1">This Month</p>
+              <p className="text-xl font-bold text-primary">{analytics?.totals.classesThisMonth ?? "—"}</p>
+            </div>
+            <div className="bg-white rounded-xl border shadow-sm p-3 text-center">
+              <p className="text-xs text-muted-foreground mb-1">Total Done</p>
+              <p className="text-xl font-bold text-green-600">{analytics?.totals.totalSessions ?? "—"}</p>
             </div>
           </div>
 
-          {/* Confirm Classes */}
-          <div className="lg:col-span-3 bg-white rounded-xl border shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b bg-muted/40">
-              <h2 className="font-semibold text-sm">Confirm Classes</h2>
+          <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b bg-muted/40 flex items-center justify-between">
+              <h2 className="font-semibold text-sm">Today's Upcoming Classes</h2>
+              <span className="text-xs text-muted-foreground">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</span>
             </div>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Student</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Teacher</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {completedBookings.length === 0 ? (
+                  {todayBookings.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={3} className="text-center text-muted-foreground py-6 text-sm">
-                        No completed bookings
+                      <TableCell colSpan={5} className="text-center text-muted-foreground py-6 text-sm">
+                        No classes scheduled for today
                       </TableCell>
                     </TableRow>
                   ) : (
-                    completedBookings.map((booking) => (
-                      <TableRow key={booking.id}>
-                        <TableCell className="text-sm font-medium">
-                          {booking.student_name}
-                        </TableCell>
+                    todayBookings.map((b) => (
+                      <TableRow key={b.id}>
+                        <TableCell className="text-sm font-medium">{b.student_name}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                        {fmtDate(booking.appointment_date, "MMM d, yyyy h:mm a")}
+                          {fmtDate(b.appointment_date, "h:mm a")}
+                        </TableCell>
+                        <TableCell className="text-sm">{b.teacher_name || "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="text-xs capitalize">{b.status}</Badge>
                         </TableCell>
                         <TableCell className="text-right space-x-1">
                           <Button
                             size="sm"
-                            className="bg-green-600 hover:bg-green-700 h-7 px-2 text-xs"
-                            onClick={() =>
-                              handleMarkAsDone(booking.id, booking.student_package_id)
-                            }
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => navigate(`/admin/students/${b.student_id}`)}
                           >
-                            Done
+                            View Student
                           </Button>
                           <Button
                             size="sm"
                             variant="destructive"
                             className="h-7 px-2 text-xs"
-                            onClick={() => handleCancelBooking(booking.id)}
+                            onClick={() => handleCancelBooking(b.id)}
                           >
                             Cancel
                           </Button>
@@ -397,66 +412,6 @@ const AdminDashboard = () => {
                 </TableBody>
               </Table>
             </div>
-          </div>
-        </div>
-
-        {/* Upcoming Classes */}
-        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b bg-muted/40">
-            <h2 className="font-semibold text-sm">Upcoming Classes</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Student</TableHead>
-                  <TableHead>Date & Time</TableHead>
-                  <TableHead>Teacher</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {bookings.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-6 text-sm">
-                      No upcoming classes
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  bookings.map((b) => (
-                    <TableRow key={b.id}>
-                      <TableCell className="text-sm font-medium">{b.student_name}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {fmtDate(b.appointment_date, "MMM d, yyyy h:mm a")}
-                      </TableCell>
-                      <TableCell className="text-sm">{b.teacher_name || "—"}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className="text-xs capitalize">{b.status}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right space-x-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 px-2 text-xs"
-                          onClick={() => navigate(`/admin/students/${b.student_id}`)}
-                        >
-                          View Student
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          className="h-7 px-2 text-xs"
-                          onClick={() => handleCancelBooking(b.id)}
-                        >
-                          Cancel
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
           </div>
         </div>
 
@@ -476,8 +431,8 @@ const AdminDashboard = () => {
               </div>
               <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
                 <div>
-                  <p className="text-xs text-muted-foreground">Active Students</p>
-                  <p className="text-2xl font-bold">{analytics.totals.activeStudents}</p>
+                  <p className="text-xs text-muted-foreground">Total Students</p>
+                  <p className="text-2xl font-bold">{analytics.totals.totalStudents}</p>
                 </div>
               </div>
               <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
@@ -525,12 +480,6 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {/* Weekly Calendar */}
-        <WeeklyCalendar
-          bookings={bookings}
-          closedSlots={closedSlots}
-          fetchClosedSlots={fetchClosedSlots}
-        />
       </div>
 
       {/* Feedback Modal */}

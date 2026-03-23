@@ -21,10 +21,14 @@ router.get('/dashboard', authenticateToken, requireRole('student'), async (req, 
         const student = studentRows[0];
 
         const [packageRows] = await pool.query(
-            `SELECT tp.id, tp.package_name, sp.sessions_remaining, tp.price
+            `SELECT tp.id, tp.package_name, tp.price,
+                    (tp.session_limit - COALESCE((
+                        SELECT COUNT(*) FROM bookings WHERE student_package_id = sp.id AND status = 'done'
+                    ), 0)) AS sessions_remaining
              FROM student_packages sp
              JOIN tutorial_packages tp ON sp.package_id = tp.id
-             WHERE sp.student_id = ? AND sp.company_id = ?`,
+             WHERE sp.student_id = ? AND sp.company_id = ?
+             ORDER BY sp.purchased_at DESC LIMIT 1`,
             [userId, companyId]
         );
         const packageDetails = packageRows.length > 0 ? packageRows[0] : null;
@@ -235,9 +239,14 @@ router.get("/students", authenticateToken, requireRole('company_admin'), async (
         const [rows] = await pool.query(`
             SELECT
                 u.id, u.name, u.email, u.guardian_name, u.nationality, u.age, u.created_at,
-                sp.payment_status, sp.sessions_remaining, sp.subject, sp.package_id,
+                sp.payment_status, sp.subject, sp.package_id,
                 tp.package_name,
-                CASE WHEN sp.payment_status = 'paid' AND sp.sessions_remaining = 0 THEN TRUE ELSE FALSE END AS enrolled
+                (tp.session_limit - COALESCE((
+                    SELECT COUNT(*) FROM bookings WHERE student_package_id = sp.id AND status = 'done'
+                ), 0)) AS sessions_remaining,
+                CASE WHEN sp.payment_status = 'paid' AND (tp.session_limit - COALESCE((
+                    SELECT COUNT(*) FROM bookings WHERE student_package_id = sp.id AND status = 'done'
+                ), 0)) = 0 THEN TRUE ELSE FALSE END AS enrolled
             FROM users u
             LEFT JOIN student_packages sp
                 ON u.id = sp.student_id
@@ -261,11 +270,19 @@ router.get("/student-packages/pending", authenticateToken, requireRole('company_
     try {
         const companyId = req.user.company_id;
         const [rows] = await pool.query(`
-            SELECT sp.*, u.name AS student_name, tp.package_name, tp.subject AS package_subject
+            SELECT sp.id, sp.student_id, sp.package_id, sp.subject, sp.payment_status,
+                   sp.receipt_image, sp.teacher_id, sp.purchased_at,
+                   u.name AS student_name, tp.package_name, tp.subject AS package_subject,
+                   (tp.session_limit - COALESCE((
+                       SELECT COUNT(*) FROM bookings WHERE student_package_id = sp.id AND status = 'done'
+                   ), 0)) AS sessions_remaining
             FROM student_packages sp
             JOIN users u ON sp.student_id = u.id
             JOIN tutorial_packages tp ON sp.package_id = tp.id
-            WHERE sp.payment_status = 'unpaid' AND sp.sessions_remaining > 0 AND sp.company_id = ?
+            WHERE sp.payment_status = 'unpaid' AND sp.company_id = ?
+              AND (tp.session_limit - COALESCE((
+                  SELECT COUNT(*) FROM bookings WHERE student_package_id = sp.id AND status = 'done'
+              ), 0)) > 0
             ORDER BY sp.purchased_at DESC
         `, [companyId]);
         res.json(rows);
@@ -280,10 +297,19 @@ router.get("/student-packages/paid", authenticateToken, requireRole('company_adm
     try {
         const companyId = req.user.company_id;
         const [rows] = await pool.query(`
-            SELECT sp.*, u.name AS student_name
+            SELECT sp.id, sp.student_id, sp.package_id, sp.subject, sp.payment_status,
+                   sp.receipt_image, sp.teacher_id, sp.purchased_at,
+                   u.name AS student_name,
+                   (tp.session_limit - COALESCE((
+                       SELECT COUNT(*) FROM bookings WHERE student_package_id = sp.id AND status = 'done'
+                   ), 0)) AS sessions_remaining
             FROM student_packages sp
             JOIN users u ON sp.student_id = u.id
-            WHERE sp.payment_status = 'paid' AND sp.sessions_remaining > 0 AND sp.company_id = ?
+            JOIN tutorial_packages tp ON sp.package_id = tp.id
+            WHERE sp.payment_status = 'paid' AND sp.company_id = ?
+              AND (tp.session_limit - COALESCE((
+                  SELECT COUNT(*) FROM bookings WHERE student_package_id = sp.id AND status = 'done'
+              ), 0)) > 0
             ORDER BY sp.purchased_at DESC
         `, [companyId]);
         res.json(rows);

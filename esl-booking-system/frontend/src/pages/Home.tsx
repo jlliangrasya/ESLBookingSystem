@@ -7,6 +7,7 @@ import LearnMore from "../components/LearnMore";
 import TutorialPackages from "../components/TutorialPackages";
 import Footer from "../components/Footer";
 import LanguageToggle from "../components/LanguageToggle";
+import BrandLogo from "@/components/BrandLogo";
 import { Building2, ArrowRight } from "lucide-react";
 
 const Home = () => {
@@ -15,66 +16,63 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-50 to-white">
-      {/* Language toggle for unauthenticated users */}
-      <div className="absolute top-4 right-4 z-50">
-        <LanguageToggle />
-      </div>
+      {/* Top bar */}
+      <header className="w-full bg-white border-b border-border sticky top-0 z-50 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <BrandLogo />
+          <div className="flex items-center gap-3">
+            <LanguageToggle />
+            <Button size="sm" variant="outline" onClick={() => navigate("/company/register")}>
+              Register Center
+            </Button>
+          </div>
+        </div>
+      </header>
 
       {/* Hero section */}
-      <div className="max-w-7xl mx-auto px-4 pt-16 pb-8 flex flex-col md:flex-row items-center gap-10 md:gap-16">
+      <div className="max-w-7xl mx-auto px-4 pt-16 pb-12 flex flex-col md:flex-row items-center gap-10 md:gap-16">
         {/* Left — branding */}
         <div className="hidden md:flex flex-col flex-1">
-          <h1 className="text-5xl font-bold text-primary leading-tight">
-            {t("home.welcome")}<br />{t("home.brand")}
+          <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-xs font-semibold px-3 py-1.5 rounded-full w-fit mb-4">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+            ESL Management Platform
+          </div>
+          <h1 className="text-5xl font-bold text-gray-900 leading-tight">
+            {t("home.welcome")}<br />
+            <span className="text-primary">{t("home.brand")}</span>
           </h1>
-          <p className="mt-4 text-lg text-muted-foreground">
+          <p className="mt-4 text-lg text-muted-foreground max-w-md">
             {t("home.subtitle")}
           </p>
           <div className="mt-6 flex gap-3">
             <Button
               variant="outline"
-              onClick={() =>
-                document
-                  .getElementById("learn-more")
-                  ?.scrollIntoView({ behavior: "smooth" })
-              }
+              onClick={() => document.getElementById("learn-more")?.scrollIntoView({ behavior: "smooth" })}
             >
               {t("home.learnMore")}
             </Button>
             <Button
               variant="secondary"
-              onClick={() =>
-                document
-                  .getElementById("tutorial-packages")
-                  ?.scrollIntoView({ behavior: "smooth" })
-              }
+              onClick={() => document.getElementById("tutorial-packages")?.scrollIntoView({ behavior: "smooth" })}
             >
               {t("home.tutorialPackages")}
             </Button>
           </div>
         </div>
 
-        {/* Right — login / register card */}
+        {/* Right — login card */}
         <div className="w-full md:max-w-md flex-shrink-0">
-          <Card className="shadow-xl rounded-2xl">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-center text-primary text-xl font-semibold">
+          <Card className="shadow-xl rounded-2xl border-0 ring-1 ring-border">
+            <CardHeader className="pb-2 text-center">
+              <div className="flex justify-center mb-2">
+                <BrandLogo size="lg" />
+              </div>
+              <CardTitle className="text-gray-600 text-base font-medium">
                 {t("home.welcomeBack")}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <Login />
-              {/* Self-registration disabled — admins add students manually
-              <Button
-                variant="ghost"
-                onClick={toggleAuth}
-                className="w-full mt-4 text-sm text-muted-foreground hover:text-primary"
-              >
-                {showRegister
-                  ? "Already have an account? Log in here."
-                  : "Are you a new student? Register here."}
-              </Button>
-              */}
             </CardContent>
           </Card>
         </div>

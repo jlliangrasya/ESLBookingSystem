@@ -13,25 +13,22 @@ import "../index.css";
 import { fmtDate } from "@/utils/timezone";
 
 interface Booking {
-  id: number;
-  student_name: string;
-  package_name: string;
   appointment_date: string;
-  status: "pending" | "confirmed" | "rejected";
-  rescheduled_by_admin: boolean;
-  created_at: string;
+  [key: string]: unknown;
 }
 
 interface WeeklyCalendarProps {
   bookings: Booking[];
   closedSlots: { date: string; time: string }[];
   fetchClosedSlots: () => void;
+  onUpdateSlots?: (slots: { date: string; time: string }[], action: "close" | "open") => Promise<void>;
 }
 
 const WeeklyCalendar: React.FC<WeeklyCalendarProps> = ({
   bookings,
   closedSlots,
   fetchClosedSlots,
+  onUpdateSlots,
 }) => {
   const [currentWeek, setCurrentWeek] = useState(new Date());
   const [selectedSlots, setSelectedSlots] = useState<{ date: string; time: string }[]>([]);
@@ -79,12 +76,16 @@ const WeeklyCalendar: React.FC<WeeklyCalendarProps> = ({
     if (filteredSlots.length === 0) return;
 
     try {
-      const token = localStorage.getItem("token");
-      await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/admin/update-slots`,
-        { slots: selectedSlots, action },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      if (onUpdateSlots) {
+        await onUpdateSlots(filteredSlots, action);
+      } else {
+        const token = localStorage.getItem("token");
+        await axios.post(
+          `${import.meta.env.VITE_API_URL}/api/admin/update-slots`,
+          { slots: selectedSlots, action },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      }
       setSelectedSlots([]);
       fetchClosedSlots();
     } catch (err) {

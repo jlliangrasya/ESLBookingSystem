@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CheckCircle2, Loader2, AlertCircle, Users, BookOpen, Star } from "lucide-react";
-import logo from "../assets/Brightfolks_Logo.png";
+import BrandLogo from "@/components/BrandLogo";
 
 interface Plan {
   id: number;
@@ -28,10 +28,10 @@ const CompanyRegisterPage = () => {
   const [error, setError] = useState<string | null>(null);
 
   const [form, setForm] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    address: "",
+    company_name: "",
+    company_email: "",
+    company_phone: "",
+    company_address: "",
     owner_name: "",
     owner_email: "",
     owner_password: "",
@@ -98,12 +98,13 @@ const CompanyRegisterPage = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/10 to-blue-50">
       {/* Header */}
-      <div className="bg-white border-b px-4 py-3 flex items-center justify-between max-w-7xl mx-auto">
-        <img src={logo} alt="Brightfolks Logo" className="h-10 w-auto cursor-pointer"
-          onClick={() => navigate("/")} />
-        <Button variant="outline" size="sm" onClick={() => navigate("/")}>
-          Back to Home
-        </Button>
+      <div className="bg-white border-b sticky top-0 z-50 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="cursor-pointer" onClick={() => navigate("/")}><BrandLogo /></div>
+          <Button variant="outline" size="sm" onClick={() => navigate("/")}>
+            Back to Home
+          </Button>
+        </div>
       </div>
 
       <div className="max-w-5xl mx-auto px-4 py-10 space-y-10">
@@ -194,24 +195,24 @@ const CompanyRegisterPage = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="name">ESL Center Name *</Label>
-                  <Input id="name" name="name" placeholder="e.g. Bright English Academy"
-                    value={form.name} onChange={handleChange} required />
+                  <Label htmlFor="company_name">ESL Center Name *</Label>
+                  <Input id="company_name" name="company_name" placeholder="e.g. Bright English Academy"
+                    value={form.company_name} onChange={handleChange} required />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="email">Company Email *</Label>
-                  <Input id="email" name="email" type="email" placeholder="contact@yourschool.com"
-                    value={form.email} onChange={handleChange} required />
+                  <Label htmlFor="company_email">Company Email *</Label>
+                  <Input id="company_email" name="company_email" type="email" placeholder="contact@yourschool.com"
+                    value={form.company_email} onChange={handleChange} required />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <Input id="phone" name="phone" placeholder="+63 912 345 6789"
-                    value={form.phone} onChange={handleChange} />
+                  <Label htmlFor="company_phone">Phone Number</Label>
+                  <Input id="company_phone" name="company_phone" placeholder="+63 912 345 6789"
+                    value={form.company_phone} onChange={handleChange} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="address">Address</Label>
-                  <Input id="address" name="address" placeholder="City, Province"
-                    value={form.address} onChange={handleChange} />
+                  <Label htmlFor="company_address">Address</Label>
+                  <Input id="company_address" name="company_address" placeholder="City, Province"
+                    value={form.company_address} onChange={handleChange} />
                 </div>
               </div>
 

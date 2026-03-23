@@ -1,7 +1,7 @@
 import { useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import logo from "../assets/Brightfolks_Logo.png";
+import BrandLogo from "@/components/BrandLogo";
 import { CalendarDays, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus } from "lucide-react";
 import {
   DropdownMenu,
@@ -33,7 +33,7 @@ const NavBar: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link to={logoLink} className="flex items-center">
-          <img src={logo} alt="Brightfolks Logo" className="h-10 w-auto" />
+          <BrandLogo />
         </Link>
 
         {/* Nav links */}

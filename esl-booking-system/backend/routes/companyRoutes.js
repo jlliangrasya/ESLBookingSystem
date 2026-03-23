@@ -20,9 +20,9 @@ router.get('/subscription-plans', async (req, res) => {
 
 // PUBLIC: Register a new company (status: pending)
 router.post('/register', async (req, res) => {
-    const { name, email, phone, address, subscription_plan_id, owner_name, owner_email, owner_password } = req.body;
+    const { company_name, company_email, company_phone, company_address, subscription_plan_id, owner_name, owner_email, owner_password } = req.body;
 
-    if (!name || !email || !subscription_plan_id || !owner_name || !owner_email || !owner_password) {
+    if (!company_name || !company_email || !subscription_plan_id || !owner_name || !owner_email || !owner_password) {
         return res.status(400).json({ message: 'Missing required fields' });
     }
 
@@ -30,13 +30,13 @@ router.post('/register', async (req, res) => {
     try {
         await connection.beginTransaction();
 
-        const [[existingCompany]] = await connection.query('SELECT id FROM companies WHERE email = ?', [email]);
+        const [[existingCompany]] = await connection.query('SELECT id FROM companies WHERE company_email = ?', [company_email]);
         if (existingCompany) {
             await connection.rollback();
             return res.status(400).json({ message: 'A company with this email is already registered' });
         }
 
-        const [[sameName]] = await connection.query('SELECT id FROM companies WHERE LOWER(name) = LOWER(?)', [name]);
+        const [[sameName]] = await connection.query('SELECT id FROM companies WHERE LOWER(company_name) = LOWER(?)', [company_name]);
         if (sameName) {
             await connection.rollback();
             return res.status(400).json({ message: 'A company with this name is already registered' });
@@ -55,9 +55,9 @@ router.post('/register', async (req, res) => {
         }
 
         const [result] = await connection.query(
-            `INSERT INTO companies (name, email, phone, address, subscription_plan_id, status)
+            `INSERT INTO companies (company_name, company_email, company_phone, company_address, subscription_plan_id, status)
              VALUES (?, ?, ?, ?, ?, 'pending')`,
-            [name, email, phone || null, address || null, subscription_plan_id]
+            [company_name, company_email, company_phone || null, company_address || null, subscription_plan_id]
         );
         const companyId = result.insertId;
 
@@ -101,7 +101,7 @@ router.get('/', authenticateToken, requireRole('super_admin'), async (req, res) 
     try {
         const [rows] = await pool.query(`
             SELECT
-                c.id, c.name, c.email, c.phone, c.address, c.status,
+                c.id, c.company_name, c.company_email, c.company_phone, c.company_address, c.status,
                 c.created_at, c.approved_at, c.trial_ends_at,
                 c.next_due_date, c.last_paid_at,
                 sp.name AS plan_name, sp.max_students, sp.max_teachers, sp.price_monthly,
@@ -168,8 +168,8 @@ router.post('/:id/approve', authenticateToken, requireRole('super_admin'), async
             });
         }
 
-        await logAction(null, superAdminId, 'company_approved', 'company', Number(id), { company_name: company.name, plan: company.plan_name });
-        res.json({ message: `Company "${company.name}" approved successfully` });
+        await logAction(null, superAdminId, 'company_approved', 'company', Number(id), { company_name: company.company_name, plan: company.plan_name });
+        res.json({ message: `Company "${company.company_name}" approved successfully` });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });
@@ -199,8 +199,8 @@ router.post('/:id/reject', authenticateToken, requireRole('super_admin'), async 
             });
         }
 
-        await logAction(null, req.user.id, 'company_rejected', 'company', Number(id), { company_name: company.name });
-        res.json({ message: `Company "${company.name}" rejected` });
+        await logAction(null, req.user.id, 'company_rejected', 'company', Number(id), { company_name: company.company_name });
+        res.json({ message: `Company "${company.company_name}" rejected` });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });
@@ -234,7 +234,7 @@ router.post('/:id/reactivate', authenticateToken, requireRole('super_admin'), as
 router.post('/:id/lock', authenticateToken, requireRole('super_admin'), async (req, res) => {
     try {
         const { id } = req.params;
-        const [[company]] = await pool.query('SELECT name FROM companies WHERE id = ?', [id]);
+        const [[company]] = await pool.query('SELECT company_name FROM companies WHERE id = ?', [id]);
         if (!company) return res.status(404).json({ message: 'Company not found' });
 
         await pool.query("UPDATE companies SET status = 'locked' WHERE id = ?", [id]);
@@ -250,7 +250,7 @@ router.post('/:id/lock', authenticateToken, requireRole('super_admin'), async (r
                 message: 'Your company account has been locked. Please contact support to resolve your payment and restore access.',
             });
         }
-        await logAction(null, req.user.id, 'company_locked', 'company', Number(id), { company_name: company.name });
+        await logAction(null, req.user.id, 'company_locked', 'company', Number(id), { company_name: company.company_name });
         res.json({ message: 'Company locked' });
     } catch (err) {
         res.status(500).json({ message: 'Server error' });
@@ -280,16 +280,41 @@ router.post('/:id/unlock', authenticateToken, requireRole('super_admin'), async 
     }
 });
 
-// SUPER ADMIN: Mark subscription as paid — extends next_due_date by 1 month
+// SUPER ADMIN: Mark subscription as paid — records payment history + extends next_due_date by 1 month
 router.post('/:id/mark-paid', authenticateToken, requireRole('super_admin'), async (req, res) => {
     try {
         const { id } = req.params;
-        const [[company]] = await pool.query('SELECT name, next_due_date FROM companies WHERE id = ?', [id]);
+        const superAdminId = req.user.id;
+        const { notes } = req.body;
+
+        const [[company]] = await pool.query(`
+            SELECT c.company_name, c.next_due_date, sp.price_monthly
+            FROM companies c
+            JOIN subscription_plans sp ON c.subscription_plan_id = sp.id
+            WHERE c.id = ?
+        `, [id]);
         if (!company) return res.status(404).json({ message: 'Company not found' });
 
+        // Payment period: from current next_due_date (or today) + 1 month
+        const periodStart = company.next_due_date
+            ? new Date(company.next_due_date).toISOString().split('T')[0]
+            : new Date().toISOString().split('T')[0];
+        const periodEndDt = new Date(periodStart);
+        periodEndDt.setMonth(periodEndDt.getMonth() + 1);
+        const periodEnd = periodEndDt.toISOString().split('T')[0];
+
+        // Record in payment history
+        await pool.query(
+            `INSERT INTO company_payments (company_id, amount, payment_date, period_start, period_end, notes, recorded_by)
+             VALUES (?, ?, CURDATE(), ?, ?, ?, ?)`,
+            [id, company.price_monthly, periodStart, periodEnd, notes || null, superAdminId]
+        );
+
+        // Update company billing dates
         await pool.query(
             `UPDATE companies SET last_paid_at = NOW(),
-             next_due_date = DATE_ADD(COALESCE(next_due_date, CURDATE()), INTERVAL 1 MONTH)
+             next_due_date = DATE_ADD(COALESCE(next_due_date, CURDATE()), INTERVAL 1 MONTH),
+             status = IF(status = 'locked', 'active', status)
              WHERE id = ?`,
             [id]
         );
@@ -302,11 +327,12 @@ router.post('/:id/mark-paid', authenticateToken, requireRole('super_admin'), asy
                 userId: owner.id, companyId: Number(id),
                 type: 'payment_confirmed',
                 title: 'Payment confirmed',
-                message: 'Your subscription payment has been confirmed. Your account is active for another month.',
+                message: `Your subscription payment of ₱${Number(company.price_monthly).toLocaleString()} has been confirmed. Your account is active for another month.`,
             });
         }
-        res.json({ message: 'Payment marked, subscription extended by 1 month' });
+        res.json({ message: 'Payment recorded, subscription extended by 1 month' });
     } catch (err) {
+        console.error(err);
         res.status(500).json({ message: 'Server error' });
     }
 });
@@ -337,7 +363,7 @@ router.post('/upgrade-request', authenticateToken.basic, requireRole('company_ad
 
         // Notify super_admins
         const [superAdmins] = await pool.query("SELECT id FROM users WHERE role = 'super_admin'");
-        const [[company]] = await pool.query('SELECT name FROM companies WHERE id = ?', [companyId]);
+        const [[company]] = await pool.query('SELECT company_name FROM companies WHERE id = ?', [companyId]);
         const [[plan]] = await pool.query('SELECT name FROM subscription_plans WHERE id = ?', [subscription_plan_id]);
         await Promise.all(superAdmins.map(sa => notify({
             userId: sa.id,

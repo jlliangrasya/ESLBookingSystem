@@ -7,6 +7,16 @@ const { logAction } = require('../utils/audit');
 
 const router = express.Router();
 
+/** Current time as Manila-equivalent DATETIME string.
+ *  Appointments are stored in Manila local time (UTC+8).
+ *  MySQL's NOW() may return UTC, so we build the Manila time in JS instead. */
+function nowManila() {
+    return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+}
+function todayManila() {
+    return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
 // Teacher dashboard — assigned students and upcoming bookings
 router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, res) => {
     try {
@@ -24,7 +34,9 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
             SELECT
                 u.id, u.name, u.nationality, u.age,
                 tp.package_name,
-                sp.sessions_remaining,
+                (tp.session_limit - COALESCE((
+                    SELECT COUNT(*) FROM bookings WHERE student_package_id = sp.id AND status = 'done'
+                ), 0)) AS sessions_remaining,
                 sp.subject,
                 sp.payment_status
             FROM student_packages sp
@@ -51,10 +63,10 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
             JOIN users u ON sp.student_id = u.id
             JOIN tutorial_packages tp ON sp.package_id = tp.id
             WHERE b.teacher_id = ? AND b.company_id = ?
-              AND DATE(b.appointment_date) >= CURDATE()
+              AND DATE(b.appointment_date) >= ?
               AND b.status NOT IN ('done', 'cancelled')
             ORDER BY b.appointment_date ASC
-        `, [teacherId, companyId]);
+        `, [teacherId, companyId, todayManila()]);
 
         // Completed bookings for this teacher (with has_report flag + absence tracking)
         const [completedBookings] = await pool.query(`
@@ -74,7 +86,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
             JOIN users u ON sp.student_id = u.id
             JOIN tutorial_packages tp ON sp.package_id = tp.id
             LEFT JOIN class_reports cr ON cr.booking_id = b.id
-            WHERE b.teacher_id = ? AND b.company_id = ? AND b.status IN ('confirmed', 'done')
+            WHERE b.teacher_id = ? AND b.company_id = ? AND b.status = 'done'
             ORDER BY b.appointment_date DESC
             LIMIT 20
         `, [teacherId, companyId]);
@@ -85,22 +97,35 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
             FROM bookings
             WHERE teacher_id = ? AND company_id = ?
               AND status IN ('confirmed', 'done')
-              AND YEARWEEK(appointment_date, 1) = YEARWEEK(CURDATE(), 1)
-        `, [teacherId, companyId]);
+              AND YEARWEEK(appointment_date, 1) = YEARWEEK(?, 1)
+        `, [teacherId, companyId, todayManila()]);
 
         const [[monthRow]] = await pool.query(`
             SELECT COUNT(*) AS classes_this_month
             FROM bookings
             WHERE teacher_id = ? AND company_id = ?
               AND status IN ('confirmed', 'done')
-              AND YEAR(appointment_date) = YEAR(CURDATE())
-              AND MONTH(appointment_date) = MONTH(CURDATE())
+              AND YEAR(appointment_date) = YEAR(?)
+              AND MONTH(appointment_date) = MONTH(?)
+        `, [teacherId, companyId, todayManila(), todayManila()]);
+
+        // Health summary (all-time)
+        const [[healthRow]] = await pool.query(`
+            SELECT COUNT(*) AS total_done,
+                   SUM(CASE WHEN teacher_absent = TRUE THEN 1 ELSE 0 END) AS total_absent
+            FROM bookings
+            WHERE teacher_id = ? AND company_id = ? AND status = 'done'
         `, [teacherId, companyId]);
 
         res.json({
             teacher, students, bookings, completedBookings,
             classes_this_week: weekRow.classes_this_week,
             classes_this_month: monthRow.classes_this_month,
+            health: {
+                total_done: healthRow.total_done || 0,
+                total_absent: healthRow.total_absent || 0,
+                attended: (healthRow.total_done || 0) - (healthRow.total_absent || 0),
+            },
         });
     } catch (err) {
         console.error('Error fetching teacher dashboard:', err);
@@ -154,8 +179,8 @@ router.put('/bookings/:id/class-info', authenticateToken, requireRole('teacher')
         const { id } = req.params;
 
         const [[booking]] = await pool.query(
-            'SELECT id FROM bookings WHERE id = ? AND teacher_id = ? AND appointment_date >= NOW()',
-            [id, teacherId]
+            'SELECT id FROM bookings WHERE id = ? AND teacher_id = ? AND appointment_date >= ?',
+            [id, teacherId, nowManila()]
         );
         if (!booking) return res.status(404).json({ message: 'Booking not found or not editable' });
 
@@ -178,9 +203,9 @@ router.post('/bookings/:id/mark-student-absent', authenticateToken, requireRole(
         const [[booking]] = await pool.query(
             `SELECT id, student_absent FROM bookings
              WHERE id = ? AND teacher_id = ?
-               AND TIMESTAMPADD(MINUTE, 15, appointment_date) <= NOW()
+               AND TIMESTAMPADD(MINUTE, 15, appointment_date) <= ?
                AND status NOT IN ('done', 'cancelled')`,
-            [id, teacherId]
+            [id, teacherId, nowManila()]
         );
         if (!booking) {
             return res.status(400).json({ message: 'Cannot mark absent: booking not found, class has not started 15 minutes ago, or is already closed.' });
@@ -308,6 +333,34 @@ router.get('/feedback', authenticateToken, requireRole('teacher'), async (req, r
     }
 });
 
+// GET /api/teacher/completed-classes?month=&year= — completed classes for a specific month
+router.get('/completed-classes', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const teacherId = req.user.id;
+        const companyId = req.user.company_id;
+        const month = parseInt(req.query.month) || new Date().getMonth() + 1;
+        const year = parseInt(req.query.year) || new Date().getFullYear();
+
+        const [rows] = await pool.query(`
+            SELECT b.id, b.appointment_date, b.status, b.student_absent, b.teacher_absent,
+                   u.name AS student_name, sp.student_id, tp.package_name, sp.subject,
+                   CASE WHEN cr.id IS NOT NULL THEN TRUE ELSE FALSE END AS has_report
+            FROM bookings b
+            JOIN student_packages sp ON b.student_package_id = sp.id
+            JOIN users u ON sp.student_id = u.id
+            JOIN tutorial_packages tp ON sp.package_id = tp.id
+            LEFT JOIN class_reports cr ON cr.booking_id = b.id
+            WHERE b.teacher_id = ? AND b.company_id = ? AND b.status = 'done'
+              AND YEAR(b.appointment_date) = ? AND MONTH(b.appointment_date) = ?
+            ORDER BY b.appointment_date DESC
+        `, [teacherId, companyId, year, month]);
+
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // GET /api/teacher/class-stats?month=3&year=2026 — classes in any given month
 router.get('/class-stats', authenticateToken, requireRole('teacher'), async (req, res) => {
     try {
@@ -328,6 +381,118 @@ router.get('/class-stats', authenticateToken, requireRole('teacher'), async (req
         res.json({ month, year, class_count: row.class_count });
     } catch (err) {
         res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// GET /api/teacher/pending-confirmation — past bookings still needing teacher confirmation
+router.get('/pending-confirmation', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const teacherId = req.user.id;
+        const companyId = req.user.company_id;
+        const [rows] = await pool.query(`
+            SELECT
+                b.id, b.appointment_date, b.status, b.student_absent,
+                b.student_package_id,
+                u.name AS student_name,
+                sp.student_id,
+                tp.package_name,
+                sp.subject
+            FROM bookings b
+            JOIN student_packages sp ON b.student_package_id = sp.id
+            JOIN users u ON sp.student_id = u.id
+            JOIN tutorial_packages tp ON sp.package_id = tp.id
+            WHERE b.teacher_id = ? AND b.company_id = ?
+              AND b.appointment_date < ?
+              AND b.status IN ('pending', 'confirmed')
+            ORDER BY b.appointment_date DESC
+        `, [teacherId, companyId, nowManila()]);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// POST /api/teacher/bookings/:id/done — teacher confirms class happened, deducts session
+router.post('/bookings/:id/done', authenticateToken, requireRole('teacher'), async (req, res) => {
+    const { id } = req.params;
+    const teacherId = req.user.id;
+    const companyId = req.user.company_id;
+
+    const connection = await pool.getConnection();
+    try {
+        const [[booking]] = await pool.query(
+            `SELECT b.id, b.student_package_id, b.appointment_date, b.student_absent,
+                    sp.student_id, u.name AS student_name
+             FROM bookings b
+             JOIN student_packages sp ON b.student_package_id = sp.id
+             JOIN users u ON sp.student_id = u.id
+             WHERE b.id = ? AND b.teacher_id = ? AND b.company_id = ?
+               AND b.appointment_date < ?
+               AND b.status IN ('pending', 'confirmed')`,
+            [id, teacherId, companyId, nowManila()]
+        );
+        if (!booking) return res.status(404).json({ message: 'Booking not found or not eligible for confirmation' });
+
+        await connection.beginTransaction();
+
+        await connection.query(
+            `UPDATE student_packages SET sessions_remaining = sessions_remaining - 1
+             WHERE id = ? AND company_id = ? AND sessions_remaining > 0`,
+            [booking.student_package_id, companyId]
+        );
+        await connection.query(
+            "UPDATE bookings SET status = 'done' WHERE id = ?",
+            [id]
+        );
+
+        await connection.commit();
+
+        // Notify teacher to submit report
+        await notify({
+            userId: teacherId, companyId,
+            type: 'report_due',
+            title: 'Class confirmed — report required',
+            message: `Please submit your class report for ${booking.student_name}.`,
+        });
+
+        // Low-session notifications
+        const [[updatedPkg]] = await pool.query(
+            `SELECT sessions_remaining, student_id, u.name AS student_name
+             FROM student_packages sp JOIN users u ON sp.student_id = u.id
+             WHERE sp.id = ?`, [booking.student_package_id]
+        );
+        if (updatedPkg && updatedPkg.sessions_remaining <= 2 && updatedPkg.sessions_remaining > 0) {
+            await notify({
+                userId: updatedPkg.student_id, companyId,
+                type: 'low_sessions',
+                title: 'Low sessions remaining',
+                message: `You have ${updatedPkg.sessions_remaining} session(s) left. Please consider enrolling in a new package soon.`,
+            });
+            const [admins] = await pool.query(
+                "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin'", [companyId]
+            );
+            await Promise.all(admins.map(admin => notify({
+                userId: admin.id, companyId,
+                type: 'low_sessions',
+                title: 'Student low on sessions',
+                message: `${updatedPkg.student_name} has only ${updatedPkg.sessions_remaining} session(s) remaining.`,
+            })));
+        } else if (updatedPkg && updatedPkg.sessions_remaining === 0) {
+            await notify({
+                userId: updatedPkg.student_id, companyId,
+                type: 'package_exhausted',
+                title: 'Package exhausted',
+                message: 'You have used all your sessions. Please enroll in a new package to continue booking.',
+            });
+        }
+
+        await logAction(companyId, teacherId, 'booking_confirmed_by_teacher', 'booking', Number(id), { student_name: booking.student_name });
+        res.json({ message: 'Class confirmed as done' });
+    } catch (err) {
+        await connection.rollback();
+        res.status(500).json({ message: 'Server error' });
+    } finally {
+        connection.release();
     }
 });
 
@@ -438,6 +603,66 @@ router.post('/availability', authenticateToken, requireRole('teacher'), async (r
 
         res.json({ message: `Slot ${action}d successfully` });
     } catch (err) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// GET /api/teacher/weekly-slots?startDate=YYYY-MM-DD — teacher's opened slots for the week
+router.get('/weekly-slots', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const teacherId = req.user.id;
+        const companyId = req.user.company_id;
+        const startDate = req.query.startDate || new Date().toISOString().split('T')[0];
+        const endDt = new Date(startDate);
+        endDt.setDate(endDt.getDate() + 7);
+        const endDate = endDt.toISOString().split('T')[0];
+
+        const [rows] = await pool.query(
+            `SELECT id,
+                    DATE_FORMAT(slot_date, '%Y-%m-%d') AS slot_date,
+                    TIME_FORMAT(slot_time, '%H:%i')    AS slot_time
+             FROM teacher_available_slots
+             WHERE company_id = ? AND teacher_id = ? AND slot_date >= ? AND slot_date < ?
+             ORDER BY slot_date ASC, slot_time ASC`,
+            [companyId, teacherId, startDate, endDate]
+        );
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// POST /api/teacher/weekly-slots — open or close a single slot
+router.post('/weekly-slots', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const teacherId = req.user.id;
+        const companyId = req.user.company_id;
+        const { slot_date, slot_time, action } = req.body;
+
+        if (!slot_date || !slot_time || !action) {
+            return res.status(400).json({ message: 'slot_date, slot_time, and action are required' });
+        }
+        const slotDatetime = new Date(`${slot_date}T${slot_time}`);
+        if (slotDatetime < new Date()) {
+            return res.status(400).json({ message: 'Cannot modify past slots' });
+        }
+        if (action === 'open') {
+            await pool.query(
+                `INSERT IGNORE INTO teacher_available_slots (company_id, teacher_id, slot_date, slot_time) VALUES (?, ?, ?, ?)`,
+                [companyId, teacherId, slot_date, slot_time]
+            );
+        } else if (action === 'close') {
+            await pool.query(
+                `DELETE FROM teacher_available_slots WHERE company_id = ? AND teacher_id = ? AND slot_date = ? AND slot_time = ?`,
+                [companyId, teacherId, slot_date, slot_time]
+            );
+        } else {
+            return res.status(400).json({ message: 'action must be "open" or "close"' });
+        }
+        res.json({ message: `Slot ${action}d successfully` });
+    } catch (err) {
+        console.error(err);
         res.status(500).json({ message: 'Server error' });
     }
 });

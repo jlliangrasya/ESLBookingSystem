@@ -123,14 +123,18 @@ router.get("/teachers", authenticateToken, requireRole('company_admin'), async (
 
     const [rows] = await pool.query(`
       SELECT u.id, u.name, u.email, u.created_at,
-             COUNT(DISTINCT CASE WHEN b.appointment_date >= NOW() AND b.status = 'pending' THEN b.id END) AS upcoming_classes,
+             COUNT(DISTINCT CASE WHEN b.appointment_date >= NOW() AND b.status NOT IN ('cancelled','done') THEN b.id END) AS upcoming_classes,
+             COUNT(DISTINCT CASE WHEN DATE(b.appointment_date) = CURDATE() AND b.status NOT IN ('cancelled','done') THEN b.id END) AS classes_today,
              COUNT(DISTINCT CASE WHEN b.status IN ('confirmed','done')
                                    AND YEARWEEK(b.appointment_date, 1) = YEARWEEK(CURDATE(), 1)
                               THEN b.id END) AS classes_this_week,
              COUNT(DISTINCT CASE WHEN b.status IN ('confirmed','done')
                                    AND YEAR(b.appointment_date) = ?
                                    AND MONTH(b.appointment_date) = ?
-                              THEN b.id END) AS classes_this_month
+                              THEN b.id END) AS classes_this_month,
+             COUNT(DISTINCT CASE WHEN b.status = 'done' AND (b.teacher_absent = FALSE OR b.teacher_absent IS NULL) THEN b.id END) AS attended_count,
+             COUNT(DISTINCT CASE WHEN b.status = 'done' AND b.teacher_absent = TRUE THEN b.id END) AS absent_count,
+             COUNT(DISTINCT CASE WHEN b.status = 'done' THEN b.id END) AS total_done
       FROM users u
       LEFT JOIN bookings b ON b.teacher_id = u.id AND b.company_id = u.company_id
       WHERE u.company_id = ? AND u.role = 'teacher' AND u.is_active = TRUE
@@ -263,6 +267,80 @@ router.delete("/teachers/:id", authenticateToken, requireRole('company_admin'), 
     if (result.affectedRows === 0) return res.status(404).json({ message: 'Teacher not found' });
     await logAction(companyId, adminId, 'teacher_deactivated', 'user', Number(id), {});
     res.json({ message: 'Teacher removed successfully' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ——— Teacher Availability (admin managing a specific teacher's closed slots) ———
+
+function normalizeTimeToAmPm(time) {
+  if (!time) return time;
+  if (/^\d{2}:\d{2} [AP]M$/i.test(time)) return time;
+  const [h, m] = time.split(':');
+  const hr = parseInt(h, 10);
+  const ampm = hr >= 12 ? 'PM' : 'AM';
+  const hr12 = hr > 12 ? hr - 12 : hr === 0 ? 12 : hr;
+  return `${String(hr12).padStart(2, '0')}:${m} ${ampm}`;
+}
+
+function normalizeTimeTo24hStr(time) {
+  if (!time) return time;
+  if (/^\d{2}:\d{2}(:\d{2})?$/.test(time)) return time.length === 5 ? time + ':00' : time;
+  const [timePart, ampm] = time.split(' ');
+  const [h, m] = timePart.split(':');
+  let hr = parseInt(h, 10);
+  if (ampm && ampm.toUpperCase() === 'PM' && hr !== 12) hr += 12;
+  if (ampm && ampm.toUpperCase() === 'AM' && hr === 12) hr = 0;
+  return `${String(hr).padStart(2, '0')}:${m}:00`;
+}
+
+// GET teacher's closed slots (admin view)
+router.get("/teachers/:id/availability", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const { id } = req.params;
+    const [rows] = await pool.query(
+      `SELECT date, time FROM closed_slots WHERE company_id = ? AND teacher_id = ? ORDER BY date ASC, time ASC`,
+      [companyId, id]
+    );
+    const formatted = rows.map(row => ({
+      date: new Date(row.date + 'T00:00:00').toLocaleDateString('en-CA'),
+      time: normalizeTimeToAmPm(row.time),
+    }));
+    res.json(formatted);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// POST bulk close/open a teacher's slots (admin)
+router.post("/teachers/:id/availability", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const { id } = req.params;
+    const { slots, action } = req.body;
+    if (!slots || !Array.isArray(slots) || !action) {
+      return res.status(400).json({ message: 'slots and action are required' });
+    }
+    if (action === 'close') {
+      await Promise.all(slots.map(slot =>
+        pool.query(
+          "INSERT IGNORE INTO closed_slots (company_id, teacher_id, date, time) VALUES (?, ?, ?, ?)",
+          [companyId, id, slot.date, normalizeTimeToAmPm(slot.time)]
+        )
+      ));
+    } else if (action === 'open') {
+      await Promise.all(slots.map(slot => {
+        const amPmTime = normalizeTimeToAmPm(slot.time);
+        const h24Time = normalizeTimeTo24hStr(slot.time);
+        return pool.query(
+          "DELETE FROM closed_slots WHERE company_id = ? AND teacher_id = ? AND date = ? AND (time = ? OR time = ? OR time = ?)",
+          [companyId, id, slot.date, slot.time, amPmTime, h24Time]
+        );
+      }));
+    }
+    res.json({ message: 'Slots updated' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -533,8 +611,11 @@ router.get('/students/:id', authenticateToken, requireRole('company_admin'), asy
     if (!student) return res.status(404).json({ message: 'Student not found' });
 
     const [[activePackage]] = await pool.query(
-      `SELECT sp.id, sp.sessions_remaining, sp.payment_status, sp.subject, sp.teacher_id,
-              tp.package_name, tp.price
+      `SELECT sp.id, sp.payment_status, sp.subject, sp.teacher_id,
+              tp.package_name, tp.price,
+              (tp.session_limit - COALESCE((
+                  SELECT COUNT(*) FROM bookings WHERE student_package_id = sp.id AND status = 'done'
+              ), 0)) AS sessions_remaining
        FROM student_packages sp
        JOIN tutorial_packages tp ON sp.package_id = tp.id
        WHERE sp.student_id = ? AND sp.company_id = ?
@@ -750,16 +831,40 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
     // Summary totals
     const [[totals]] = await pool.query(
       `SELECT
-         (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'student') AS total_students,
-         (SELECT COUNT(*) FROM bookings WHERE company_id = ? AND status = 'done') AS total_done,
-         (SELECT COUNT(*) FROM bookings WHERE company_id = ? AND status = 'cancelled') AS total_cancelled,
+         (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'student') AS totalStudents,
+         (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE) AS teachersCount,
+         (SELECT COUNT(*) FROM bookings WHERE company_id = ? AND status = 'done') AS totalSessions,
+         (SELECT COUNT(*) FROM bookings WHERE company_id = ? AND status = 'cancelled') AS totalCancelled,
+         (SELECT COUNT(*) FROM bookings WHERE company_id = ? AND DATE(appointment_date) = CURDATE() AND status != 'cancelled') AS classesToday,
+         (SELECT COUNT(*) FROM bookings WHERE company_id = ? AND YEARWEEK(appointment_date, 1) = YEARWEEK(CURDATE(), 1) AND status != 'cancelled') AS classesThisWeek,
+         (SELECT COUNT(*) FROM bookings WHERE company_id = ? AND YEAR(appointment_date) = YEAR(CURDATE()) AND MONTH(appointment_date) = MONTH(CURDATE()) AND status != 'cancelled') AS classesThisMonth,
          (SELECT IFNULL(SUM(tp.price), 0) FROM student_packages sp
           JOIN tutorial_packages tp ON sp.package_id = tp.id
-          WHERE sp.company_id = ? AND sp.payment_status = 'paid') AS total_revenue`,
-      [companyId, companyId, companyId, companyId]
+          WHERE sp.company_id = ? AND sp.payment_status = 'paid') AS totalRevenue`,
+      [companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId]
     );
 
     res.json({ sessionsPerMonth, studentGrowth, packageStats, totals });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/admin/package-monthly-stats — packages availed this month per package
+router.get('/package-monthly-stats', authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const [rows] = await pool.query(
+      `SELECT sp.package_id, COUNT(*) AS availed_this_month
+       FROM student_packages sp
+       WHERE sp.company_id = ?
+         AND sp.payment_status = 'paid'
+         AND YEAR(sp.purchased_at) = YEAR(CURDATE())
+         AND MONTH(sp.purchased_at) = MONTH(CURDATE())
+       GROUP BY sp.package_id`,
+      [companyId]
+    );
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }

@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
+import WeeklyCalendar from "@/components/WeeklyCalendar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,6 +32,7 @@ interface ScheduleEntry {
   status: string;
   class_mode: string | null;
   meeting_link: string | null;
+  [key: string]: unknown;
   student_name: string;
   package_name: string;
   subject: string | null;
@@ -68,6 +70,7 @@ const AdminTeacherProfilePage = () => {
   const [schedule, setSchedule] = useState<ScheduleEntry[]>([]);
   const [leaves, setLeaves] = useState<LeaveEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [closedSlots, setClosedSlots] = useState<{ date: string; time: string }[]>([]);
 
   // Edit dialog
   const [showEdit, setShowEdit] = useState(false);
@@ -111,7 +114,27 @@ const AdminTeacherProfilePage = () => {
     }
   };
 
-  useEffect(() => { fetchData(); }, [id]);
+  const fetchClosedSlots = useCallback(async () => {
+    try {
+      const res = await axios.get(`${base}/api/admin/teachers/${id}/availability`, { headers });
+      setClosedSlots(res.data);
+    } catch (err) {
+      console.error("Error fetching teacher closed slots:", err);
+    }
+  }, [id]);
+
+  const handleAdminUpdateSlots = async (
+    slots: { date: string; time: string }[],
+    action: "close" | "open"
+  ) => {
+    await axios.post(
+      `${base}/api/admin/teachers/${id}/availability`,
+      { slots, action },
+      { headers }
+    );
+  };
+
+  useEffect(() => { fetchData(); fetchClosedSlots(); }, [id]);
 
   const openEdit = () => {
     if (!teacher) return;
@@ -249,6 +272,14 @@ const AdminTeacherProfilePage = () => {
             </Table>
           </CardContent>
         </Card>
+
+        {/* Availability Calendar */}
+        <WeeklyCalendar
+          bookings={schedule}
+          closedSlots={closedSlots}
+          fetchClosedSlots={fetchClosedSlots}
+          onUpdateSlots={handleAdminUpdateSlots}
+        />
 
         {/* Leave Requests */}
         <Card>

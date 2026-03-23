@@ -9,7 +9,7 @@ export function getUserTimezone(): string {
 }
 
 /** Persist a timezone choice */
-export function setUserTimezone(tz: string): void {
+export function setUserTimezone(_tz: string): void {
     localStorage.setItem(TZ_KEY, FIXED_TZ);
 }
 

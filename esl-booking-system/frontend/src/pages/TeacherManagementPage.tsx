@@ -22,8 +22,12 @@ interface Teacher {
   name: string;
   email: string;
   upcoming_classes: number;
+  classes_today: number;
   classes_this_week: number;
   classes_this_month: number;
+  attended_count: number;
+  absent_count: number;
+  total_done: number;
   created_at: string;
 }
 
@@ -56,6 +60,16 @@ const statusColors: Record<string, string> = {
   approved: "bg-green-100 text-green-800",
   rejected: "bg-red-100 text-red-800",
 };
+
+function getHealthBadge(attended: number, absent: number) {
+  const total = attended + absent;
+  if (total === 0) return { label: "No data", className: "bg-gray-100 text-gray-500" };
+  const rate = attended / total;
+  if (rate >= 0.9) return { label: `Excellent (${Math.round(rate * 100)}%)`, className: "bg-green-100 text-green-700" };
+  if (rate >= 0.75) return { label: `Good (${Math.round(rate * 100)}%)`, className: "bg-blue-100 text-blue-700" };
+  if (rate >= 0.5) return { label: `Fair (${Math.round(rate * 100)}%)`, className: "bg-yellow-100 text-yellow-700" };
+  return { label: `At Risk (${Math.round(rate * 100)}%)`, className: "bg-red-100 text-red-700" };
+}
 
 const TeacherManagementPage = () => {
   const authContext = useContext(AuthContext);
@@ -286,32 +300,43 @@ const TeacherManagementPage = () => {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
-                  <TableHead>Upcoming</TableHead>
+                  <TableHead>Today</TableHead>
                   <TableHead>This Week</TableHead>
                   <TableHead>{["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][pickerMonth - 1]} {pickerYear}</TableHead>
+                  <TableHead>Health</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTeachers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       {teacherSearch ? "No teachers match your search" : "No teachers yet"}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedTeachers.map((t) => (
+                  paginatedTeachers.map((t) => {
+                    const health = getHealthBadge(t.attended_count, t.absent_count);
+                    return (
                     <TableRow key={t.id}>
                       <TableCell className="font-medium">{t.name}</TableCell>
                       <TableCell className="text-sm">{t.email}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary">{t.upcoming_classes}</Badge>
+                        <Badge variant="secondary" className="bg-orange-100 text-orange-700">{t.classes_today}</Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="bg-blue-100 text-blue-700">{t.classes_this_week}</Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="bg-green-100 text-green-700">{t.classes_this_month}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${health.className}`}>{health.label}</span>
+                          {t.total_done > 0 && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{t.attended_count}/{t.total_done} attended</p>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1 flex-wrap">
@@ -342,7 +367,8 @@ const TeacherManagementPage = () => {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
