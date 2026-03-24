@@ -712,7 +712,7 @@ const SuperAdminDashboard = () => {
                     <XAxis dataKey="month" tick={{ fontSize: 10 }} />
                     <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
                     <Tooltip />
-                    <Line type="monotone" dataKey="companies" stroke="#65C3E8" strokeWidth={2} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="companies" stroke="#4A9EAF" strokeWidth={2} dot={{ r: 3, fill: "#4A9EAF" }} />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -726,7 +726,7 @@ const SuperAdminDashboard = () => {
                     <XAxis dataKey="month" tick={{ fontSize: 10 }} />
                     <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
                     <Tooltip />
-                    <Bar dataKey="sessions" fill="#65C3E8" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="sessions" fill="#F4A261" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -740,7 +740,7 @@ const SuperAdminDashboard = () => {
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       label={(entry: any) => `${entry.plan_name}: ${entry.count}`} labelLine={false}>
                       {saAnalytics.byPlan.map((_, i) => (
-                        <Cell key={i} fill={["#65C3E8", "#4a9bb5", "#a8dff2", "#2e7a96", "#b8e8f8"][i % 5]} />
+                        <Cell key={i} fill={["#4A9EAF", "#E76F7A", "#F4A261", "#7EC8A0", "#6BBAD0"][i % 5]} />
                       ))}
                     </Pie>
                     <Tooltip /><Legend />
@@ -1255,13 +1255,13 @@ const SuperAdminDashboard = () => {
 
   return (
     <>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen brand-gradient-subtle pattern-dots-light">
         {/* Top bar */}
-        <header className="w-full bg-white shadow-sm border-b border-border sticky top-0 z-30">
+        <header className="w-full brand-gradient shadow-lg sticky top-0 z-30">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             {/* Logo */}
             <div className="flex items-center gap-2">
-              <BrandLogo />
+              <BrandLogo variant="white" />
             </div>
 
             {/* Nav icons + actions */}
@@ -1272,20 +1272,20 @@ const SuperAdminDashboard = () => {
                   title={label}
                   onClick={() => { setPage(key); if (key !== "companies") { setSelectedCompanyId(null); setCompanyProfile(null); } if (key !== "soa") setSoaCompany(null); }}
                   className={`flex flex-col items-center gap-0.5 transition-colors ${
-                    page === key ? "text-primary" : "text-muted-foreground hover:text-primary"
+                    page === key ? "text-white" : "text-white/60 hover:text-white"
                   }`}
                 >
-                  <Icon className="h-6 w-6" />
-                  <span className="text-[10px]">{label === "Statement of Accounts" ? "SOA" : label}</span>
+                  <Icon className="h-5 w-5" />
+                  <span className="text-[10px] font-medium">{label === "Statement of Accounts" ? "SOA" : label}</span>
                 </button>
               ))}
 
-              <NotificationBell />
+              <NotificationBell variant="white" />
 
               <Button variant="ghost" size="sm" onClick={handleLogout}
-                className="text-muted-foreground hover:text-destructive flex flex-col items-center gap-0.5 h-auto py-0">
-                <LogOut className="h-6 w-6" />
-                <span className="text-[10px]">Logout</span>
+                className="text-white/60 hover:text-white hover:bg-white/10 flex flex-col items-center gap-0.5 h-auto py-0">
+                <LogOut className="h-5 w-5" />
+                <span className="text-[10px] font-medium">Logout</span>
               </Button>
             </nav>
           </div>

@@ -110,7 +110,7 @@ const UpgradePage = () => {
   // Pending screen
   if (step === "pending") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary/10 to-blue-50 flex items-center justify-center p-4">
+      <div className="min-h-screen brand-gradient-subtle pattern-dots-light flex items-center justify-center p-4">
         <Card className="max-w-md w-full text-center shadow-lg">
           <CardContent className="pt-8 pb-8 space-y-4">
             <Clock className="h-16 w-16 text-yellow-500 mx-auto" />
@@ -135,7 +135,7 @@ const UpgradePage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/10 to-blue-50">
+    <div className="min-h-screen brand-gradient-subtle pattern-dots-light">
       {/* Header */}
       <div className="bg-white border-b px-4 py-3 flex items-center justify-between max-w-7xl mx-auto">
         <BrandLogo />

@@ -14,7 +14,7 @@ const languages = [
   { code: "zh", label: "中文", flag: "🇨🇳" },
 ] as const;
 
-const LanguageToggle = () => {
+const LanguageToggle = ({ variant = "default" }: { variant?: "default" | "white" }) => {
   const { i18n } = useTranslation();
 
   const currentLang = languages.find((l) => l.code === i18n.language) ?? languages[0];
@@ -29,7 +29,7 @@ const LanguageToggle = () => {
         <Button
           variant="ghost"
           size="icon"
-          className="rounded-full h-9 w-9 text-muted-foreground hover:text-primary"
+          className={`rounded-full h-9 w-9 ${variant === "white" ? "text-white/70 hover:text-white hover:bg-white/10" : "text-muted-foreground hover:text-primary"}`}
           title="Change language"
         >
           <Globe className="h-5 w-5" />

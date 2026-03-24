@@ -233,7 +233,7 @@ const WeeklyCalendar: React.FC<WeeklyCalendarProps> = ({
 
       {/* Selected Slots Info */}
       {selectedSlots.length > 0 && (
-        <div className="mt-4 p-3 rounded-lg bg-sky-50 border border-sky-200 text-sm">
+        <div className="mt-4 p-3 rounded-lg brand-gradient-subtle border border-[#D0E8F0] text-sm">
           <p className="font-semibold mb-1">Selected Slots ({selectedSlots.length})</p>
           <div className="flex flex-wrap gap-2">
             {selectedSlots.map((slot, i) => (

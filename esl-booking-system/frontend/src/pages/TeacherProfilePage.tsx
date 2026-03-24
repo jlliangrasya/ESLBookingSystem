@@ -74,8 +74,8 @@ const TeacherProfilePage: React.FC = () => {
   return (
     <>
       <NavBar />
-      <div className="max-w-lg mx-auto px-4 py-10">
-        <Card className="shadow-md">
+      <div className="max-w-lg mx-auto px-4 py-10 brand-gradient-subtle pattern-dots-light min-h-screen">
+        <Card className="glow-card border-0 rounded-2xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <UserCircle className="h-5 w-5 text-primary" />

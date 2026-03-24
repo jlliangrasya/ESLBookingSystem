@@ -121,7 +121,7 @@ const SubscriptionPlansPage = () => {
   return (
     <>
       <NavBar />
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6 brand-gradient-subtle pattern-dots-light min-h-screen">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Subscription Plans</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage all available plans offered to ESL centers.</p>
@@ -129,25 +129,25 @@ const SubscriptionPlansPage = () => {
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <Card>
+          <Card className="stat-card pl-6 border-0 glow-card rounded-2xl">
             <CardContent className="pt-4">
               <p className="text-2xl font-bold">{plans.length}</p>
               <p className="text-xs text-muted-foreground">Total Plans</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="stat-card pl-6 border-0 glow-card rounded-2xl">
             <CardContent className="pt-4">
               <p className="text-2xl font-bold text-green-600">{plans.filter(p => p.is_active).length}</p>
               <p className="text-xs text-muted-foreground">Active</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="stat-card pl-6 border-0 glow-card rounded-2xl">
             <CardContent className="pt-4">
               <p className="text-2xl font-bold text-gray-400">{plans.filter(p => !p.is_active).length}</p>
               <p className="text-xs text-muted-foreground">Disabled</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="stat-card pl-6 border-0 glow-card rounded-2xl">
             <CardContent className="pt-4 flex items-center gap-2">
               <Building2 className="h-5 w-5 text-primary shrink-0" />
               <div>
@@ -159,7 +159,7 @@ const SubscriptionPlansPage = () => {
         </div>
 
         {/* Plans table */}
-        <Card>
+        <Card className="glow-card border-0 rounded-2xl">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <PackagePlus className="h-4 w-4 text-primary" />
@@ -177,7 +177,7 @@ const SubscriptionPlansPage = () => {
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="brand-gradient-subtle">
                     <TableHead>Plan Name</TableHead>
                     <TableHead>Max Students</TableHead>
                     <TableHead>Max Teachers</TableHead>

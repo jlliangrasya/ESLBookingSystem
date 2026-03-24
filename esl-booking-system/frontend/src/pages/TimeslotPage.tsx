@@ -261,26 +261,27 @@ const TimeslotPage = () => {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
-      <div className="mb-6">
+    <div className="min-h-screen brand-gradient-subtle pattern-dots-light">
+      <div className="max-w-5xl mx-auto px-4 py-8">
+      <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-800">
           Available Time Slots
         </h2>
-        <p className="text-muted-foreground text-sm mt-1">{date}</p>
+        <p className="text-gray-500 text-sm mt-1">{date}</p>
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-3 mb-6 text-xs">
+      <div className="flex flex-wrap gap-4 mb-8 text-xs bg-white rounded-xl p-3 px-5 shadow-sm border">
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-[#6bd4fd54] border border-[#6bd4fd] inline-block" />
+          <span className="w-3 h-3 rounded-full bg-[#D0E8F0] border border-[#B0D4E8] inline-block" />
           Available
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-[#25ce4cc7] inline-block" />
+          <span className="w-3 h-3 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 inline-block" />
           Your booking
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-[#929292b6] inline-block" />
+          <span className="w-3 h-3 rounded-full bg-slate-400 inline-block" />
           Closed / Booked
         </span>
         <span className="flex items-center gap-1.5">
@@ -289,7 +290,7 @@ const TimeslotPage = () => {
         </span>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
         {generateTimeSlots().map((slot, index) => {
           const now = new Date();
           const slotDateTime = new Date(`${date} ${slot}`);
@@ -304,9 +305,9 @@ const TimeslotPage = () => {
             <button
               key={`${date}-${slot}-${index}`}
               className={cn(
-                "p-2 w-full rounded-lg text-sm text-center font-medium transition-all border",
+                "p-2.5 w-full rounded-xl text-sm text-center font-medium transition-all border",
                 isPast
-                  ? "bg-gray-200 text-gray-400 cursor-not-allowed border-gray-200"
+                  ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200"
                   : bookedByUser
                   ? "bookedByUser-timeslot"
                   : isBooked || isClosed
@@ -440,6 +441,7 @@ const TimeslotPage = () => {
           </div>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 };

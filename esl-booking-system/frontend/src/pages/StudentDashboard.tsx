@@ -346,29 +346,29 @@ const StudentDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen brand-gradient-subtle pattern-dots-light">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b border-border sticky top-0 z-50">
+      <div className="brand-gradient shadow-lg sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <BrandLogo />
+          <BrandLogo variant="white" />
 
           <div className="hidden md:flex flex-col items-end">
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-white/60">
               Nationality: {student?.nationality || "N/A"}
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-white/60">
               Age: {student?.age || "N/A"}
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <LanguageToggle />
-            <NotificationBell />
+            <LanguageToggle variant="white" />
+            <NotificationBell variant="white" />
             <Button
               variant="ghost"
               size="sm"
               onClick={() => navigate("/student-profile")}
-              className="text-muted-foreground hover:text-primary"
+              className="text-white/70 hover:text-white hover:bg-white/10"
             >
               <UserCircle className="h-5 w-5" />
             </Button>
@@ -376,7 +376,7 @@ const StudentDashboard = () => {
               variant="ghost"
               size="sm"
               onClick={handleLogout}
-              className="text-muted-foreground hover:text-destructive"
+              className="text-white/70 hover:text-white hover:bg-white/10"
             >
               <LogOut className="h-4 w-4 mr-1" />
               Logout
@@ -384,9 +384,9 @@ const StudentDashboard = () => {
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 pb-4">
-          <p className="text-sm text-muted-foreground">Hi, I am</p>
-          <h1 className="text-3xl font-bold text-gray-800">
+        <div className="max-w-7xl mx-auto px-4 pb-5">
+          <p className="text-sm text-white/60">Hi, I am</p>
+          <h1 className="text-3xl font-bold text-white">
             {student?.name || "Student"}
           </h1>
         </div>
@@ -413,15 +413,15 @@ const StudentDashboard = () => {
           </div>
 
           {packageDetails ? (
-            <div className="bg-white rounded-xl p-4 shadow-sm border space-y-2">
+            <div className="stat-card bg-white rounded-xl p-4 pl-6 shadow-sm border space-y-2">
               <div className="flex items-center gap-2">
-                <Package className="h-4 w-4 text-primary" />
-                <span className="font-semibold text-sm">
+                <Package className="h-4 w-4 text-blue-600" />
+                <span className="font-semibold text-sm text-gray-800">
                   {packageDetails.package_name}
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <Badge variant="secondary">
+                <Badge className="bg-[#D0E8F0] text-[#2E6B9E] border-0">
                   {packageDetails.sessions_remaining} sessions remaining
                 </Badge>
               </div>
@@ -463,7 +463,7 @@ const StudentDashboard = () => {
         <div className="space-y-4">
           <Button
             onClick={handleAvailPackage}
-            className="w-full shadow"
+            className="w-full accent-gradient text-white shadow-md hover:shadow-lg transition-shadow border-0"
           >
             Avail a Package
           </Button>

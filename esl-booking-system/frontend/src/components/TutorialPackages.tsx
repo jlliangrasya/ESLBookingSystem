@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import ScrollReveal from "@/components/ScrollReveal";
 
 const currencyOptions = ["RMB", "USD", "KRW", "VND"] as const;
 type Currency = (typeof currencyOptions)[number];
@@ -40,90 +41,138 @@ const TutorialPackages = () => {
 
   return (
     <div className="max-w-6xl mx-auto px-4 text-center">
-      <h2 className="text-3xl font-bold text-primary mb-6">
-        {t("packages.title")}
-      </h2>
+      <ScrollReveal animation="fade-up">
+        <div className="inline-flex items-center gap-2 text-[#2E6B9E] text-xs font-semibold px-4 py-1.5 rounded-full bg-[#EEF6FA] border border-[#D0E8F0] mb-4 shadow-sm">
+          Pricing Plans
+        </div>
+      </ScrollReveal>
+      <ScrollReveal animation="fade-up" delay={100}>
+        <h2 className="text-3xl font-bold brand-gradient-text mb-3">
+          {t("packages.title")}
+        </h2>
+      </ScrollReveal>
+      <ScrollReveal animation="fade-up" delay={150}>
+        <p className="text-gray-500 mb-8 max-w-md mx-auto text-sm">
+          Choose the perfect package for your learning journey
+        </p>
+      </ScrollReveal>
 
       {/* Filters */}
-      <div className="flex flex-wrap justify-center items-center gap-4 mb-10">
-        <Select value={currency} onValueChange={(v) => setCurrency(v as Currency)}>
-          <SelectTrigger className="w-44">
-            <SelectValue placeholder={t("packages.viewIn")} />
-          </SelectTrigger>
-          <SelectContent>
-            {currencyOptions.map((cur) => (
-              <SelectItem key={cur} value={cur}>
-                {t("packages.viewIn")} {cur}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <ScrollReveal animation="fade-up" delay={200}>
+        <div className="flex flex-wrap justify-center items-center gap-4 mb-10">
+          <Select value={currency} onValueChange={(v) => setCurrency(v as Currency)}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder={t("packages.viewIn")} />
+            </SelectTrigger>
+            <SelectContent>
+              {currencyOptions.map((cur) => (
+                <SelectItem key={cur} value={cur}>
+                  {t("packages.viewIn")} {cur}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <div className="flex gap-2">
-          <Button
-            variant={subject === "English" ? "default" : "outline"}
-            onClick={() => setSubject("English")}
-            className="rounded-full px-5"
-          >
-            {t("packages.english")}
-          </Button>
-          <Button
-            variant={subject === "Math" ? "default" : "outline"}
-            onClick={() => setSubject("Math")}
-            className="rounded-full px-5"
-          >
-            {t("packages.math")}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant={subject === "English" ? "default" : "outline"}
+              onClick={() => setSubject("English")}
+              className="rounded-full px-5"
+            >
+              {t("packages.english")}
+            </Button>
+            <Button
+              variant={subject === "Math" ? "default" : "outline"}
+              onClick={() => setSubject("Math")}
+              className="rounded-full px-5"
+            >
+              {t("packages.math")}
+            </Button>
+          </div>
         </div>
-      </div>
+      </ScrollReveal>
 
       {/* Kids */}
-      <h3 className="text-green-600 font-bold text-xl mb-4">
-        {t("packages.kidsTitle")}
-      </h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
+      <ScrollReveal animation="fade-up" delay={250}>
+        <h3 className="text-emerald-600 font-bold text-xl mb-5 flex items-center justify-center gap-3">
+          <span className="w-10 h-px bg-emerald-200" />
+          {t("packages.kidsTitle")}
+          <span className="w-10 h-px bg-emerald-200" />
+        </h3>
+      </ScrollReveal>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-14">
         {kidsPackages.map((pkg, i) => {
           const price = subject === "Math" ? pkg.price + 300 : pkg.price;
+          const isBest = i === 2;
           return (
-            <Card key={i} className="shadow-lg border-0 bg-sky-50 hover:shadow-xl transition-shadow">
-              <CardContent className="flex flex-col items-center py-6 gap-2">
-                <span className="text-3xl">🎒</span>
-                <CardTitle className="text-base font-bold mt-1">
-                  {t("packages.freeSessions", { sessions: pkg.sessions, free: pkg.free })}
-                </CardTitle>
-                <p className="text-muted-foreground text-sm">
-                  {t("packages.subject")} <strong>{subject === "English" ? t("packages.english") : t("packages.math")}</strong>
-                </p>
-                <p className="text-green-600 text-lg font-semibold">
-                  {convertPrice(price, currency)}
-                </p>
-              </CardContent>
-            </Card>
+            <ScrollReveal key={i} animation="fade-up" delay={300 + i * 80}>
+              <Card
+                className={`glow-card border-0 bg-white rounded-2xl relative overflow-hidden transition-all duration-300 h-full ${
+                  isBest ? "ring-2 ring-emerald-300 scale-[1.03]" : "hover:scale-[1.02]"
+                }`}
+              >
+                {isBest && (
+                  <div className="absolute top-0 left-0 right-0 bg-emerald-500 text-white text-[10px] font-semibold py-1 text-center tracking-wide uppercase">
+                    Most Popular
+                  </div>
+                )}
+                <CardContent className={`flex flex-col items-center py-6 gap-2 ${isBest ? "pt-9" : ""}`}>
+                  <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center text-2xl">🎒</div>
+                  <CardTitle className="text-base font-bold mt-1">
+                    {t("packages.freeSessions", { sessions: pkg.sessions, free: pkg.free })}
+                  </CardTitle>
+                  <p className="text-gray-500 text-sm">
+                    {t("packages.subject")} <strong className="text-gray-700">{subject === "English" ? t("packages.english") : t("packages.math")}</strong>
+                  </p>
+                  <p className="text-emerald-600 text-xl font-bold">
+                    {convertPrice(price, currency)}
+                  </p>
+                </CardContent>
+              </Card>
+            </ScrollReveal>
           );
         })}
       </div>
 
       {/* Adults */}
-      <h3 className="text-gray-600 font-bold text-xl mb-4">
-        {t("packages.adultsTitle")}
-      </h3>
+      <ScrollReveal animation="fade-up">
+        <h3 className="text-[#2E6B9E] font-bold text-xl mb-5 flex items-center justify-center gap-3">
+          <span className="w-10 h-px bg-[#D0E8F0]" />
+          {t("packages.adultsTitle")}
+          <span className="w-10 h-px bg-[#D0E8F0]" />
+        </h3>
+      </ScrollReveal>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        {adultsPackages.map((pkg, i) => (
-          <Card key={i} className="shadow-lg border-0 bg-gray-50 hover:shadow-xl transition-shadow">
-            <CardContent className="flex flex-col items-center py-6 gap-2">
-              <span className="text-3xl">📘</span>
-              <CardTitle className="text-base font-bold mt-1">
-                {t("packages.freeSessions", { sessions: pkg.sessions, free: pkg.free })}
-              </CardTitle>
-              <p className="text-muted-foreground text-sm">
-                {t("packages.subject")} <strong>{subject === "English" ? t("packages.english") : t("packages.math")}</strong>
-              </p>
-              <p className="text-primary text-lg font-semibold">
-                {convertPrice(pkg.price, currency)}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
+        {adultsPackages.map((pkg, i) => {
+          const isBest = i === 2;
+          return (
+            <ScrollReveal key={i} animation="fade-up" delay={100 + i * 80}>
+              <Card
+                className={`glow-card border-0 bg-white rounded-2xl relative overflow-hidden transition-all duration-300 h-full ${
+                  isBest ? "ring-2 ring-[#D0E8F0] scale-[1.03]" : "hover:scale-[1.02]"
+                }`}
+              >
+                {isBest && (
+                  <div className="absolute top-0 left-0 right-0 brand-gradient text-white text-[10px] font-semibold py-1 text-center tracking-wide uppercase">
+                    Best Value
+                  </div>
+                )}
+                <CardContent className={`flex flex-col items-center py-6 gap-2 ${isBest ? "pt-9" : ""}`}>
+                  <div className="w-12 h-12 rounded-xl bg-[#D0E8F0] flex items-center justify-center text-2xl">📘</div>
+                  <CardTitle className="text-base font-bold mt-1">
+                    {t("packages.freeSessions", { sessions: pkg.sessions, free: pkg.free })}
+                  </CardTitle>
+                  <p className="text-gray-500 text-sm">
+                    {t("packages.subject")} <strong className="text-gray-700">{subject === "English" ? t("packages.english") : t("packages.math")}</strong>
+                  </p>
+                  <p className="brand-gradient-text text-xl font-bold">
+                    {convertPrice(pkg.price, currency)}
+                  </p>
+                </CardContent>
+              </Card>
+            </ScrollReveal>
+          );
+        })}
       </div>
     </div>
   );

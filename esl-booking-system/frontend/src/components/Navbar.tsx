@@ -29,85 +29,85 @@ const NavBar: React.FC = () => {
   const logoLink = role === "super_admin" ? "/super-admin" : "/admin-dashboard";
 
   return (
-    <header className="w-full bg-white shadow-sm border-b border-border sticky top-0 z-50">
+    <header className="w-full brand-gradient shadow-lg sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link to={logoLink} className="flex items-center">
-          <BrandLogo />
+          <BrandLogo variant="white" />
         </Link>
 
         {/* Nav links */}
-        <nav className="flex items-center gap-6">
+        <nav className="flex items-center gap-5">
           {role === "super_admin" ? (
             <>
               <Link
                 to="/super-admin"
-                className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
+                className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
                 title={t("nav.dashboard")}
               >
-                <LayoutDashboard className="h-6 w-6" />
-                <span className="text-[10px]">{t("nav.dashboard")}</span>
+                <LayoutDashboard className="h-5 w-5" />
+                <span className="text-[10px] font-medium">{t("nav.dashboard")}</span>
               </Link>
               <Link
                 to="/super-admin/plans"
-                className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
+                className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
                 title={t("nav.plans")}
               >
-                <PackagePlus className="h-6 w-6" />
-                <span className="text-[10px]">{t("nav.plans")}</span>
+                <PackagePlus className="h-5 w-5" />
+                <span className="text-[10px] font-medium">{t("nav.plans")}</span>
               </Link>
             </>
           ) : (
             <>
               <Link
                 to="/admin-dashboard"
-                className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
+                className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
                 title={t("nav.schedule")}
               >
-                <CalendarDays className="h-6 w-6" />
-                <span className="text-[10px]">{t("nav.schedule")}</span>
+                <CalendarDays className="h-5 w-5" />
+                <span className="text-[10px] font-medium">{t("nav.schedule")}</span>
               </Link>
 
               <Link
                 to="/packages"
-                className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
+                className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
                 title={t("nav.packages")}
               >
-                <Package className="h-6 w-6" />
-                <span className="text-[10px]">{t("nav.packages")}</span>
+                <Package className="h-5 w-5" />
+                <span className="text-[10px] font-medium">{t("nav.packages")}</span>
               </Link>
 
               <Link
                 to="/students"
-                className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
+                className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
                 title={t("nav.students")}
               >
-                <Users className="h-6 w-6" />
-                <span className="text-[10px]">{t("nav.students")}</span>
+                <Users className="h-5 w-5" />
+                <span className="text-[10px] font-medium">{t("nav.students")}</span>
               </Link>
 
               <Link
                 to="/teachers"
-                className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
+                className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
                 title={t("nav.teachers")}
               >
-                <GraduationCap className="h-6 w-6" />
-                <span className="text-[10px]">{t("nav.teachers")}</span>
+                <GraduationCap className="h-5 w-5" />
+                <span className="text-[10px] font-medium">{t("nav.teachers")}</span>
               </Link>
 
               <Link
                 to="/admin-users"
-                className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-primary transition-colors"
+                className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
                 title={t("nav.admins")}
               >
-                <UserCog className="h-6 w-6" />
-                <span className="text-[10px]">{t("nav.admins")}</span>
+                <UserCog className="h-5 w-5" />
+                <span className="text-[10px] font-medium">{t("nav.admins")}</span>
               </Link>
             </>
           )}
 
-          <LanguageToggle />
-          <NotificationBell />
+          <LanguageToggle variant="white" />
+          <NotificationBell variant="white" />
 
           {/* Profile dropdown */}
           <DropdownMenu>
@@ -115,9 +115,9 @@ const NavBar: React.FC = () => {
               <Button
                 variant="ghost"
                 size="icon"
-                className="rounded-full h-9 w-9 text-muted-foreground hover:text-primary"
+                className="rounded-full h-9 w-9 text-white/70 hover:text-white hover:bg-white/10"
               >
-                <User className="h-6 w-6" />
+                <User className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">

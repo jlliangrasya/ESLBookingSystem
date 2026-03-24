@@ -259,14 +259,14 @@ const AdminStudentProfilePage = () => {
   return (
     <>
       <NavBar />
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6 brand-gradient-subtle pattern-dots-light min-h-screen">
         {/* Back button */}
         <Button variant="ghost" className="gap-2 -ml-2" onClick={() => navigate("/students")}>
           <ArrowLeft className="h-4 w-4" /> Back to Students
         </Button>
 
         {/* Student Info */}
-        <Card>
+        <Card className="glow-card border-0 rounded-2xl">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <User className="h-5 w-5 text-primary" />
@@ -312,7 +312,7 @@ const AdminStudentProfilePage = () => {
 
         {/* Active Package */}
         {activePackage ? (
-          <Card>
+          <Card className="glow-card border-0 rounded-2xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Package className="h-5 w-5 text-primary" />
@@ -344,7 +344,7 @@ const AdminStudentProfilePage = () => {
             </CardContent>
           </Card>
         ) : (
-          <Card>
+          <Card className="glow-card border-0 rounded-2xl">
             <CardContent className="py-6 text-center text-sm text-muted-foreground">
               <Package className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
               No active package
@@ -353,7 +353,7 @@ const AdminStudentProfilePage = () => {
         )}
 
         {/* Booking History */}
-        <Card>
+        <Card className="glow-card border-0 rounded-2xl">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5 text-primary" />
@@ -368,7 +368,7 @@ const AdminStudentProfilePage = () => {
           <CardContent>
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="brand-gradient-subtle">
                   <TableHead>Date & Time</TableHead>
                   <TableHead>Teacher</TableHead>
                   <TableHead>Status</TableHead>

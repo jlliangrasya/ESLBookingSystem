@@ -471,22 +471,22 @@ const TeacherDashboard = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen brand-gradient-subtle pattern-dots-light">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b border-border sticky top-0 z-50">
+      <div className="brand-gradient shadow-lg sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <BrandLogo />
+            <BrandLogo variant="white" />
             <div>
-              <p className="text-xs text-muted-foreground leading-none">Welcome back,</p>
-              <p className="font-semibold text-sm leading-tight">{teacher?.name || "Teacher"}</p>
+              <p className="text-xs text-white/60 leading-none">Welcome back,</p>
+              <p className="font-semibold text-sm leading-tight text-white">{teacher?.name || "Teacher"}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-xs">Teacher</Badge>
-            <NotificationBell />
+            <Badge className="bg-white/15 text-white border-0 text-xs">Teacher</Badge>
+            <NotificationBell variant="white" />
             <Button variant="ghost" size="sm" onClick={handleLogout}
-              className="text-muted-foreground hover:text-destructive text-xs gap-1">
+              className="text-white/70 hover:text-white hover:bg-white/10 text-xs gap-1">
               <LogOut className="h-4 w-4" /> Logout
             </Button>
           </div>
@@ -499,8 +499,8 @@ const TeacherDashboard = () => {
               onClick={() => setPage(item.key)}
               className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 page === item.key
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+                  ? "border-white text-white"
+                  : "border-transparent text-white/60 hover:text-white/90"
               }`}
             >
               {item.icon} {item.label}

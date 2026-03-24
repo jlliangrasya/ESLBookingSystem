@@ -116,14 +116,14 @@ const AdminManagementPage = () => {
   return (
     <>
       <NavBar />
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 py-8 brand-gradient-subtle pattern-dots-light min-h-screen">
         {!isOwner && (
           <Alert className="mb-4">
             <ShieldCheck className="h-4 w-4" />
             <AlertDescription>Only the company owner can add, edit, or delete admin accounts.</AlertDescription>
           </Alert>
         )}
-        <Card>
+        <Card className="glow-card border-0 rounded-2xl">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <UserCog className="h-5 w-5 text-primary" />
@@ -138,7 +138,7 @@ const AdminManagementPage = () => {
           <CardContent>
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="brand-gradient-subtle">
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>

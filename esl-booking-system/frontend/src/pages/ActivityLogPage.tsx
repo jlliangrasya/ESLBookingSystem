@@ -88,8 +88,8 @@ const ActivityLogPage = () => {
   return (
     <>
       <NavBar />
-      <div className="max-w-5xl mx-auto px-4 py-8">
-        <Card>
+      <div className="max-w-5xl mx-auto px-4 py-8 brand-gradient-subtle pattern-dots-light min-h-screen">
+        <Card className="glow-card border-0 rounded-2xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <ClipboardList className="h-5 w-5 text-primary" />

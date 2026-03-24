@@ -205,69 +205,69 @@ const AdminDashboard = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         {/* Stats row */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-          <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <Users className="h-5 w-5 text-primary" />
+          <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
+            <div className="p-2.5 bg-[#D0E8F0] rounded-xl">
+              <Users className="h-5 w-5 text-[#2E6B9E]" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Students</p>
-              <p className="text-2xl font-bold">{analytics?.totals.totalStudents ?? students.length}</p>
+              <p className="text-xs text-gray-500 font-medium">Students</p>
+              <p className="text-2xl font-bold text-gray-800">{analytics?.totals.totalStudents ?? students.length}</p>
             </div>
           </div>
-          <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
-            <div className="p-2 bg-purple-100 rounded-lg">
+          <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
+            <div className="p-2.5 bg-purple-100 rounded-xl">
               <GraduationCap className="h-5 w-5 text-purple-600" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Teachers</p>
-              <p className="text-2xl font-bold">{teacherCount ?? "—"}</p>
+              <p className="text-xs text-gray-500 font-medium">Teachers</p>
+              <p className="text-2xl font-bold text-gray-800">{teacherCount ?? "—"}</p>
             </div>
           </div>
-          <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <UserCheck className="h-5 w-5 text-green-600" />
+          <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
+            <div className="p-2.5 bg-emerald-100 rounded-xl">
+              <UserCheck className="h-5 w-5 text-emerald-600" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Enrolled</p>
-              <p className="text-2xl font-bold">{enrolledStudents}</p>
+              <p className="text-xs text-gray-500 font-medium">Enrolled</p>
+              <p className="text-2xl font-bold text-gray-800">{enrolledStudents}</p>
             </div>
           </div>
-          <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
-            <div className="p-2 bg-orange-100 rounded-lg">
-              <CalendarCheck className="h-5 w-5 text-orange-600" />
+          <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
+            <div className="p-2.5 bg-amber-100 rounded-xl">
+              <CalendarCheck className="h-5 w-5 text-amber-600" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Classes Today</p>
-              <p className="text-2xl font-bold">{analytics?.totals.classesToday ?? "—"}</p>
+              <p className="text-xs text-gray-500 font-medium">Classes Today</p>
+              <p className="text-2xl font-bold text-gray-800">{analytics?.totals.classesToday ?? "—"}</p>
             </div>
           </div>
-          <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <CalendarDays className="h-5 w-5 text-blue-600" />
+          <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
+            <div className="p-2.5 bg-indigo-100 rounded-xl">
+              <CalendarDays className="h-5 w-5 text-indigo-600" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">This Month</p>
-              <p className="text-2xl font-bold">{analytics?.totals.classesThisMonth ?? "—"}</p>
+              <p className="text-xs text-gray-500 font-medium">This Month</p>
+              <p className="text-2xl font-bold text-gray-800">{analytics?.totals.classesThisMonth ?? "—"}</p>
             </div>
           </div>
           <button
             onClick={() => setShowFeedback(true)}
-            className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3 text-left hover:bg-muted/30 transition-colors"
+            className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3 text-left hover:shadow-md transition-all"
           >
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <MessageSquare className="h-5 w-5 text-primary" />
+            <div className="p-2.5 bg-rose-100 rounded-xl">
+              <MessageSquare className="h-5 w-5 text-rose-500" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Feedback</p>
-              <p className="text-2xl font-bold">{feedback.length}</p>
+              <p className="text-xs text-gray-500 font-medium">Feedback</p>
+              <p className="text-2xl font-bold text-gray-800">{feedback.length}</p>
             </div>
           </button>
         </div>
 
         {/* Pending Enrollees */}
-        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b bg-muted/40">
-            <h2 className="font-semibold text-sm">Pending Enrollees</h2>
+        <div className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
+          <div className="px-4 py-3 border-b brand-gradient-subtle">
+            <h2 className="font-semibold text-sm text-gray-800">Pending Enrollees</h2>
           </div>
           <div className="overflow-x-auto">
             <Table>
@@ -336,27 +336,27 @@ const AdminDashboard = () => {
         {/* Schedule Summary + Today's Upcoming Classes */}
         <div className="space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-white rounded-xl border shadow-sm p-3 text-center">
-              <p className="text-xs text-muted-foreground mb-1">Today's Classes</p>
-              <p className="text-xl font-bold text-orange-600">{analytics?.totals.classesToday ?? todayBookings.length}</p>
+            <div className="stat-card bg-white rounded-xl border shadow-sm p-3 pl-5 text-center">
+              <p className="text-xs text-gray-500 font-medium mb-1">Today's Classes</p>
+              <p className="text-xl font-bold text-amber-600">{analytics?.totals.classesToday ?? todayBookings.length}</p>
             </div>
-            <div className="bg-white rounded-xl border shadow-sm p-3 text-center">
-              <p className="text-xs text-muted-foreground mb-1">This Week</p>
+            <div className="stat-card bg-white rounded-xl border shadow-sm p-3 pl-5 text-center">
+              <p className="text-xs text-gray-500 font-medium mb-1">This Week</p>
               <p className="text-xl font-bold text-blue-600">{analytics?.totals.classesThisWeek ?? "—"}</p>
             </div>
-            <div className="bg-white rounded-xl border shadow-sm p-3 text-center">
-              <p className="text-xs text-muted-foreground mb-1">This Month</p>
-              <p className="text-xl font-bold text-primary">{analytics?.totals.classesThisMonth ?? "—"}</p>
+            <div className="stat-card bg-white rounded-xl border shadow-sm p-3 pl-5 text-center">
+              <p className="text-xs text-gray-500 font-medium mb-1">This Month</p>
+              <p className="text-xl font-bold text-indigo-600">{analytics?.totals.classesThisMonth ?? "—"}</p>
             </div>
-            <div className="bg-white rounded-xl border shadow-sm p-3 text-center">
-              <p className="text-xs text-muted-foreground mb-1">Total Done</p>
-              <p className="text-xl font-bold text-green-600">{analytics?.totals.totalSessions ?? "—"}</p>
+            <div className="stat-card bg-white rounded-xl border shadow-sm p-3 pl-5 text-center">
+              <p className="text-xs text-gray-500 font-medium mb-1">Total Done</p>
+              <p className="text-xl font-bold text-emerald-600">{analytics?.totals.totalSessions ?? "—"}</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b bg-muted/40 flex items-center justify-between">
-              <h2 className="font-semibold text-sm">Today's Upcoming Classes</h2>
+          <div className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
+            <div className="px-4 py-3 border-b brand-gradient-subtle flex items-center justify-between">
+              <h2 className="font-semibold text-sm text-gray-800">Today's Upcoming Classes</h2>
               <span className="text-xs text-muted-foreground">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</span>
             </div>
             <div className="overflow-x-auto">
@@ -423,22 +423,22 @@ const AdminDashboard = () => {
               <h2 className="font-semibold text-sm">Analytics</h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
+              <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
                 <div>
-                  <p className="text-xs text-muted-foreground">Total Sessions</p>
-                  <p className="text-2xl font-bold">{analytics.totals.totalSessions}</p>
+                  <p className="text-xs text-gray-500 font-medium">Total Sessions</p>
+                  <p className="text-2xl font-bold text-gray-800">{analytics.totals.totalSessions}</p>
                 </div>
               </div>
-              <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
+              <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
                 <div>
-                  <p className="text-xs text-muted-foreground">Total Students</p>
-                  <p className="text-2xl font-bold">{analytics.totals.totalStudents}</p>
+                  <p className="text-xs text-gray-500 font-medium">Total Students</p>
+                  <p className="text-2xl font-bold text-gray-800">{analytics.totals.totalStudents}</p>
                 </div>
               </div>
-              <div className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
+              <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
                 <div>
-                  <p className="text-xs text-muted-foreground">Est. Revenue</p>
-                  <p className="text-2xl font-bold">₱{Number(analytics.totals.totalRevenue || 0).toLocaleString()}</p>
+                  <p className="text-xs text-gray-500 font-medium">Est. Revenue</p>
+                  <p className="text-2xl font-bold text-gray-800">₱{Number(analytics.totals.totalRevenue || 0).toLocaleString()}</p>
                 </div>
               </div>
             </div>
@@ -454,7 +454,7 @@ const AdminDashboard = () => {
                       <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                       <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                       <Tooltip />
-                      <Bar dataKey="sessions" fill="#65C3E8" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="sessions" fill="#4A9EAF" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -471,7 +471,7 @@ const AdminDashboard = () => {
                       <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                       <Tooltip />
                       <Legend />
-                      <Line type="monotone" dataKey="students" stroke="#65C3E8" strokeWidth={2} dot={{ r: 3 }} />
+                      <Line type="monotone" dataKey="students" stroke="#E76F7A" strokeWidth={2} dot={{ r: 3, fill: "#E76F7A" }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </CardContent>

@@ -22,7 +22,7 @@ interface Notification {
   created_at: string;
 }
 
-const NotificationBell: React.FC = () => {
+const NotificationBell: React.FC<{ variant?: "default" | "white" }> = ({ variant = "default" }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const authContext = useContext(AuthContext);
   const token = authContext?.token ?? null;
@@ -106,7 +106,7 @@ const NotificationBell: React.FC = () => {
         <Button
           variant="ghost"
           size="icon"
-          className="relative rounded-full h-9 w-9 text-muted-foreground hover:text-primary"
+          className={`relative rounded-full h-9 w-9 ${variant === "white" ? "text-white/70 hover:text-white hover:bg-white/10" : "text-muted-foreground hover:text-primary"}`}
         >
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (

@@ -232,8 +232,8 @@ const TeacherManagementPage = () => {
   return (
     <>
       <NavBar />
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <Card>
+      <div className="max-w-7xl mx-auto px-4 py-8 brand-gradient-subtle pattern-dots-light min-h-screen">
+        <Card className="glow-card border-0 rounded-2xl">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <GraduationCap className="h-5 w-5 text-primary" />
@@ -297,7 +297,7 @@ const TeacherManagementPage = () => {
             </div>
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="brand-gradient-subtle">
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Today</TableHead>

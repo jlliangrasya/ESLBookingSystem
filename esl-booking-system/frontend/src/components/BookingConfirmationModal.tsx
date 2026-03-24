@@ -25,7 +25,9 @@ const BookingConfirmationModal: React.FC<Props> = ({
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <div className="flex justify-center mb-2">
-            <CalendarCheck className="h-10 w-10 text-primary" />
+            <div className="brand-gradient rounded-xl p-2.5 shadow-md">
+              <CalendarCheck className="h-8 w-8 text-white" />
+            </div>
           </div>
           <DialogTitle className="text-center">Confirm Booking</DialogTitle>
           <DialogDescription className="text-center">

@@ -112,7 +112,7 @@ const PackageSelectionModal: React.FC<Props> = ({
             <div className="max-h-64 overflow-y-auto rounded-md border">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-primary/10">
+                  <TableRow className="brand-gradient-subtle">
                     <TableHead>Package</TableHead>
                     <TableHead>Subject</TableHead>
                     <TableHead>Sessions</TableHead>
@@ -134,7 +134,7 @@ const PackageSelectionModal: React.FC<Props> = ({
                         className={cn(
                           "cursor-pointer transition-colors",
                           selectedPackageId === pkg.id
-                            ? "bg-primary/20 font-semibold"
+                            ? "bg-[#EEF6FA] font-semibold ring-1 ring-[#D0E8F0]"
                             : "hover:bg-muted"
                         )}
                       >

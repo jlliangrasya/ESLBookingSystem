@@ -115,7 +115,7 @@ const StudentListPage: React.FC = () => {
       <NavBar />
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">Students List</h1>
+          <h1 className="text-2xl font-bold text-gray-800">Students List</h1>
           <Button onClick={() => { setAddForm(emptyForm); setAddError(null); setShowAddModal(true); }}>
             <UserPlus className="h-4 w-4 mr-2" /> Add Student
           </Button>
@@ -142,7 +142,7 @@ const StudentListPage: React.FC = () => {
           </Select>
         </div>
 
-        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
           {isLoading ? (
             <div className="flex justify-center items-center py-16">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -151,7 +151,7 @@ const StudentListPage: React.FC = () => {
             <>
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-primary/10">
+                  <TableRow className="brand-gradient-subtle">
                     <TableHead>Student Name</TableHead>
                     <TableHead>Package</TableHead>
                     <TableHead>Subject</TableHead>

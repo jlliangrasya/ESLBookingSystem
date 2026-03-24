@@ -83,7 +83,7 @@ const AdminProfile: React.FC = () => {
     <>
       <NavBar />
       <div className="max-w-lg mx-auto px-4 py-10">
-        <Card className="shadow-md">
+        <Card className="glow-card border-0 rounded-2xl">
           <CardHeader>
             <CardTitle className="text-lg">Admin Profile</CardTitle>
           </CardHeader>

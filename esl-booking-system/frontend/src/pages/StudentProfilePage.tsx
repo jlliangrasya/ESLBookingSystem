@@ -99,11 +99,11 @@ const StudentProfilePage = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen brand-gradient-subtle">
       {/* Header */}
-      <div className="bg-primary/20 border-b border-primary/30">
+      <div className="brand-gradient shadow-lg">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <BrandLogo />
+          <BrandLogo variant="white" />
         </div>
       </div>
 
@@ -112,7 +112,7 @@ const StudentProfilePage = () => {
           <ArrowLeft className="h-4 w-4" /> Back to Dashboard
         </Button>
 
-        <Card className="shadow-md">
+        <Card className="glow-card border-0 rounded-2xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <UserCircle className="h-5 w-5 text-primary" />

@@ -239,9 +239,9 @@ const PackageSetupPage = () => {
   return (
     <>
       <NavBar />
-      <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+      <div className="max-w-7xl mx-auto px-4 py-8 space-y-8 brand-gradient-subtle pattern-dots-light min-h-screen">
         {/* Class Packages Card */}
-        <Card>
+        <Card className="glow-card border-0 rounded-2xl">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <Package className="h-5 w-5 text-primary" />
@@ -254,7 +254,7 @@ const PackageSetupPage = () => {
           <CardContent>
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="brand-gradient-subtle">
                   <TableHead>Package Name</TableHead>
                   <TableHead>Subject</TableHead>
                   <TableHead>Sessions</TableHead>
@@ -305,7 +305,7 @@ const PackageSetupPage = () => {
                         ₱{Number(pkg.price).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-sm">
-                        <Badge variant="secondary" className="bg-blue-50 text-blue-700 text-xs">
+                        <Badge variant="secondary" className="bg-[#EEF6FA] text-[#2E6B9E] text-xs">
                           {monthlyStats[pkg.id] ?? 0} availed
                         </Badge>
                       </TableCell>
@@ -357,7 +357,7 @@ const PackageSetupPage = () => {
         </Card>
 
         {/* Company Settings Card */}
-        <Card>
+        <Card className="glow-card border-0 rounded-2xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Settings2 className="h-5 w-5 text-primary" />

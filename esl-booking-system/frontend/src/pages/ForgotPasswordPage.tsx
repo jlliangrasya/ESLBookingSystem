@@ -28,8 +28,8 @@ const ForgotPasswordPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 to-white flex items-center justify-center px-4">
-      <Card className="w-full max-w-md shadow-xl rounded-2xl">
+    <div className="min-h-screen brand-gradient-subtle pattern-dots-light flex items-center justify-center px-4">
+      <Card className="w-full max-w-md glow-card rounded-2xl border-0">
         <CardHeader className="pb-2">
           <CardTitle className="text-center text-primary text-xl font-semibold">
             Forgot Password

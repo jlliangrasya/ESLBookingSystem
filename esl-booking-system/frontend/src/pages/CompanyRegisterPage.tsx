@@ -77,7 +77,7 @@ const CompanyRegisterPage = () => {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary/10 to-blue-50 flex items-center justify-center p-4">
+      <div className="min-h-screen brand-gradient-subtle pattern-dots-light flex items-center justify-center p-4">
         <Card className="max-w-md w-full text-center shadow-lg">
           <CardContent className="pt-8 pb-8 space-y-4">
             <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto" />
@@ -96,14 +96,12 @@ const CompanyRegisterPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/10 to-blue-50">
+    <div className="min-h-screen brand-gradient-subtle pattern-dots-light">
       {/* Header */}
-      <div className="bg-white border-b sticky top-0 z-50 shadow-sm">
+      <div className="brand-gradient sticky top-0 z-50 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="cursor-pointer" onClick={() => navigate("/")}><BrandLogo /></div>
-          <Button variant="outline" size="sm" onClick={() => navigate("/")}>
-            Back to Home
-          </Button>
+          <div className="cursor-pointer" onClick={() => navigate("/")}><BrandLogo variant="white" /></div>
+          <Button variant="outline" size="sm" className="border-white/30 text-white hover:bg-white/10 hover:text-white" onClick={() => navigate("/")}>Back to Home</Button>
         </div>
       </div>
 
@@ -180,7 +178,7 @@ const CompanyRegisterPage = () => {
         </div>
 
         {/* Registration Form */}
-        <Card className="shadow-md">
+        <Card className="glow-card border-0 rounded-2xl">
           <CardHeader>
             <CardTitle className="text-lg">Company & Account Details</CardTitle>
           </CardHeader>
