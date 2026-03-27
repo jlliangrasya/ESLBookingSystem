@@ -5,7 +5,7 @@ const cors = require('cors');
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
-const bodyParser = require('body-parser');
+// bodyParser removed — express.json() is sufficient
 
 const logger = require('./utils/logger');
 const { setIO } = require('./socket');
@@ -40,6 +40,8 @@ const superAdminRoutes = require('./routes/superAdminRoutes.js');
 const teacherRoutes = require('./routes/teacherRoutes.js');
 const notificationRoutes = require('./routes/notificationRoutes.js');
 const reportRoutes = require('./routes/reportRoutes.js');
+const waitlistRoutes = require('./routes/waitlistRoutes.js');
+const exportRoutes = require('./routes/exportRoutes.js');
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -75,8 +77,20 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-app.use(express.json({ limit: '50mb' }));
-app.use(bodyParser.json({ limit: '50mb' }));
+// Issue #3: 2MB default for most endpoints; 10MB for receipt uploads
+app.use(express.json({ limit: '2mb' }));
+
+// Issue #4: Security headers to mitigate XSS and clickjacking
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    if (process.env.NODE_ENV === 'production') {
+        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    next();
+});
 
 // Health check (no auth — used by Heroku, uptime monitors, load balancers)
 const pool = require('./db');
@@ -89,6 +103,9 @@ app.get('/health', async (req, res) => {
     }
 });
 
+// Higher body limit for receipt image uploads (base64)
+app.use('/api/student/avail', express.json({ limit: '10mb' }));
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/student', packageRoutes);
@@ -100,6 +117,8 @@ app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/teacher', teacherRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/waitlist', waitlistRoutes);
+app.use('/api/export', exportRoutes);
 
 const { startScheduler } = require('./scheduler');
 startScheduler();

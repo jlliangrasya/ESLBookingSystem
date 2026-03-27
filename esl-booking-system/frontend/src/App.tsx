@@ -1,11 +1,14 @@
 import { BrowserRouter as Router } from "react-router-dom";
 import AppRoutes from "./Routes";
+import ServerWakeUp from "./components/ServerWakeUp";
 
 const App = () => {
   return (
-    <Router>
-      <AppRoutes />
-    </Router>
+    <ServerWakeUp>
+      <Router>
+        <AppRoutes />
+      </Router>
+    </ServerWakeUp>
   );
 };
 

@@ -4,17 +4,18 @@ const authenticateToken = require('../middleware/authMiddleware');
 const requireRole = require('../middleware/requireRole');
 const notify = require('../utils/notify');
 const { logAction } = require('../utils/audit');
+const { notifyWaitlistForSlot } = require('./waitlistRoutes');
 
 const router = express.Router();
 
-/** Current time as Manila-equivalent DATETIME string.
- *  Appointments are stored in Manila local time (UTC+8).
- *  MySQL's NOW() may return UTC, so we build the Manila time in JS instead. */
-function nowManila() {
-    return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+/** Current time as a JS Date — let MySQL handle comparisons via NOW().
+ *  For queries that need a JS-side datetime string, use the server's current time.
+ *  Appointments are stored as absolute datetime values. */
+function nowDatetime() {
+    return new Date().toISOString().slice(0, 19).replace('T', ' ');
 }
-function todayManila() {
-    return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+function todayDate() {
+    return new Date().toISOString().slice(0, 10);
 }
 
 // Teacher dashboard — assigned students and upcoming bookings
@@ -66,7 +67,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
               AND DATE(b.appointment_date) >= ?
               AND b.status NOT IN ('done', 'cancelled')
             ORDER BY b.appointment_date ASC
-        `, [teacherId, companyId, todayManila()]);
+        `, [teacherId, companyId, todayDate()]);
 
         // Completed bookings for this teacher (with has_report flag + absence tracking)
         const [completedBookings] = await pool.query(`
@@ -98,7 +99,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
             WHERE teacher_id = ? AND company_id = ?
               AND status IN ('confirmed', 'done')
               AND YEARWEEK(appointment_date, 1) = YEARWEEK(?, 1)
-        `, [teacherId, companyId, todayManila()]);
+        `, [teacherId, companyId, todayDate()]);
 
         const [[monthRow]] = await pool.query(`
             SELECT COUNT(*) AS classes_this_month
@@ -107,7 +108,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
               AND status IN ('confirmed', 'done')
               AND YEAR(appointment_date) = YEAR(?)
               AND MONTH(appointment_date) = MONTH(?)
-        `, [teacherId, companyId, todayManila(), todayManila()]);
+        `, [teacherId, companyId, todayDate(), todayDate()]);
 
         // Health summary (all-time)
         const [[healthRow]] = await pool.query(`
@@ -180,7 +181,7 @@ router.put('/bookings/:id/class-info', authenticateToken, requireRole('teacher')
 
         const [[booking]] = await pool.query(
             'SELECT id FROM bookings WHERE id = ? AND teacher_id = ? AND appointment_date >= ?',
-            [id, teacherId, nowManila()]
+            [id, teacherId, nowDatetime()]
         );
         if (!booking) return res.status(404).json({ message: 'Booking not found or not editable' });
 
@@ -205,7 +206,7 @@ router.post('/bookings/:id/mark-student-absent', authenticateToken, requireRole(
              WHERE id = ? AND teacher_id = ?
                AND TIMESTAMPADD(MINUTE, 15, appointment_date) <= ?
                AND status NOT IN ('done', 'cancelled')`,
-            [id, teacherId, nowManila()]
+            [id, teacherId, nowDatetime()]
         );
         if (!booking) {
             return res.status(400).json({ message: 'Cannot mark absent: booking not found, class has not started 15 minutes ago, or is already closed.' });
@@ -290,6 +291,11 @@ router.post('/bookings/:id/cancel', authenticateToken, requireRole('teacher'), a
             title: 'Class cancelled by teacher',
             message: `${teacher?.name || 'A teacher'} cancelled the class with ${booking.student_name} on ${dateStr}.`,
         })));
+
+        // Issue #6: Notify waitlisted students when slot opens
+        if (booking.teacher_id) {
+            notifyWaitlistForSlot(companyId, booking.teacher_id, booking.appointment_date);
+        }
 
         await logAction(companyId, teacherId, 'booking_cancelled_by_teacher', 'booking', Number(id), { student_name: booking.student_name });
         res.json({ message: 'Class cancelled' });
@@ -405,7 +411,7 @@ router.get('/pending-confirmation', authenticateToken, requireRole('teacher'), a
               AND b.appointment_date < ?
               AND b.status IN ('pending', 'confirmed')
             ORDER BY b.appointment_date DESC
-        `, [teacherId, companyId, nowManila()]);
+        `, [teacherId, companyId, nowDatetime()]);
         res.json(rows);
     } catch (err) {
         res.status(500).json({ message: 'Server error' });
@@ -429,7 +435,7 @@ router.post('/bookings/:id/done', authenticateToken, requireRole('teacher'), asy
              WHERE b.id = ? AND b.teacher_id = ? AND b.company_id = ?
                AND b.appointment_date < ?
                AND b.status IN ('pending', 'confirmed')`,
-            [id, teacherId, companyId, nowManila()]
+            [id, teacherId, companyId, nowDatetime()]
         );
         if (!booking) return res.status(404).json({ message: 'Booking not found or not eligible for confirmation' });
 

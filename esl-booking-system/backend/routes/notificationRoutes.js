@@ -4,14 +4,22 @@ const authenticateToken = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-// GET /api/notifications — logged-in user's last 20 notifications
+// GET /api/notifications — logged-in user's notifications (paginated)
 router.get('/', authenticateToken, async (req, res) => {
     try {
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+        const offset = (page - 1) * limit;
+
         const [rows] = await pool.query(
-            'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 20',
+            'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+            [req.user.id, limit, offset]
+        );
+        const [[{ total }]] = await pool.query(
+            'SELECT COUNT(*) AS total FROM notifications WHERE user_id = ?',
             [req.user.id]
         );
-        res.json(rows);
+        res.json({ data: rows, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
     } catch (err) {
         res.status(500).json({ message: 'Server error' });
     }

@@ -3,6 +3,7 @@ const pool = require('../db');
 const authenticateToken = require('../middleware/authMiddleware');
 const requireRole = require('../middleware/requireRole');
 const notify = require('../utils/notify');
+const { sendMail } = require('../utils/mailer');
 const jwt = require('jsonwebtoken');
 const { logAction } = require('../utils/audit');
 
@@ -83,8 +84,28 @@ router.post('/register', async (req, res) => {
             message: `"${name}" applied for a ${plan.name} plan and is awaiting approval.`,
         })));
 
+        // Issue #14: Notify the company owner about the pending status with estimated timeline
+        await notify({
+            userId: ownerResult.insertId,
+            companyId,
+            type: 'onboarding_update',
+            title: 'Registration received',
+            message: 'Your company registration is being reviewed. Applications are typically processed within 24-48 hours. You will be notified once approved.',
+        }).catch(() => {});
+
+        // Send confirmation email
+        sendMail({
+            to: owner_email,
+            subject: 'Registration Received - ESL Booking Platform',
+            html: `<h2>Welcome, ${owner_name}!</h2>
+                   <p>Your company registration for <strong>${company_name}</strong> has been received.</p>
+                   <p>Our team will review your application and typically processes it within <strong>24-48 hours</strong>.</p>
+                   <p>You will receive an email and in-app notification once your account is approved.</p>
+                   <p>Thank you for choosing our platform!</p>`,
+        }).catch(() => {});
+
         res.status(201).json({
-            message: 'Registration submitted! Your application is pending approval.',
+            message: 'Registration submitted! Your application is pending approval. You will receive an email confirmation shortly. Applications are typically processed within 24-48 hours.',
             company_id: companyId,
         });
     } catch (err) {

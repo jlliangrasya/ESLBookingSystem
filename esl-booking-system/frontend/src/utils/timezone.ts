@@ -1,16 +1,18 @@
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 
 const TZ_KEY = 'userTimezone';
-const FIXED_TZ = 'Asia/Manila';
 
 /** Get the user's timezone — from localStorage, or auto-detect from browser */
 export function getUserTimezone(): string {
-    return FIXED_TZ;
+    const stored = localStorage.getItem(TZ_KEY);
+    if (stored) return stored;
+    // Fall back to browser timezone detection
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Manila';
 }
 
 /** Persist a timezone choice */
-export function setUserTimezone(_tz: string): void {
-    localStorage.setItem(TZ_KEY, FIXED_TZ);
+export function setUserTimezone(tz: string): void {
+    localStorage.setItem(TZ_KEY, tz);
 }
 
 /**

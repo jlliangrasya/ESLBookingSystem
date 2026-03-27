@@ -16,8 +16,9 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
-  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil,
+  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly, localToMysql } from "@/utils/timezone";
 
@@ -184,6 +185,62 @@ const AdminStudentProfilePage = () => {
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
+  // Session adjustment dialog
+  const [showAdjust, setShowAdjust] = useState<"add" | "deduct" | null>(null);
+  const [adjustAmount, setAdjustAmount] = useState("1");
+  const [adjustRemarks, setAdjustRemarks] = useState("");
+  const [adjustLoading, setAdjustLoading] = useState(false);
+  const [adjustError, setAdjustError] = useState<string | null>(null);
+  const [adjustSuccess, setAdjustSuccess] = useState<string | null>(null);
+
+  // Session adjustment history
+  const [showAdjustHistory, setShowAdjustHistory] = useState(false);
+  const [adjustHistory, setAdjustHistory] = useState<{ id: number; adjustment: number; remarks: string; created_at: string; adjusted_by_name: string }[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const handleAdjustSessions = async () => {
+    if (!activePackage || !adjustRemarks.trim()) return;
+    setAdjustLoading(true);
+    setAdjustError(null);
+    setAdjustSuccess(null);
+    try {
+      const adj = showAdjust === "deduct" ? -Math.abs(Number(adjustAmount)) : Math.abs(Number(adjustAmount));
+      const res = await axios.post(
+        `${base}/api/admin/student-packages/${activePackage.id}/adjust-sessions`,
+        { adjustment: adj, remarks: adjustRemarks.trim() },
+        { headers }
+      );
+      setAdjustSuccess(res.data.message);
+      fetchData();
+      // Keep the dialog open briefly to show success, then close
+      setTimeout(() => {
+        setShowAdjust(null);
+        setAdjustAmount("1");
+        setAdjustRemarks("");
+        setAdjustSuccess(null);
+      }, 1500);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to adjust sessions";
+      setAdjustError(msg);
+    } finally {
+      setAdjustLoading(false);
+    }
+  };
+
+  const fetchAdjustmentHistory = async () => {
+    if (!activePackage) return;
+    setHistoryLoading(true);
+    try {
+      const res = await axios.get(`${base}/api/admin/student-packages/${activePackage.id}/adjustments`, { headers });
+      setAdjustHistory(res.data);
+      setShowAdjustHistory(true);
+    } catch (err) {
+      console.error("Error fetching adjustment history:", err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   const fetchData = async () => {
     try {
       const [profileRes, teachersRes] = await Promise.all([
@@ -313,11 +370,14 @@ const AdminStudentProfilePage = () => {
         {/* Active Package */}
         {activePackage ? (
           <Card className="glow-card border-0 rounded-2xl">
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="flex items-center gap-2">
                 <Package className="h-5 w-5 text-primary" />
                 Active Package
               </CardTitle>
+              <Button size="sm" variant="ghost" className="gap-1 text-xs" onClick={fetchAdjustmentHistory} disabled={historyLoading}>
+                <History className="h-3.5 w-3.5" /> Adjustment History
+              </Button>
             </CardHeader>
             <CardContent className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
               <div>
@@ -330,9 +390,29 @@ const AdminStudentProfilePage = () => {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Sessions Remaining</p>
-                <Badge variant={activePackage.sessions_remaining > 0 ? "default" : "destructive"}>
-                  {activePackage.sessions_remaining}
-                </Badge>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <Badge variant={activePackage.sessions_remaining > 0 ? "default" : "destructive"}>
+                    {activePackage.sessions_remaining}
+                  </Badge>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50"
+                    title="Add sessions"
+                    onClick={() => { setShowAdjust("add"); setAdjustAmount("1"); setAdjustRemarks(""); setAdjustError(null); setAdjustSuccess(null); }}
+                  >
+                    <PlusCircle className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    title="Deduct sessions"
+                    onClick={() => { setShowAdjust("deduct"); setAdjustAmount("1"); setAdjustRemarks(""); setAdjustError(null); setAdjustSuccess(null); }}
+                  >
+                    <MinusCircle className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Payment</p>
@@ -620,6 +700,112 @@ const AdminStudentProfilePage = () => {
             >
               {addLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Schedule"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Session Adjustment Dialog */}
+      <Dialog open={!!showAdjust} onOpenChange={(o) => { if (!o) { setShowAdjust(null); setAdjustSuccess(null); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {showAdjust === "add" ? "Add Sessions" : "Deduct Sessions"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {adjustError && <p className="text-sm text-destructive">{adjustError}</p>}
+            {adjustSuccess && <p className="text-sm text-green-600">{adjustSuccess}</p>}
+
+            <div className="space-y-1.5">
+              <Label>
+                Number of sessions to {showAdjust === "add" ? "add" : "deduct"} <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                type="number"
+                min="1"
+                max="100"
+                value={adjustAmount}
+                onChange={(e) => setAdjustAmount(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Remarks <span className="text-destructive">*</span></Label>
+              <Textarea
+                placeholder={showAdjust === "add"
+                  ? "e.g. Bonus sessions for referral, compensating for cancelled class..."
+                  : "e.g. Penalty for no-show, correction of incorrect session count..."}
+                value={adjustRemarks}
+                onChange={(e) => setAdjustRemarks(e.target.value)}
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                This note will be included in the notification sent to the student.
+              </p>
+            </div>
+
+            {activePackage && (
+              <div className="bg-muted/50 rounded-lg p-3 text-sm">
+                <p className="text-muted-foreground">Current sessions: <strong>{activePackage.sessions_remaining}</strong></p>
+                <p className="text-muted-foreground">
+                  After adjustment: <strong>
+                    {showAdjust === "add"
+                      ? activePackage.sessions_remaining + Math.abs(Number(adjustAmount) || 0)
+                      : Math.max(0, activePackage.sessions_remaining - Math.abs(Number(adjustAmount) || 0))}
+                  </strong>
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAdjust(null)}>Cancel</Button>
+            <Button
+              onClick={handleAdjustSessions}
+              disabled={adjustLoading || !adjustRemarks.trim() || !adjustAmount || Number(adjustAmount) < 1}
+              variant={showAdjust === "deduct" ? "destructive" : "default"}
+            >
+              {adjustLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                showAdjust === "add" ? "Add Sessions" : "Deduct Sessions"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Session Adjustment History Dialog */}
+      <Dialog open={showAdjustHistory} onOpenChange={(o) => { if (!o) setShowAdjustHistory(false); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" /> Session Adjustment History
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-80 overflow-y-auto">
+            {adjustHistory.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">No adjustments have been made yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {adjustHistory.map((entry) => (
+                  <div key={entry.id} className="border rounded-lg p-3 text-sm">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`font-semibold ${entry.adjustment > 0 ? "text-green-600" : "text-red-600"}`}>
+                        {entry.adjustment > 0 ? `+${entry.adjustment}` : entry.adjustment} session(s)
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {fmtDate(entry.created_at, "MMM d, yyyy h:mm a")}
+                      </span>
+                    </div>
+                    <p className="text-muted-foreground text-xs mb-1">By: {entry.adjusted_by_name}</p>
+                    <p className="bg-muted/40 rounded p-2 text-sm">{entry.remarks}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAdjustHistory(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

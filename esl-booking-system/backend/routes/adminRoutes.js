@@ -919,4 +919,119 @@ router.put('/users/:id/reset-password', authenticateToken, requireRole('company_
   }
 });
 
+// ——— Session Adjustment ———
+
+// POST /api/admin/student-packages/:id/adjust-sessions
+// Allows company owner/admin to add or deduct sessions with a required remark
+router.post("/student-packages/:id/adjust-sessions", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    const companyId = req.user.company_id;
+    const adminId = req.user.id;
+    const { id } = req.params;
+    const { adjustment, remarks } = req.body;
+
+    if (!adjustment || adjustment === 0) {
+      connection.release();
+      return res.status(400).json({ message: 'adjustment is required and must be non-zero' });
+    }
+    if (!remarks || !remarks.trim()) {
+      connection.release();
+      return res.status(400).json({ message: 'remarks are required when adjusting sessions' });
+    }
+
+    const adj = parseInt(adjustment, 10);
+    if (isNaN(adj)) {
+      connection.release();
+      return res.status(400).json({ message: 'adjustment must be a number' });
+    }
+
+    await connection.beginTransaction();
+
+    // Lock the row to prevent races
+    const [rows] = await connection.query(
+      "SELECT sp.id, sp.sessions_remaining, sp.student_id, u.name AS student_name FROM student_packages sp JOIN users u ON sp.student_id = u.id WHERE sp.id = ? AND sp.company_id = ? FOR UPDATE",
+      [id, companyId]
+    );
+    if (rows.length === 0) {
+      await connection.rollback();
+      connection.release();
+      return res.status(404).json({ message: 'Student package not found' });
+    }
+
+    const pkg = rows[0];
+    const newRemaining = pkg.sessions_remaining + adj;
+
+    if (newRemaining < 0) {
+      await connection.rollback();
+      connection.release();
+      return res.status(400).json({ message: `Cannot deduct ${Math.abs(adj)} session(s). Only ${pkg.sessions_remaining} remaining.` });
+    }
+
+    await connection.query(
+      "UPDATE student_packages SET sessions_remaining = ? WHERE id = ?",
+      [newRemaining, id]
+    );
+
+    // Log the adjustment
+    await connection.query(
+      `INSERT INTO session_adjustments (company_id, student_package_id, adjusted_by, adjustment, remarks, created_at)
+       VALUES (?, ?, ?, ?, ?, NOW())`,
+      [companyId, id, adminId, adj, remarks.trim()]
+    );
+
+    await connection.commit();
+    connection.release();
+
+    // Notify the student
+    const action = adj > 0 ? 'added' : 'deducted';
+    const absAdj = Math.abs(adj);
+    await notify({
+      userId: pkg.student_id,
+      companyId,
+      type: 'session_adjusted',
+      title: `Sessions ${action}`,
+      message: `${absAdj} session(s) ${action === 'added' ? 'have been added to' : 'have been deducted from'} your package. Reason: ${remarks.trim()}. You now have ${newRemaining} session(s) remaining.`,
+    });
+
+    await logAction(companyId, adminId, 'session_adjusted', 'student_package', Number(id), {
+      student_id: pkg.student_id,
+      student_name: pkg.student_name,
+      adjustment: adj,
+      previous: pkg.sessions_remaining,
+      new_remaining: newRemaining,
+      remarks: remarks.trim(),
+    });
+
+    res.json({
+      message: `${absAdj} session(s) ${action} successfully`,
+      sessions_remaining: newRemaining,
+    });
+  } catch (err) {
+    try { await connection.rollback(); } catch (_) {}
+    connection.release();
+    console.error("Session adjustment error:", err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/admin/student-packages/:id/adjustments — adjustment history
+router.get("/student-packages/:id/adjustments", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const { id } = req.params;
+    const [rows] = await pool.query(
+      `SELECT sa.id, sa.adjustment, sa.remarks, sa.created_at, u.name AS adjusted_by_name
+       FROM session_adjustments sa
+       JOIN users u ON sa.adjusted_by = u.id
+       WHERE sa.student_package_id = ? AND sa.company_id = ?
+       ORDER BY sa.created_at DESC`,
+      [id, companyId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;

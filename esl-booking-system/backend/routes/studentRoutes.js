@@ -232,10 +232,23 @@ router.get('/teachers', authenticateToken, requireRole('student'), async (req, r
     }
 });
 
-// All students in this company (company_admin only)
+// All students in this company (company_admin only) — paginated
 router.get("/students", authenticateToken, requireRole('company_admin'), async (req, res) => {
     try {
         const companyId = req.user.company_id;
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+        const offset = (page - 1) * limit;
+        const search = req.query.search || '';
+
+        let searchClause = '';
+        const params = [companyId, companyId];
+        if (search) {
+            searchClause = 'AND (u.name LIKE ? OR u.email LIKE ?)';
+            params.push(`%${search}%`, `%${search}%`);
+        }
+        params.push(limit, offset);
+
         const [rows] = await pool.query(`
             SELECT
                 u.id, u.name, u.email, u.guardian_name, u.nationality, u.age, u.created_at,
@@ -256,9 +269,24 @@ router.get("/students", authenticateToken, requireRole('company_admin'), async (
                 )
             LEFT JOIN tutorial_packages tp ON sp.package_id = tp.id
             WHERE u.role = 'student' AND u.company_id = ?
+            ${searchClause}
             ORDER BY u.id
-        `, [companyId, companyId]);
-        res.json(rows);
+            LIMIT ? OFFSET ?
+        `, params);
+
+        // Get total count for pagination metadata
+        const countParams = [companyId];
+        let countSearchClause = '';
+        if (search) {
+            countSearchClause = 'AND (name LIKE ? OR email LIKE ?)';
+            countParams.push(`%${search}%`, `%${search}%`);
+        }
+        const [[{ total }]] = await pool.query(
+            `SELECT COUNT(*) AS total FROM users WHERE role = 'student' AND company_id = ? ${countSearchClause}`,
+            countParams
+        );
+
+        res.json({ data: rows, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
     } catch (err) {
         console.error("Error fetching students:", err);
         res.status(500).json({ message: "Server error" });
