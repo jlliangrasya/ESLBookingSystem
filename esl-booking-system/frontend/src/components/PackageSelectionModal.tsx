@@ -11,7 +11,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Upload, QrCode } from "lucide-react";
+import { ArrowLeft, Upload, QrCode, MessageCircle } from "lucide-react";
+import alipayQr from "@/assets/Alipay.jpg";
 
 interface Package {
   id: number;
@@ -37,6 +38,7 @@ interface Props {
   allowPickTeacher: boolean;
   teachers: Teacher[];
   companyQrImage: string | null;
+  paymentMethod?: "encasher" | "communication_platform" | null;
 }
 
 const PackageSelectionModal: React.FC<Props> = ({
@@ -48,6 +50,7 @@ const PackageSelectionModal: React.FC<Props> = ({
   allowPickTeacher,
   teachers,
   companyQrImage,
+  paymentMethod,
 }) => {
   const [step, setStep] = useState<"select" | "payment">("select");
   const [selectedPackageId, setSelectedPackageId] = useState<number | null>(null);
@@ -170,8 +173,41 @@ const PackageSelectionModal: React.FC<Props> = ({
         {step === "payment" && (
           <>
             <div className="space-y-4 py-1">
-              {/* QR code */}
-              {companyQrImage ? (
+              {/* Payment instructions based on company payment_method */}
+              {paymentMethod === "encasher" ? (
+                <div className="flex flex-col items-center gap-3 border rounded-lg p-4 bg-muted/30">
+                  <div className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
+                    <QrCode className="h-4 w-4" />
+                    Scan to Pay via Alipay
+                  </div>
+                  <img src={alipayQr} alt="Alipay QR" className="max-w-[180px] rounded-lg" />
+                  <p className="text-xs text-muted-foreground text-center">
+                    Amount: <span className="font-semibold text-foreground">₱{Number(selectedPkg?.price ?? 0).toLocaleString()}</span>
+                  </p>
+                  <div className="w-full bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs space-y-1.5">
+                    <p className="font-semibold text-amber-800">Instructions:</p>
+                    <ol className="list-decimal list-inside space-y-1 text-amber-700">
+                      <li>Please add the contact card as a friend first</li>
+                      <li>Transfer the money after a few hours from adding</li>
+                      <li>Don't send a red packet</li>
+                      <li>Send the receipt directly to the company</li>
+                    </ol>
+                  </div>
+                </div>
+              ) : paymentMethod === "communication_platform" ? (
+                <div className="flex flex-col items-center gap-3 border rounded-lg p-4 bg-blue-50/60">
+                  <MessageCircle className="h-8 w-8 text-blue-500" />
+                  <p className="text-sm font-medium text-center">
+                    Please message me in our communication platform and you can send the payment there.
+                  </p>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Transactions will be handled via WeChat, Zalo, or other communication platforms.
+                  </p>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Amount: <span className="font-semibold text-foreground">₱{Number(selectedPkg?.price ?? 0).toLocaleString()}</span>
+                  </p>
+                </div>
+              ) : companyQrImage ? (
                 <div className="flex flex-col items-center gap-2 border rounded-lg p-4 bg-muted/30">
                   <div className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
                     <QrCode className="h-4 w-4" />
@@ -190,7 +226,9 @@ const PackageSelectionModal: React.FC<Props> = ({
 
               {/* Receipt upload */}
               <div className="space-y-1.5">
-                <Label className="text-sm font-medium">Upload Payment Receipt <span className="text-destructive">*</span></Label>
+                <Label className="text-sm font-medium">
+                  Upload Payment Receipt {paymentMethod === "communication_platform" ? "(optional)" : <span className="text-destructive">*</span>}
+                </Label>
                 <p className="text-xs text-muted-foreground">Take a screenshot of your payment and upload it here.</p>
                 <label className="flex items-center gap-2 cursor-pointer border-2 border-dashed rounded-lg p-3 hover:bg-muted/30 transition-colors">
                   <Upload className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -226,7 +264,10 @@ const PackageSelectionModal: React.FC<Props> = ({
               <Button variant="outline" onClick={() => setStep("select")}>
                 <ArrowLeft className="h-4 w-4 mr-1" /> Back
               </Button>
-              <Button onClick={handleConfirm} disabled={!receiptImage}>
+              <Button
+                onClick={handleConfirm}
+                disabled={paymentMethod === "communication_platform" ? false : !receiptImage}
+              >
                 Confirm Enrollment
               </Button>
             </DialogFooter>

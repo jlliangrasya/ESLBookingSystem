@@ -112,6 +112,7 @@ const StudentDashboard = () => {
   // Company settings for enrollment
   const [allowPickTeacher, setAllowPickTeacher] = useState(true);
   const [companyQrImage, setCompanyQrImage] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"encasher" | "communication_platform" | null>(null);
   const [teachers, setTeachers] = useState<{ id: number; name: string }[]>([]);
 
   const navigate = useNavigate();
@@ -192,6 +193,7 @@ const StudentDashboard = () => {
       setAvailablePackages(pkgRes.data);
       setAllowPickTeacher(settingsRes.data.allow_student_pick_teacher);
       setCompanyQrImage(settingsRes.data.payment_qr_image || null);
+      setPaymentMethod(settingsRes.data.payment_method || null);
       setTeachers(pkgRes.data.length > 0 ? teachersRes.data.map((t: { id: number; name: string }) => ({ id: t.id, name: t.name })) : []);
       setShowPackageModal(true);
     } catch (error) {
@@ -608,6 +610,7 @@ const StudentDashboard = () => {
         allowPickTeacher={allowPickTeacher}
         teachers={teachers}
         companyQrImage={companyQrImage}
+        paymentMethod={paymentMethod}
       />
 
       <BookingConfirmationModal

@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS session_adjustments (
     INDEX idx_sa_package (student_package_id)
 );
 
+-- Payment method setting for companies: 'encasher' or 'communication_platform'
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30) NULL DEFAULT NULL;
+
 -- Issue #12: Backup logs table
 CREATE TABLE IF NOT EXISTS backup_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,

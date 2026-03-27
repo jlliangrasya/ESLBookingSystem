@@ -57,6 +57,7 @@ interface CompanySettings {
   payment_qr_image: string | null;
   cancellation_hours: number;
   cancellation_penalty_enabled: boolean;
+  payment_method: "encasher" | "communication_platform" | null;
 }
 
 const EMPTY_FORM = {
@@ -80,6 +81,7 @@ const PackageSetupPage = () => {
     payment_qr_image: null,
     cancellation_hours: 1,
     cancellation_penalty_enabled: false,
+    payment_method: null,
   });
   const [loading, setLoading] = useState(true);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -90,8 +92,8 @@ const PackageSetupPage = () => {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [formLoading, setFormLoading] = useState(false);
 
-  // QR upload
-  const [qrPreview, setQrPreview] = useState<string | null>(null);
+  // QR upload — temporarily disabled
+  // const [qrPreview, setQrPreview] = useState<string | null>(null);
 
   const fetchAll = async () => {
     try {
@@ -101,7 +103,7 @@ const PackageSetupPage = () => {
       ]);
       setPackages(pkgRes.data);
       setSettings(settingsRes.data);
-      setQrPreview(settingsRes.data.payment_qr_image || null);
+      // setQrPreview(settingsRes.data.payment_qr_image || null);
     } catch (err) {
       console.error(err);
     } finally {
@@ -196,17 +198,18 @@ const PackageSetupPage = () => {
     }
   };
 
-  const handleQrUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const base64 = ev.target?.result as string;
-      setQrPreview(base64);
-      setSettings((prev) => ({ ...prev, payment_qr_image: base64 }));
-    };
-    reader.readAsDataURL(file);
-  };
+  // QR upload handler — temporarily disabled
+  // const handleQrUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  //   const file = e.target.files?.[0];
+  //   if (!file) return;
+  //   const reader = new FileReader();
+  //   reader.onload = (ev) => {
+  //     const base64 = ev.target?.result as string;
+  //     setQrPreview(base64);
+  //     setSettings((prev) => ({ ...prev, payment_qr_image: base64 }));
+  //   };
+  //   reader.readAsDataURL(file);
+  // };
 
   const handleSaveSettings = async () => {
     setSettingsSaving(true);
@@ -218,6 +221,7 @@ const PackageSetupPage = () => {
           payment_qr_image: settings.payment_qr_image,
           cancellation_hours: settings.cancellation_hours,
           cancellation_penalty_enabled: settings.cancellation_penalty_enabled,
+          payment_method: settings.payment_method,
         },
         { headers },
       );
@@ -434,7 +438,97 @@ const PackageSetupPage = () => {
               </div>
             </div>
 
-            {/* QR Code upload */}
+            {/* Payment Method — only one can be active at a time */}
+            <div className="border rounded-lg p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <QrCode className="h-4 w-4 text-primary" />
+                <p className="font-medium text-sm">Payment Method</p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Choose how students should pay for their packages. Only one
+                option can be active at a time.
+              </p>
+
+              {/* Option 1: Direct to Encasher */}
+              <div
+                className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                  settings.payment_method === "encasher"
+                    ? "border-primary bg-primary/5 ring-1 ring-primary"
+                    : "hover:bg-muted/50"
+                }`}
+                onClick={() =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    payment_method:
+                      prev.payment_method === "encasher" ? null : "encasher",
+                  }))
+                }
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-sm">Direct to Encasher</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Students will see the Alipay QR code with instructions to
+                      transfer payment directly.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={settings.payment_method === "encasher"}
+                    onCheckedChange={(v) =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        payment_method: v ? "encasher" : null,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              {/* Option 2: Via Communication Platforms */}
+              <div
+                className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                  settings.payment_method === "communication_platform"
+                    ? "border-primary bg-primary/5 ring-1 ring-primary"
+                    : "hover:bg-muted/50"
+                }`}
+                onClick={() =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    payment_method:
+                      prev.payment_method === "communication_platform"
+                        ? null
+                        : "communication_platform",
+                  }))
+                }
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-sm">
+                      Via WeChat, Zalo, or other communication platforms
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Students will be instructed to message the company via
+                      their communication platform to arrange payment.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={
+                      settings.payment_method === "communication_platform"
+                    }
+                    onCheckedChange={(v) =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        payment_method: v
+                          ? "communication_platform"
+                          : null,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Custom QR Code upload — temporarily disabled
             <div className="border rounded-lg p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <QrCode className="h-4 w-4 text-primary" />
@@ -485,6 +579,7 @@ const PackageSetupPage = () => {
                 </Button>
               )}
             </div>
+            */}
 
             <Button onClick={handleSaveSettings} disabled={settingsSaving}>
               {settingsSaving ? (
