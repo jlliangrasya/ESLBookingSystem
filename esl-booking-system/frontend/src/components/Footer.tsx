@@ -15,18 +15,24 @@ const Footer = () => {
             <Mail className="h-4 w-4" />
             brightfolks@gmail.com
           </a>
-          <Separator orientation="vertical" className="h-4 bg-gray-700 hidden sm:block self-center" />
+          <Separator
+            orientation="vertical"
+            className="h-4 bg-gray-700 hidden sm:block self-center"
+          />
           <a
             href="tel:+639123456789"
             className="flex items-center gap-2 hover:text-[#6BBAD0] transition-colors"
           >
             <Phone className="h-4 w-4" />
-            0912-345-6789
+            0922-495-9040
           </a>
-          <Separator orientation="vertical" className="h-4 bg-gray-700 hidden sm:block self-center" />
+          <Separator
+            orientation="vertical"
+            className="h-4 bg-gray-700 hidden sm:block self-center"
+          />
           <span className="flex items-center gap-2">
             <MapPin className="h-4 w-4" />
-            Tacloban City, Philippines
+            Cebu City, Philippines
           </span>
         </div>
         <p className="mt-5 text-xs text-gray-500">
