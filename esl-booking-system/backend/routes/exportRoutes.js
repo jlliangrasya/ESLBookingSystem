@@ -28,9 +28,10 @@ router.get('/students', authenticateToken, requireRole('company_admin'), async (
             SELECT u.name, u.email, u.guardian_name, u.nationality, u.age, u.created_at,
                    tp.package_name, sp.payment_status, sp.sessions_remaining, sp.purchased_at
             FROM users u
-            LEFT JOIN student_packages sp
-                ON u.id = sp.student_id
-                AND sp.purchased_at = (SELECT MAX(purchased_at) FROM student_packages WHERE student_id = u.id AND company_id = ?)
+            LEFT JOIN (
+                SELECT sp2.*, ROW_NUMBER() OVER (PARTITION BY sp2.student_id ORDER BY sp2.purchased_at DESC) AS rn
+                FROM student_packages sp2 WHERE sp2.company_id = ?
+            ) sp ON u.id = sp.student_id AND sp.rn = 1
             LEFT JOIN tutorial_packages tp ON sp.package_id = tp.id
             WHERE u.role = 'student' AND u.company_id = ?
             ORDER BY u.name ASC
