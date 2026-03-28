@@ -9,6 +9,7 @@
     "admins": "管理员",
     "profile": "个人资料",
     "activityLog": "活动日志",
+    "documentation": "文档",
     "logout": "退出登录"
   },
   "home": {

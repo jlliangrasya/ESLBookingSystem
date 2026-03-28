@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { LogOut, Package, CalendarDays, User, FileText, Video, UserX, Send, Copy, Check, UserCircle } from "lucide-react";
+import { LogOut, Package, CalendarDays, User, FileText, Video, UserX, Send, Copy, Check, UserCircle, Clock, Trash2, Plus } from "lucide-react";
 import PackageSelectionModal from "../components/PackageSelectionModal";
 import BookingConfirmationModal from "../components/BookingConfirmationModal";
 import AuthContext from "@/context/AuthContext";
@@ -69,6 +69,15 @@ interface Absence {
   teacher_name: string | null;
 }
 
+interface WaitlistEntry {
+  id: number;
+  desired_date: string;
+  desired_time: string;
+  status: "waiting" | "notified" | "expired";
+  teacher_name: string | null;
+  created_at: string;
+}
+
 interface Report {
   id: number;
   booking_id: number;
@@ -96,6 +105,15 @@ const StudentDashboard = () => {
   const [expandedReport, setExpandedReport] = useState<number | null>(null);
   const [absentLoadingId, setAbsentLoadingId] = useState<number | null>(null);
   const [absences, setAbsences] = useState<Absence[]>([]);
+
+  // Waitlist
+  const [waitlistEntries, setWaitlistEntries] = useState<WaitlistEntry[]>([]);
+  const [waitlistTeachers, setWaitlistTeachers] = useState<{ id: number; name: string }[]>([]);
+  const [showWaitlistForm, setShowWaitlistForm] = useState(false);
+  const [waitlistForm, setWaitlistForm] = useState({ teacher_id: "", desired_date: "", desired_time: "" });
+  const [waitlistSubmitting, setWaitlistSubmitting] = useState(false);
+  const [waitlistMsg, setWaitlistMsg] = useState<string | null>(null);
+  const [removingWaitlistId, setRemovingWaitlistId] = useState<number | null>(null);
 
   // Feedback
   const [feedbackText, setFeedbackText] = useState("");
@@ -177,8 +195,22 @@ const StudentDashboard = () => {
       }
     };
 
+    const fetchWaitlist = async () => {
+      try {
+        const [waitlistRes, teachersRes] = await Promise.all([
+          axios.get(`${import.meta.env.VITE_API_URL}/api/waitlist`, { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get(`${import.meta.env.VITE_API_URL}/api/student/teachers`, { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+        setWaitlistEntries(waitlistRes.data);
+        setWaitlistTeachers(teachersRes.data);
+      } catch (error) {
+        console.error("Error fetching waitlist:", error);
+      }
+    };
+
     fetchStudentData();
     fetchReports();
+    fetchWaitlist();
   }, [token]);
 
   const handleAvailPackage = async () => {
@@ -339,6 +371,42 @@ const StudentDashboard = () => {
       setFeedbackMsg("Failed to submit feedback. Please try again.");
     } finally {
       setFeedbackLoading(false);
+    }
+  };
+
+  const handleJoinWaitlist = async () => {
+    const { teacher_id, desired_date, desired_time } = waitlistForm;
+    if (!teacher_id || !desired_date || !desired_time) return;
+    setWaitlistSubmitting(true);
+    setWaitlistMsg(null);
+    try {
+      await axios.post(`${import.meta.env.VITE_API_URL}/api/waitlist`,
+        { teacher_id: Number(teacher_id), desired_date, desired_time },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setWaitlistForm({ teacher_id: "", desired_date: "", desired_time: "" });
+      setShowWaitlistForm(false);
+      setWaitlistMsg("Added to waitlist! You'll be notified when the slot opens.");
+      const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/waitlist`, { headers: { Authorization: `Bearer ${token}` } });
+      setWaitlistEntries(res.data);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to join waitlist";
+      setWaitlistMsg(msg);
+    } finally {
+      setWaitlistSubmitting(false);
+    }
+  };
+
+  const handleRemoveWaitlist = async (id: number) => {
+    setRemovingWaitlistId(id);
+    try {
+      await axios.delete(`${import.meta.env.VITE_API_URL}/api/waitlist/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      setWaitlistEntries(prev => prev.filter(e => e.id !== id));
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to remove";
+      alert(msg);
+    } finally {
+      setRemovingWaitlistId(null);
     }
   };
 
@@ -600,6 +668,131 @@ const StudentDashboard = () => {
           </Card>
         </div>
       )}
+
+      {/* My Waitlist */}
+      <div className="max-w-7xl mx-auto px-4 pb-10">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Clock className="h-4 w-4 text-primary" />
+                My Waitlist
+              </CardTitle>
+              <Button size="sm" variant="outline" className="gap-1.5"
+                onClick={() => { setShowWaitlistForm(v => !v); setWaitlistMsg(null); }}>
+                <Plus className="h-3.5 w-3.5" />
+                {showWaitlistForm ? "Cancel" : "Join Waitlist"}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Add form */}
+            {showWaitlistForm && (
+              <div className="rounded-lg border p-4 space-y-3 bg-gray-50">
+                <p className="text-xs text-muted-foreground">
+                  Select a teacher, date, and time slot you want to be notified about when it becomes available.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Teacher</label>
+                    <select
+                      value={waitlistForm.teacher_id}
+                      onChange={e => setWaitlistForm(f => ({ ...f, teacher_id: e.target.value }))}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      <option value="">Select teacher...</option>
+                      {waitlistTeachers.map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Date</label>
+                    <input
+                      type="date"
+                      value={waitlistForm.desired_date}
+                      min={new Date().toISOString().split("T")[0]}
+                      onChange={e => setWaitlistForm(f => ({ ...f, desired_date: e.target.value }))}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Time</label>
+                    <input
+                      type="time"
+                      value={waitlistForm.desired_time}
+                      onChange={e => setWaitlistForm(f => ({ ...f, desired_time: e.target.value }))}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={handleJoinWaitlist}
+                    disabled={waitlistSubmitting || !waitlistForm.teacher_id || !waitlistForm.desired_date || !waitlistForm.desired_time}>
+                    {waitlistSubmitting ? "Joining..." : "Join Waitlist"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {waitlistMsg && (
+              <p className={`text-xs ${waitlistMsg.startsWith("Added") ? "text-green-600" : "text-destructive"}`}>
+                {waitlistMsg}
+              </p>
+            )}
+
+            {/* Entries table */}
+            {waitlistEntries.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">
+                No waitlist entries. Click "Join Waitlist" to be notified when a slot opens up.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Teacher</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {waitlistEntries.map(entry => (
+                    <TableRow key={entry.id}>
+                      <TableCell className="text-sm">
+                        {new Date(entry.desired_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </TableCell>
+                      <TableCell className="text-sm">{entry.desired_time}</TableCell>
+                      <TableCell className="text-sm">{entry.teacher_name || "—"}</TableCell>
+                      <TableCell>
+                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                          entry.status === "waiting" ? "bg-yellow-100 text-yellow-700"
+                          : entry.status === "notified" ? "bg-green-100 text-green-700"
+                          : "bg-gray-100 text-gray-600"
+                        }`}>
+                          {entry.status}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {entry.status === "waiting" && (
+                          <Button size="sm" variant="ghost"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                            disabled={removingWaitlistId === entry.id}
+                            onClick={() => handleRemoveWaitlist(entry.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <PackageSelectionModal
         show={showPackageModal}

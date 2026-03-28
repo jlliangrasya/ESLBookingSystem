@@ -9,6 +9,7 @@ export interface User {
   role: UserRole;
   company_id: number | null;
   timezone?: string;
+  is_owner?: boolean;
 }
 
 interface AuthContextType {

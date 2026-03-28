@@ -2,7 +2,7 @@ import { useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import BrandLogo from "@/components/BrandLogo";
-import { CalendarDays, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus } from "lucide-react";
+import { CalendarDays, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus, BookOpen } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,6 +20,7 @@ const NavBar: React.FC = () => {
   const { t } = useTranslation();
   const authContext = useContext(AuthContext);
   const role = authContext?.user?.role;
+  const isOwner = authContext?.user?.is_owner ?? false;
 
   const handleLogout = () => {
     authContext?.logout();
@@ -104,6 +105,17 @@ const NavBar: React.FC = () => {
                 <span className="text-[10px] font-medium">{t("nav.admins")}</span>
               </Link>
             </>
+          )}
+
+          {(role === "super_admin" || (role === "company_admin" && isOwner)) && (
+            <Link
+              to="/documentation"
+              className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
+              title={t("nav.documentation")}
+            >
+              <BookOpen className="h-5 w-5" />
+              <span className="text-[10px] font-medium">{t("nav.documentation")}</span>
+            </Link>
           )}
 
           <LanguageToggle variant="white" />

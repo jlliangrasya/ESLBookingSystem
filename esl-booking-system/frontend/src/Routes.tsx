@@ -27,6 +27,7 @@ const ResetPasswordPage        = lazy(() => import("./pages/ResetPasswordPage.ts
 const StudentProfilePage       = lazy(() => import("./pages/StudentProfilePage.tsx"));
 const ActivityLogPage          = lazy(() => import("./pages/ActivityLogPage.tsx"));
 const SubscriptionPlansPage    = lazy(() => import("./pages/SubscriptionPlansPage.tsx"));
+const DocumentationPage        = lazy(() => import("./pages/DocumentationPage.tsx"));
 
 const AppRoutes = () => {
   return (
@@ -174,6 +175,16 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute allowedRoles={['company_admin', 'super_admin']}>
               <ActivityLogPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Documentation — company_admin (owner) + super_admin */}
+        <Route
+          path="/documentation"
+          element={
+            <ProtectedRoute allowedRoles={['company_admin', 'super_admin']}>
+              <DocumentationPage />
             </ProtectedRoute>
           }
         />

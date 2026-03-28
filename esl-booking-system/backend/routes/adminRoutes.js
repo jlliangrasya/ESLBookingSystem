@@ -828,11 +828,12 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
       [companyId]
     );
 
-    // Summary totals
+    // Summary totals + plan limits
     const [[totals]] = await pool.query(
       `SELECT
          (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'student') AS totalStudents,
          (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE) AS teachersCount,
+         (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'company_admin' AND is_active = TRUE) AS adminsCount,
          (SELECT COUNT(*) FROM bookings WHERE company_id = ? AND status = 'done') AS totalSessions,
          (SELECT COUNT(*) FROM bookings WHERE company_id = ? AND status = 'cancelled') AS totalCancelled,
          (SELECT COUNT(*) FROM bookings WHERE company_id = ? AND DATE(appointment_date) = CURDATE() AND status != 'cancelled') AS classesToday,
@@ -840,8 +841,15 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
          (SELECT COUNT(*) FROM bookings WHERE company_id = ? AND YEAR(appointment_date) = YEAR(CURDATE()) AND MONTH(appointment_date) = MONTH(CURDATE()) AND status != 'cancelled') AS classesThisMonth,
          (SELECT IFNULL(SUM(tp.price), 0) FROM student_packages sp
           JOIN tutorial_packages tp ON sp.package_id = tp.id
-          WHERE sp.company_id = ? AND sp.payment_status = 'paid') AS totalRevenue`,
-      [companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId]
+          WHERE sp.company_id = ? AND sp.payment_status = 'paid') AS totalRevenue,
+         sp.max_students AS maxStudents,
+         sp.max_teachers AS maxTeachers,
+         sp.max_admins AS maxAdmins,
+         sp.name AS planName
+       FROM companies c
+       JOIN subscription_plans sp ON c.subscription_plan_id = sp.id
+       WHERE c.id = ?`,
+      [companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId]
     );
 
     res.json({ sessionsPerMonth, studentGrowth, packageStats, totals });

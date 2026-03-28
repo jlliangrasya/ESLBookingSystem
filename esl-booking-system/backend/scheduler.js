@@ -11,7 +11,7 @@ async function runBillingChecks() {
     try {
         // A. Notify company owner 5 days before due date
         const [due5] = await pool.query(
-            `SELECT c.id, c.name FROM companies c
+            `SELECT c.id, c.company_name AS name FROM companies c
              WHERE c.next_due_date = DATE_ADD(CURDATE(), INTERVAL 5 DAY)
              AND c.status = 'active'`
         );
@@ -31,7 +31,7 @@ async function runBillingChecks() {
 
         // B. Notify super admins 3 days before due date
         const [due3] = await pool.query(
-            `SELECT c.id, c.name FROM companies c
+            `SELECT c.id, c.company_name AS name FROM companies c
              WHERE c.next_due_date = DATE_ADD(CURDATE(), INTERVAL 3 DAY)
              AND c.status = 'active'`
         );
@@ -50,7 +50,7 @@ async function runBillingChecks() {
 
         // C. Auto-lock companies past their due date
         const [overdue] = await pool.query(
-            `SELECT c.id, c.name FROM companies c
+            `SELECT c.id, c.company_name AS name FROM companies c
              WHERE c.next_due_date < CURDATE()
              AND c.status = 'active'`
         );
@@ -70,7 +70,30 @@ async function runBillingChecks() {
             logger.warn(`[Scheduler] Locked company: ${company.name} (id=${company.id})`);
         }));
 
-        logger.info(`[Scheduler] Done. Notified (5d): ${due5.length}, Notified SA (3d): ${due3.length}, Locked: ${overdue.length}`);
+        // D. Auto-lock companies whose free trial has expired
+        const [expiredTrials] = await pool.query(
+            `SELECT c.id, c.company_name AS name FROM companies c
+             WHERE c.trial_ends_at < CURDATE()
+             AND c.status = 'active'
+             AND c.next_due_date IS NULL`
+        );
+        await Promise.all(expiredTrials.map(async (company) => {
+            await pool.query("UPDATE companies SET status = 'locked' WHERE id = ?", [company.id]);
+            const [owners] = await pool.query(
+                "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin' AND is_owner = TRUE",
+                [company.id]
+            );
+            await Promise.all(owners.map(owner => notify({
+                userId: owner.id,
+                companyId: company.id,
+                type: 'trial_expired',
+                title: 'Free trial has ended',
+                message: `Your free trial for "${company.name}" has expired. Please upgrade to a paid plan to continue using the service.`,
+            })));
+            logger.warn(`[Scheduler] Locked expired trial: ${company.name} (id=${company.id})`);
+        }));
+
+        logger.info(`[Scheduler] Done. Notified (5d): ${due5.length}, Notified SA (3d): ${due3.length}, Locked: ${overdue.length}, Trial expired: ${expiredTrials.length}`);
     } catch (err) {
         logger.error('[Scheduler] Error during billing checks:', err);
     }

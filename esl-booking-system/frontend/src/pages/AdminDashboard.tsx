@@ -87,9 +87,14 @@ const AdminDashboard = () => {
       totalRevenue: number;
       totalStudents: number;
       teachersCount: number;
+      adminsCount: number;
       classesToday: number;
       classesThisWeek: number;
       classesThisMonth: number;
+      maxStudents: number;
+      maxTeachers: number;
+      maxAdmins: number;
+      planName: string;
     };
   }
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
@@ -203,24 +208,60 @@ const AdminDashboard = () => {
     <>
       <NavBar />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+        {/* Plan badge */}
+        {analytics?.totals.planName && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-primary/10 text-primary border border-primary/20">
+              {analytics.totals.planName} Plan
+            </span>
+            {analytics.totals.totalStudents >= analytics.totals.maxStudents || analytics.totals.teachersCount >= analytics.totals.maxTeachers ? (
+              <span className="text-xs text-red-600 font-medium">⚠ You have reached a plan limit — consider upgrading.</span>
+            ) : null}
+          </div>
+        )}
+
         {/* Stats row */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
             <div className="p-2.5 bg-[#D0E8F0] rounded-xl">
               <Users className="h-5 w-5 text-[#2E6B9E]" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-gray-500 font-medium">Students</p>
-              <p className="text-2xl font-bold text-gray-800">{analytics?.totals.totalStudents ?? students.length}</p>
+              {analytics?.totals.maxStudents != null ? (
+                <>
+                  <p className={`text-2xl font-bold ${analytics.totals.totalStudents >= analytics.totals.maxStudents ? "text-red-600" : analytics.totals.totalStudents >= analytics.totals.maxStudents * 0.8 ? "text-amber-600" : "text-gray-800"}`}>
+                    {analytics.totals.totalStudents}
+                    <span className="text-sm font-normal text-gray-400 ml-1">/ {analytics.totals.maxStudents}</span>
+                  </p>
+                  {analytics.totals.totalStudents >= analytics.totals.maxStudents && (
+                    <p className="text-[10px] text-red-500 font-medium leading-none mt-0.5">Limit reached</p>
+                  )}
+                </>
+              ) : (
+                <p className="text-2xl font-bold text-gray-800">{analytics?.totals.totalStudents ?? students.length}</p>
+              )}
             </div>
           </div>
           <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
             <div className="p-2.5 bg-purple-100 rounded-xl">
               <GraduationCap className="h-5 w-5 text-purple-600" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-gray-500 font-medium">Teachers</p>
-              <p className="text-2xl font-bold text-gray-800">{teacherCount ?? "—"}</p>
+              {analytics?.totals.maxTeachers != null ? (
+                <>
+                  <p className={`text-2xl font-bold ${analytics.totals.teachersCount >= analytics.totals.maxTeachers ? "text-red-600" : analytics.totals.teachersCount >= analytics.totals.maxTeachers * 0.8 ? "text-amber-600" : "text-gray-800"}`}>
+                    {analytics.totals.teachersCount}
+                    <span className="text-sm font-normal text-gray-400 ml-1">/ {analytics.totals.maxTeachers}</span>
+                  </p>
+                  {analytics.totals.teachersCount >= analytics.totals.maxTeachers && (
+                    <p className="text-[10px] text-red-500 font-medium leading-none mt-0.5">Limit reached</p>
+                  )}
+                </>
+              ) : (
+                <p className="text-2xl font-bold text-gray-800">{teacherCount ?? "—"}</p>
+              )}
             </div>
           </div>
           <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">

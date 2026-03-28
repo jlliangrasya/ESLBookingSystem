@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import {
   Building2, Users, Clock, CheckCircle, LogOut, Loader2,
   ArrowUpCircle, PackagePlus, Pencil, BarChart2, ChevronLeft, Search,
-  UserCog, CreditCard, AlertCircle,
+  UserCog, CreditCard, AlertCircle, Database,
 } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -107,7 +107,15 @@ interface SAAnalytics {
   totals: { totalCompanies: number; totalSessions: number; totalRevenue: number };
 }
 
-type SAPage = "dashboard" | "companies" | "accounts" | "soa";
+type SAPage = "dashboard" | "companies" | "accounts" | "soa" | "backup";
+
+interface BackupLog {
+  id: number;
+  backup_type: string;
+  status: "success" | "failed";
+  details: Record<string, unknown> | null;
+  created_at: string;
+}
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 const statusColors: Record<string, string> = {
@@ -175,6 +183,13 @@ const SuperAdminDashboard = () => {
   const [lockLoading, setLockLoading] = useState<number | null>(null);
   const [markPaidLoading, setMarkPaidLoading] = useState<number | null>(null);
 
+  // Backup logs
+  const [backupLogs, setBackupLogs] = useState<BackupLog[]>([]);
+  const [backupLogsLoading, setBackupLogsLoading] = useState(false);
+  const [backupLogsTotal, setBackupLogsTotal] = useState(0);
+  const [recordingBackup, setRecordingBackup] = useState(false);
+  const [backupNotes, setBackupNotes] = useState("");
+
   // Plan modal
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [editPlan, setEditPlan] = useState<Plan | null>(null);
@@ -206,6 +221,36 @@ const SuperAdminDashboard = () => {
       console.error("Error fetching super admin data:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ── Fetch backup logs ────────────────────────────────────────────────────────
+  const fetchBackupLogs = async () => {
+    setBackupLogsLoading(true);
+    try {
+      const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/super-admin/backup-logs`, { headers });
+      setBackupLogs(res.data.logs);
+      setBackupLogsTotal(res.data.total);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setBackupLogsLoading(false);
+    }
+  };
+
+  const handleRecordBackup = async () => {
+    setRecordingBackup(true);
+    try {
+      await axios.post(`${import.meta.env.VITE_API_URL}/api/super-admin/backup-logs`,
+        { backup_type: "manual", status: "success", details: backupNotes ? { notes: backupNotes } : null },
+        { headers }
+      );
+      setBackupNotes("");
+      fetchBackupLogs();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setRecordingBackup(false);
     }
   };
 
@@ -1245,12 +1290,105 @@ const SuperAdminDashboard = () => {
     </div>
   );
 
+  // ── Backup Logs page ─────────────────────────────────────────────────────────
+  const renderBackupPage = () => (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold">Backup Logs</h2>
+        <p className="text-sm text-muted-foreground">Record and view manual database backup entries</p>
+      </div>
+
+      {/* Record Manual Backup */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Database className="h-4 w-4 text-primary" /> Record Manual Backup
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex gap-2 items-start">
+            <Input
+              type="text"
+              placeholder="Optional notes (e.g. pre-update backup)"
+              value={backupNotes}
+              onChange={e => setBackupNotes(e.target.value)}
+              className="flex-1"
+            />
+            <Button size="sm" onClick={handleRecordBackup} disabled={recordingBackup}>
+              {recordingBackup ? <Loader2 className="h-3 w-3 animate-spin" /> : "Log Backup"}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Use this to record that you performed a manual database backup (e.g. via mysqldump). This does not create a backup — it only logs that one was performed.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Backup Log Table */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm">Log History ({backupLogsTotal} entries)</CardTitle>
+            <Button variant="outline" size="sm" onClick={fetchBackupLogs} disabled={backupLogsLoading}>
+              {backupLogsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Refresh"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {backupLogsLoading ? (
+            <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date &amp; Time</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Notes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {backupLogs.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground text-sm py-10">
+                      No backup logs yet. Use the form above to record your first backup.
+                    </TableCell>
+                  </TableRow>
+                ) : backupLogs.map(log => (
+                  <TableRow key={log.id}>
+                    <TableCell className="text-sm">
+                      {new Date(log.created_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs px-2 py-1 rounded-full font-medium bg-blue-100 text-blue-700 capitalize">
+                        {log.backup_type}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${log.status === "success" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                        {log.status}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {log.details ? (log.details as { notes?: string }).notes || JSON.stringify(log.details) : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   // ── Main render ──────────────────────────────────────────────────────────────
   const navItems: { key: SAPage; label: string; icon: React.FC<{ className?: string }> }[] = [
     { key: "dashboard", label: "Dashboard", icon: BarChart2 },
     { key: "companies", label: "Companies", icon: Building2 },
     { key: "accounts", label: "Accounts", icon: UserCog },
     { key: "soa", label: "Statement of Accounts", icon: CreditCard },
+    { key: "backup", label: "Backup Logs", icon: Database },
   ];
 
   return (
@@ -1270,7 +1408,7 @@ const SuperAdminDashboard = () => {
                 <button
                   key={key}
                   title={label}
-                  onClick={() => { setPage(key); if (key !== "companies") { setSelectedCompanyId(null); setCompanyProfile(null); } if (key !== "soa") setSoaCompany(null); }}
+                  onClick={() => { setPage(key); if (key !== "companies") { setSelectedCompanyId(null); setCompanyProfile(null); } if (key !== "soa") setSoaCompany(null); if (key === "backup") fetchBackupLogs(); }}
                   className={`flex flex-col items-center gap-0.5 transition-colors ${
                     page === key ? "text-white" : "text-white/60 hover:text-white"
                   }`}
@@ -1296,6 +1434,7 @@ const SuperAdminDashboard = () => {
           {page === "companies" && renderCompaniesPage()}
           {page === "accounts" && renderAccountsPage()}
           {page === "soa" && renderSOA()}
+          {page === "backup" && renderBackupPage()}
         </div>
       </div>
 

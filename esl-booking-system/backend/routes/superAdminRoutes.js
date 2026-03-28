@@ -335,6 +335,47 @@ router.get('/companies/:id/payments', authenticateToken, requireRole('super_admi
     }
 });
 
+// GET /api/super-admin/backup-logs — list backup log entries (paginated)
+router.get('/backup-logs', authenticateToken, requireRole('super_admin'), async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+        const offset = parseInt(req.query.offset) || 0;
+
+        const [rows] = await pool.query(
+            `SELECT id, backup_type, status, details, created_at
+             FROM backup_logs
+             ORDER BY created_at DESC
+             LIMIT ? OFFSET ?`,
+            [limit, offset]
+        );
+        const [[{ total }]] = await pool.query('SELECT COUNT(*) AS total FROM backup_logs');
+        res.json({ logs: rows, total });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// POST /api/super-admin/backup-logs — record a manual backup entry
+router.post('/backup-logs', authenticateToken, requireRole('super_admin'), async (req, res) => {
+    try {
+        const { backup_type = 'manual', status = 'success', details } = req.body;
+        if (!['manual', 'scheduled', 'export'].includes(backup_type))
+            return res.status(400).json({ message: 'Invalid backup_type' });
+        if (!['success', 'failed'].includes(status))
+            return res.status(400).json({ message: 'Invalid status' });
+
+        const [result] = await pool.query(
+            'INSERT INTO backup_logs (backup_type, status, details) VALUES (?, ?, ?)',
+            [backup_type, status, details ? JSON.stringify(details) : null]
+        );
+        res.status(201).json({ message: 'Backup logged', id: result.insertId });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // GET /api/super-admin/audit-logs — all companies (super admin view)
 router.get('/audit-logs', authenticateToken, requireRole('super_admin'), async (req, res) => {
     try {

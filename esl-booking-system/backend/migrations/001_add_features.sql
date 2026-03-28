@@ -18,9 +18,9 @@ CREATE TABLE IF NOT EXISTS waitlist (
 );
 
 -- Issue #8: Add 'reminded' flag to bookings for class reminder tracking
-ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminded BOOLEAN DEFAULT FALSE;
+ALTER TABLE bookings ADD COLUMN reminded BOOLEAN DEFAULT FALSE;
 -- Index to speed up the reminder query
-ALTER TABLE bookings ADD INDEX IF NOT EXISTS idx_bookings_reminder (status, reminded, appointment_date);
+ALTER TABLE bookings ADD INDEX idx_bookings_reminder (status, reminded, appointment_date);
 
 -- Session adjustments log (admin add/deduct sessions)
 CREATE TABLE IF NOT EXISTS session_adjustments (
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS session_adjustments (
 );
 
 -- Payment method setting for companies: 'encasher' or 'communication_platform'
-ALTER TABLE companies ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30) NULL DEFAULT NULL;
+ALTER TABLE companies ADD COLUMN payment_method VARCHAR(30) NULL DEFAULT NULL;
 
 -- Issue #12: Backup logs table
 CREATE TABLE IF NOT EXISTS backup_logs (

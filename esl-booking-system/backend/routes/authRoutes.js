@@ -186,6 +186,7 @@ router.post('/login', async (req, res) => {
                 role: user.role,
                 company_id: user.company_id,
                 timezone: user.timezone || 'UTC',
+                is_owner: user.is_owner ?? false,
             },
             trial_expired: trialExpired,
         });
