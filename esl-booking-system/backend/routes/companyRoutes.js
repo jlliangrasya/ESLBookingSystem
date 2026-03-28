@@ -81,7 +81,7 @@ router.post('/register', async (req, res) => {
             companyId: null,
             type: 'new_company',
             title: 'New company registered',
-            message: `"${name}" applied for a ${plan.name} plan and is awaiting approval.`,
+            message: `"${company_name}" applied for a ${plan.name} plan and is awaiting approval.`,
         })));
 
         // Issue #14: Notify the company owner about the pending status with estimated timeline
@@ -391,7 +391,7 @@ router.post('/upgrade-request', authenticateToken.basic, requireRole('company_ad
             companyId: null,
             type: 'upgrade_request',
             title: 'Plan upgrade request',
-            message: `"${company?.name}" has requested an upgrade to the ${plan?.name} plan.`,
+            message: `"${company?.company_name}" has requested an upgrade to the ${plan?.name} plan.`,
         })));
 
         res.status(201).json({ message: 'Upgrade request submitted. Awaiting super admin approval.' });
