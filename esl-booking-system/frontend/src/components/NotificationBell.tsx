@@ -34,7 +34,7 @@ const NotificationBell: React.FC<{ variant?: "default" | "white" }> = ({ variant
         `${import.meta.env.VITE_API_URL}/api/notifications`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setNotifications(res.data);
+      setNotifications(Array.isArray(res.data) ? res.data : []);
     } catch {
       // silent
     }
