@@ -58,7 +58,25 @@ interface CompanySettings {
   cancellation_hours: number;
   cancellation_penalty_enabled: boolean;
   payment_method: "encasher" | "communication_platform" | null;
+  currency: string;
 }
+
+const CURRENCIES: { code: string; symbol: string; name: string }[] = [
+  { code: "PHP", symbol: "₱", name: "Philippine Peso" },
+  { code: "USD", symbol: "$", name: "US Dollar" },
+  { code: "CNY", symbol: "¥", name: "Chinese Yuan" },
+  { code: "KRW", symbol: "₩", name: "Korean Won" },
+  { code: "VND", symbol: "₫", name: "Vietnamese Dong" },
+  { code: "THB", symbol: "฿", name: "Thai Baht" },
+  { code: "JPY", symbol: "¥", name: "Japanese Yen" },
+  { code: "MYR", symbol: "RM", name: "Malaysian Ringgit" },
+  { code: "IDR", symbol: "Rp", name: "Indonesian Rupiah" },
+  { code: "TWD", symbol: "NT$", name: "Taiwan Dollar" },
+  { code: "SGD", symbol: "S$", name: "Singapore Dollar" },
+  { code: "HKD", symbol: "HK$", name: "Hong Kong Dollar" },
+  { code: "EUR", symbol: "€", name: "Euro" },
+  { code: "GBP", symbol: "£", name: "British Pound" },
+];
 
 const EMPTY_FORM = {
   package_name: "",
@@ -82,6 +100,7 @@ const PackageSetupPage = () => {
     cancellation_hours: 1,
     cancellation_penalty_enabled: false,
     payment_method: null,
+    currency: "PHP",
   });
   const [loading, setLoading] = useState(true);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -98,8 +117,13 @@ const PackageSetupPage = () => {
   const fetchAll = async () => {
     try {
       const [pkgRes, settingsRes] = await Promise.all([
-        axios.get(`${import.meta.env.VITE_API_URL}/api/student/packages`, { headers }),
-        axios.get(`${import.meta.env.VITE_API_URL}/api/admin/company-settings`, { headers }),
+        axios.get(`${import.meta.env.VITE_API_URL}/api/student/packages`, {
+          headers,
+        }),
+        axios.get(
+          `${import.meta.env.VITE_API_URL}/api/admin/company-settings`,
+          { headers },
+        ),
       ]);
       setPackages(pkgRes.data);
       setSettings(settingsRes.data);
@@ -111,9 +135,13 @@ const PackageSetupPage = () => {
     }
     // Monthly stats fetched separately so a failure doesn't block the main data
     try {
-      const statsRes = await axios.get(`${import.meta.env.VITE_API_URL}/api/admin/package-monthly-stats`, { headers });
+      const statsRes = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/admin/package-monthly-stats`,
+        { headers },
+      );
       const statsMap: Record<number, number> = {};
-      for (const s of statsRes.data) statsMap[s.package_id] = s.availed_this_month;
+      for (const s of statsRes.data)
+        statsMap[s.package_id] = s.availed_this_month;
       setMonthlyStats(statsMap);
     } catch {
       // non-critical — monthly stats unavailable
@@ -222,6 +250,7 @@ const PackageSetupPage = () => {
           cancellation_hours: settings.cancellation_hours,
           cancellation_penalty_enabled: settings.cancellation_penalty_enabled,
           payment_method: settings.payment_method,
+          currency: settings.currency,
         },
         { headers },
       );
@@ -306,10 +335,13 @@ const PackageSetupPage = () => {
                         {pkg.duration_minutes} min
                       </TableCell>
                       <TableCell className="text-sm">
-                        ₱{Number(pkg.price).toLocaleString()}
+                        {(CURRENCIES.find(c => c.code === settings.currency)?.symbol ?? "₱")}{Number(pkg.price).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-sm">
-                        <Badge variant="secondary" className="bg-[#EEF6FA] text-[#2E6B9E] text-xs">
+                        <Badge
+                          variant="secondary"
+                          className="bg-[#EEF6FA] text-[#2E6B9E] text-xs"
+                        >
                           {monthlyStats[pkg.id] ?? 0} availed
                         </Badge>
                       </TableCell>
@@ -369,6 +401,29 @@ const PackageSetupPage = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Currency selector */}
+            <div className="border rounded-lg p-4 space-y-2">
+              <p className="font-medium text-sm">Currency</p>
+              <p className="text-xs text-muted-foreground">
+                Choose the currency for package prices displayed to students and admins.
+              </p>
+              <Select
+                value={settings.currency}
+                onValueChange={(v) => setSettings((prev) => ({ ...prev, currency: v }))}
+              >
+                <SelectTrigger className="w-64">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CURRENCIES.map((cur) => (
+                    <SelectItem key={cur.code} value={cur.code}>
+                      {cur.symbol} — {cur.name} ({cur.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Teacher picker toggle */}
             <div className="flex items-center justify-between border rounded-lg p-4">
               <div>
@@ -469,7 +524,8 @@ const PackageSetupPage = () => {
                     <p className="font-medium text-sm">Direct to Encasher</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Students will see the Alipay QR code with instructions to
-                      transfer payment directly.
+                      transfer payment directly. Please contact Brightfolks for
+                      this.
                     </p>
                   </div>
                   <Switch
@@ -518,9 +574,7 @@ const PackageSetupPage = () => {
                     onCheckedChange={(v) =>
                       setSettings((prev) => ({
                         ...prev,
-                        payment_method: v
-                          ? "communication_platform"
-                          : null,
+                        payment_method: v ? "communication_platform" : null,
                       }))
                     }
                   />
@@ -657,7 +711,7 @@ const PackageSetupPage = () => {
             </div>
             <div className="space-y-1.5">
               <Label>
-                Price (₱) <span className="text-destructive">*</span>
+                Price ({CURRENCIES.find(c => c.code === settings.currency)?.symbol ?? "₱"}) <span className="text-destructive">*</span>
               </Label>
               <Input
                 type="number"
