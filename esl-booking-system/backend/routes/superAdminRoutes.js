@@ -406,4 +406,82 @@ router.get('/audit-logs', authenticateToken, requireRole('super_admin'), async (
     }
 });
 
+// ——— Super Admin: User Management ———
+
+// List all users (with search/filter)
+router.get('/users', authenticateToken, requireRole('super_admin'), async (req, res) => {
+    try {
+        const { search, role, company_id, is_active } = req.query;
+        let query = `SELECT u.id, u.name, u.email, u.role, u.is_active, u.company_id, u.created_at,
+                            c.company_name
+                     FROM users u LEFT JOIN companies c ON u.company_id = c.id WHERE 1=1`;
+        const params = [];
+        if (search) { query += ' AND (u.name LIKE ? OR u.email LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
+        if (role) { query += ' AND u.role = ?'; params.push(role); }
+        if (company_id) { query += ' AND u.company_id = ?'; params.push(company_id); }
+        if (is_active !== undefined) { query += ' AND u.is_active = ?'; params.push(is_active === 'true' ? 1 : 0); }
+        query += ' ORDER BY u.created_at DESC LIMIT 100';
+        const [rows] = await pool.query(query, params);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Deactivate any user (super_admin)
+router.post('/users/:id/deactivate', authenticateToken, requireRole('super_admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [[user]] = await pool.query('SELECT id, name, role FROM users WHERE id = ?', [id]);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+        if (user.role === 'super_admin') return res.status(403).json({ message: 'Cannot deactivate a super admin' });
+        await pool.query('UPDATE users SET is_active = FALSE WHERE id = ?', [id]);
+        res.json({ message: `${user.name} has been deactivated` });
+    } catch (err) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Reactivate any user (super_admin)
+router.post('/users/:id/reactivate', authenticateToken, requireRole('super_admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [[user]] = await pool.query('SELECT id, name FROM users WHERE id = ?', [id]);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+        await pool.query('UPDATE users SET is_active = TRUE WHERE id = ?', [id]);
+        res.json({ message: `${user.name} has been reactivated` });
+    } catch (err) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Hard delete any user (super_admin only — permanent, use with caution)
+router.delete('/users/:id', authenticateToken, requireRole('super_admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [[user]] = await pool.query('SELECT id, name, role FROM users WHERE id = ?', [id]);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+        if (user.role === 'super_admin') return res.status(403).json({ message: 'Cannot delete a super admin' });
+
+        // Clean up related data
+        await pool.query('DELETE FROM notifications WHERE user_id = ?', [id]);
+        await pool.query('DELETE FROM admin_permissions WHERE user_id = ?', [id]);
+        await pool.query('DELETE FROM class_reports WHERE booking_id IN (SELECT b.id FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id WHERE sp.student_id = ?)', [id]);
+        await pool.query('DELETE FROM bookings WHERE student_package_id IN (SELECT id FROM student_packages WHERE student_id = ?)', [id]);
+        await pool.query('DELETE FROM bookings WHERE teacher_id = ?', [id]);
+        await pool.query('DELETE FROM student_packages WHERE student_id = ?', [id]);
+        await pool.query('DELETE FROM student_feedback WHERE student_id = ?', [id]);
+        await pool.query('DELETE FROM teacher_leaves WHERE teacher_id = ?', [id]);
+        await pool.query('DELETE FROM teacher_available_slots WHERE teacher_id = ?', [id]);
+        await pool.query('DELETE FROM closed_slots WHERE teacher_id = ?', [id]);
+        await pool.query('DELETE FROM session_adjustments WHERE adjusted_by = ?', [id]);
+        await pool.query('DELETE FROM users WHERE id = ?', [id]);
+
+        res.json({ message: `${user.name} (${user.role}) has been permanently deleted` });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 module.exports = router;

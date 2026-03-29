@@ -663,7 +663,7 @@ router.get('/students/:id', authenticateToken, requireRole('company_admin'), asy
     const { id } = req.params;
 
     const [[student]] = await pool.query(
-      'SELECT id, name, email, guardian_name, nationality, age, created_at FROM users WHERE id = ? AND company_id = ? AND role = ?',
+      'SELECT id, name, email, guardian_name, nationality, age, is_active, created_at FROM users WHERE id = ? AND company_id = ? AND role = ?',
       [id, companyId, 'student']
     );
     if (!student) return res.status(404).json({ message: 'Student not found' });
@@ -991,6 +991,40 @@ router.post('/students', authenticateToken, requireRole('company_admin'), async 
     const [[newStudent]] = await pool.query('SELECT id FROM users WHERE email = ?', [email]);
     await logAction(companyId, req.user.id, 'student_created', 'user', newStudent.id, { name, email });
     res.status(201).json({ message: 'Student created successfully' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Deactivate a student (company_admin only — soft-delete)
+router.post('/students/:id/deactivate', authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const { id } = req.params;
+    const [result] = await pool.query(
+      "UPDATE users SET is_active = FALSE WHERE id = ? AND company_id = ? AND role = 'student'",
+      [id, companyId]
+    );
+    if (result.affectedRows === 0) return res.status(404).json({ message: 'Student not found' });
+    await logAction(companyId, req.user.id, 'student_deactivated', 'user', Number(id), {});
+    res.json({ message: 'Student deactivated' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Reactivate a student (company_admin only)
+router.post('/students/:id/reactivate', authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const { id } = req.params;
+    const [result] = await pool.query(
+      "UPDATE users SET is_active = TRUE WHERE id = ? AND company_id = ? AND role = 'student'",
+      [id, companyId]
+    );
+    if (result.affectedRows === 0) return res.status(404).json({ message: 'Student not found' });
+    await logAction(companyId, req.user.id, 'student_reactivated', 'user', Number(id), {});
+    res.json({ message: 'Student reactivated' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }

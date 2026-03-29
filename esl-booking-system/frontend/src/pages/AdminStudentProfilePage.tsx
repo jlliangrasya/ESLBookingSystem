@@ -39,6 +39,7 @@ interface StudentProfile {
   guardian_name: string | null;
   nationality: string | null;
   age: number | null;
+  is_active: boolean;
   created_at: string;
 }
 
@@ -107,6 +108,24 @@ const AdminStudentProfilePage = () => {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+
+  // Deactivate/reactivate student
+  const [deactivateLoading, setDeactivateLoading] = useState(false);
+
+  const handleToggleActive = async () => {
+    if (!student) return;
+    const action = student.is_active ? 'deactivate' : 'reactivate';
+    if (action === 'deactivate' && !confirm(`Are you sure you want to deactivate ${student.name}? They will not be able to log in.`)) return;
+    setDeactivateLoading(true);
+    try {
+      await axios.post(`${base}/api/admin/students/${id}/${action}`, {}, { headers });
+      fetchData();
+    } catch (err) {
+      console.error(`Error ${action}ing student:`, err);
+    } finally {
+      setDeactivateLoading(false);
+    }
+  };
 
   // Assign package dialog
   const [availablePackages, setAvailablePackages] = useState<AvailablePackage[]>([]);
@@ -492,6 +511,17 @@ const AdminStudentProfilePage = () => {
               <Button size="sm" variant="outline" className="gap-1"
                 onClick={() => { setShowResetPw(true); setResetPw(""); setResetPwMsg(null); }}>
                 <KeyRound className="h-4 w-4" /> Reset Password
+              </Button>
+              <Button
+                size="sm"
+                variant={student.is_active ? "destructive" : "default"}
+                className="gap-1"
+                onClick={handleToggleActive}
+                disabled={deactivateLoading}
+              >
+                {deactivateLoading
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : student.is_active ? "Deactivate" : "Reactivate"}
               </Button>
             </div>
           </CardHeader>
