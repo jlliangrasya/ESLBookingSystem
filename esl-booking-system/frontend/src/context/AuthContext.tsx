@@ -1,4 +1,5 @@
-import { createContext, useState } from "react";
+import { createContext, useState, useEffect } from "react";
+import axios from "axios";
 import { setUserTimezone } from "@/utils/timezone";
 
 export type UserRole = 'super_admin' | 'company_admin' | 'teacher' | 'student';
@@ -59,6 +60,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     localStorage.removeItem("trial_expired");
     localStorage.removeItem("userTimezone");
   };
+
+  // Auto-logout on expired/invalid token (401 response)
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      (res) => res,
+      (err) => {
+        if (err.response?.status === 401 && token) {
+          logout();
+          window.location.href = "/login";
+        }
+        return Promise.reject(err);
+      }
+    );
+    return () => axios.interceptors.response.eject(interceptor);
+  }, [token]);
 
   return (
     <AuthContext.Provider value={{ token, user, trialExpired, login, logout }}>
