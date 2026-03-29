@@ -82,7 +82,27 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
             return res.status(403).json({ message: "No sessions remaining in your package. Please enroll in a new package." });
         }
 
-        const teacherId = spRows[0].teacher_id;
+        let teacherId = spRows[0].teacher_id;
+
+        // Allow student to pick a teacher if package has no assigned teacher and setting is ON
+        if (!teacherId && req.body.teacher_id) {
+            const [[company]] = await connection.query(
+                'SELECT allow_student_pick_teacher FROM companies WHERE id = ?', [companyId]
+            );
+            if (!company?.allow_student_pick_teacher) {
+                await connection.rollback(); connection.release();
+                return res.status(403).json({ message: "Teacher selection is not allowed for this company." });
+            }
+            const [[validTeacher]] = await connection.query(
+                "SELECT id FROM users WHERE id = ? AND company_id = ? AND role = 'teacher' AND is_active = TRUE",
+                [req.body.teacher_id, companyId]
+            );
+            if (!validTeacher) {
+                await connection.rollback(); connection.release();
+                return res.status(400).json({ message: "Selected teacher is not valid." });
+            }
+            teacherId = req.body.teacher_id;
+        }
 
         // Issue #7: Enforce teacher availability and leave
         if (teacherId) {

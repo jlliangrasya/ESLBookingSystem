@@ -45,24 +45,47 @@ const TimeslotPage = () => {
   const [absentLoadingId, setAbsentLoadingId] = useState<number | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
 
+  // Teacher-aware scheduling
+  const [assignedTeacherId, setAssignedTeacherId] = useState<number | null>(null);
+  const [effectiveTeacherId, setEffectiveTeacherId] = useState<number | null>(null);
+  const [needsTeacherPicker, setNeedsTeacherPicker] = useState(false);
+  const [selectedTeacherId, setSelectedTeacherId] = useState<number | null>(null);
+
   useEffect(() => {
     if (!localStorage.getItem("token")) navigate("/login");
   }, [navigate]);
 
   useEffect(() => {
-    const fetchStudentPackageId = async () => {
+    const fetchStudentContext = async () => {
       try {
         const token = localStorage.getItem("token");
-        const response = await axios.get(
-          `${import.meta.env.VITE_API_URL}/api/student/avail`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        setUserPackageId(response.data?.student_package_id || null);
+        const headers = { Authorization: `Bearer ${token}` };
+        const base = import.meta.env.VITE_API_URL;
+
+        const [availRes, teachersRes, settingsRes] = await Promise.all([
+          axios.get(`${base}/api/student/avail`, { headers }),
+          axios.get(`${base}/api/student/teachers`, { headers }),
+          axios.get(`${base}/api/admin/company-settings`, { headers }),
+        ]);
+
+        const pkgTeacherId = availRes.data?.teacher_id || null;
+        const teachers = Array.isArray(teachersRes.data) ? teachersRes.data : [];
+        const allowPick = settingsRes.data?.allow_student_pick_teacher ?? true;
+
+        setUserPackageId(availRes.data?.student_package_id || null);
+        setAssignedTeacherId(pkgTeacherId);
+
+        // Derive effective teacher: assigned > single teacher > none
+        const effective = pkgTeacherId || (teachers.length === 1 ? teachers[0].id : null);
+        setEffectiveTeacherId(effective);
+
+        // Need picker: no effective teacher + multiple teachers + allow pick ON
+        setNeedsTeacherPicker(!effective && teachers.length > 1 && allowPick);
       } catch (error) {
-        console.error("Error fetching student package ID:", error);
+        console.error("Error fetching student context:", error);
       }
     };
-    fetchStudentPackageId();
+    fetchStudentContext();
   }, []);
 
   useEffect(() => {
@@ -101,10 +124,15 @@ const TimeslotPage = () => {
     if (!date) return;
 
     const fetchClosedSlots = async () => {
+      // Scenarios 3 & 4: no effective teacher → all slots available (no closed slots shown)
+      if (effectiveTeacherId === null) {
+        setClosedSlots([]);
+        return;
+      }
       try {
         const token = localStorage.getItem("token");
         const response = await axios.get<ClosedSlot[]>(
-          `${import.meta.env.VITE_API_URL}/api/admin/closed-slots`,
+          `${import.meta.env.VITE_API_URL}/api/admin/closed-slots?teacher_id=${effectiveTeacherId}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         const slots = response.data
@@ -117,7 +145,7 @@ const TimeslotPage = () => {
     };
 
     fetchClosedSlots();
-  }, [date]);
+  }, [date, effectiveTeacherId]);
 
   const generateTimeSlots = () => {
     const slots: string[] = [];
@@ -250,6 +278,7 @@ const TimeslotPage = () => {
           appointment_date: appointmentDate,
           status: "confirmed",
           rescheduled_by_admin: false,
+          ...(selectedTeacherId ? { teacher_id: selectedTeacherId } : {}),
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -335,9 +364,14 @@ const TimeslotPage = () => {
 
       <BookingConfirmationModal
         show={showBookingModal}
-        onHide={() => setShowBookingModal(false)}
+        onHide={() => { setShowBookingModal(false); setSelectedTeacherId(null); }}
         confirmBooking={confirmBooking}
         loading={bookingLoading}
+        showTeacherPicker={needsTeacherPicker}
+        selectedDate={date}
+        selectedTime={selectedSlot ?? undefined}
+        selectedTeacherId={selectedTeacherId}
+        onTeacherSelected={setSelectedTeacherId}
       />
 
       {/* Class Info Modal */}

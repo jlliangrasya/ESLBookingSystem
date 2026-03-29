@@ -232,6 +232,71 @@ router.get('/teachers', authenticateToken, requireRole('student'), async (req, r
     }
 });
 
+// Get teachers available at a specific date+time (for student teacher picker)
+router.get('/available-teachers', authenticateToken, requireRole('student'), async (req, res) => {
+    try {
+        const companyId = req.user.company_id;
+        const { date, time } = req.query;
+        if (!date || !time) return res.status(400).json({ message: 'date and time are required' });
+
+        // All active teachers
+        const [allTeachers] = await pool.query(
+            "SELECT id, name FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE",
+            [companyId]
+        );
+        if (allTeachers.length === 0) return res.json([]);
+
+        const teacherIds = allTeachers.map(t => t.id);
+
+        // Teachers on leave that day
+        const [onLeave] = await pool.query(
+            `SELECT teacher_id FROM teacher_leaves WHERE company_id = ? AND leave_date = ? AND status IN ('pending','approved') AND teacher_id IN (${teacherIds.map(() => '?').join(',')})`,
+            [companyId, date, ...teacherIds]
+        );
+        const leaveIds = new Set(onLeave.map(r => r.teacher_id));
+
+        // Teachers with closed slot at that time (check both AM/PM and raw format)
+        const [closed] = await pool.query(
+            `SELECT teacher_id FROM closed_slots WHERE company_id = ? AND date = ? AND (time = ? OR time = ?) AND teacher_id IN (${teacherIds.map(() => '?').join(',')})`,
+            [companyId, date, time, time.toUpperCase(), ...teacherIds]
+        );
+        const closedIds = new Set(closed.map(r => r.teacher_id));
+
+        // Teachers already booked within 30 min of this slot
+        const appointmentDatetime = `${date} ${time.replace(/ (AM|PM)/i, (m, p) => {
+            const [h, min] = time.split(':');
+            let hr = parseInt(h);
+            const isPM = p.toUpperCase() === 'PM';
+            if (isPM && hr !== 12) hr += 12;
+            if (!isPM && hr === 12) hr = 0;
+            return `:${min.substring(0, 2)}`;
+        })}`;
+        // Build a proper datetime for comparison
+        const match = time.match(/^(\d{1,2}):(\d{2})\s?(AM|PM)?$/i);
+        let datetime24;
+        if (match && match[3]) {
+            let hr = parseInt(match[1]);
+            if (match[3].toUpperCase() === 'PM' && hr !== 12) hr += 12;
+            if (match[3].toUpperCase() === 'AM' && hr === 12) hr = 0;
+            datetime24 = `${date} ${String(hr).padStart(2,'0')}:${match[2]}:00`;
+        } else {
+            datetime24 = `${date} ${time}:00`;
+        }
+
+        const [booked] = await pool.query(
+            `SELECT teacher_id FROM bookings WHERE company_id = ? AND status NOT IN ('cancelled','done') AND ABS(TIMESTAMPDIFF(MINUTE, appointment_date, ?)) < 30 AND teacher_id IN (${teacherIds.map(() => '?').join(',')})`,
+            [companyId, datetime24, ...teacherIds]
+        );
+        const bookedIds = new Set(booked.map(r => r.teacher_id));
+
+        const available = allTeachers.filter(t => !leaveIds.has(t.id) && !closedIds.has(t.id) && !bookedIds.has(t.id));
+        res.json(available);
+    } catch (err) {
+        console.error("Error fetching available teachers:", err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // All students in this company (company_admin only) — paginated
 router.get("/students", authenticateToken, requireRole('company_admin'), async (req, res) => {
     try {

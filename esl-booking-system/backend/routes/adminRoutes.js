@@ -18,10 +18,10 @@ async function canDo(userId, permission) {
 router.get("/closed-slots", authenticateToken, requireRole('company_admin', 'teacher', 'student'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
-    const [rows] = await pool.query(
-      "SELECT * FROM closed_slots WHERE company_id = ?",
-      [companyId]
-    );
+    const teacherFilter = req.query.teacher_id;
+    const [rows] = teacherFilter
+      ? await pool.query("SELECT * FROM closed_slots WHERE company_id = ? AND teacher_id = ?", [companyId, teacherFilter])
+      : await pool.query("SELECT * FROM closed_slots WHERE company_id = ?", [companyId]);
     // Normalize DATE objects to "yyyy-MM-dd" strings for frontend comparison
     const formatted = rows.map(row => ({
       ...row,
