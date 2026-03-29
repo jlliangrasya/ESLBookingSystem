@@ -224,11 +224,60 @@ const AdminStudentProfilePage = () => {
     }
   };
 
-  // Add class dialog
+  // Add class dialog — weekly multi-day scheduler
   const [showAddClass, setShowAddClass] = useState(false);
-  const [addForm, setAddForm] = useState({ date: "", time: "", teacher_id: "" });
+  const [weekStart, setWeekStart] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - d.getDay() + 1); // Monday
+    return d.toISOString().split("T")[0];
+  });
+  const [selectedSlots, setSelectedSlots] = useState<Record<string, string>>({}); // { "2026-03-30": "09:00", ... }
+  const [addTeacherId, setAddTeacherId] = useState("");
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [addSuccess, setAddSuccess] = useState<string | null>(null);
+
+  const getWeekDays = (start: string) => {
+    const days: { date: string; label: string; dayName: string }[] = [];
+    const d = new Date(start + "T00:00:00");
+    for (let i = 0; i < 7; i++) {
+      const current = new Date(d);
+      current.setDate(d.getDate() + i);
+      const iso = current.toISOString().split("T")[0];
+      days.push({
+        date: iso,
+        label: current.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        dayName: current.toLocaleDateString("en-US", { weekday: "short" }),
+      });
+    }
+    return days;
+  };
+
+  const shiftWeek = (dir: number) => {
+    const d = new Date(weekStart + "T00:00:00");
+    d.setDate(d.getDate() + dir * 7);
+    setWeekStart(d.toISOString().split("T")[0]);
+  };
+
+  const toggleSlot = (date: string, time: string) => {
+    setSelectedSlots((prev) => {
+      const copy = { ...prev };
+      if (copy[date] === time) {
+        delete copy[date];
+      } else {
+        copy[date] = time;
+      }
+      return copy;
+    });
+  };
+
+  const removeSlot = (date: string) => {
+    setSelectedSlots((prev) => {
+      const copy = { ...prev };
+      delete copy[date];
+      return copy;
+    });
+  };
 
   // Session adjustment dialog
   const [showAdjust, setShowAdjust] = useState<"add" | "deduct" | null>(null);
@@ -317,25 +366,39 @@ const AdminStudentProfilePage = () => {
     }
   };
 
-  const handleAddClass = async () => {
-    if (!activePackage || !addForm.date || !addForm.time) return;
+  const handleAddClasses = async () => {
+    if (!activePackage || Object.keys(selectedSlots).length === 0) return;
     setAddLoading(true);
     setAddError(null);
-    try {
-      const appointmentDate = localToMysql(addForm.date, addForm.time);
-      await axios.post(`${base}/api/admin/bookings`, {
-        student_package_id: activePackage.id,
-        appointment_date: appointmentDate,
-        teacher_id: addForm.teacher_id ? Number(addForm.teacher_id) : null,
-      }, { headers });
-      setShowAddClass(false);
-      setAddForm({ date: "", time: "", teacher_id: "" });
+    setAddSuccess(null);
+    const entries = Object.entries(selectedSlots).sort(([a], [b]) => a.localeCompare(b));
+    let successCount = 0;
+    const errors: string[] = [];
+    for (const [date, time] of entries) {
+      try {
+        const appointmentDate = localToMysql(date, time);
+        await axios.post(`${base}/api/admin/bookings`, {
+          student_package_id: activePackage.id,
+          appointment_date: appointmentDate,
+          teacher_id: addTeacherId ? Number(addTeacherId) : null,
+        }, { headers });
+        successCount++;
+      } catch (err: unknown) {
+        const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed";
+        errors.push(`${date} ${time}: ${msg}`);
+      }
+    }
+    setAddLoading(false);
+    if (successCount > 0) {
+      setAddSuccess(`${successCount} class${successCount > 1 ? "es" : ""} scheduled successfully.`);
+      setSelectedSlots({});
       fetchData();
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to schedule class";
-      setAddError(msg);
-    } finally {
-      setAddLoading(false);
+    }
+    if (errors.length > 0) {
+      setAddError(errors.join("\n"));
+    }
+    if (errors.length === 0) {
+      setTimeout(() => { setShowAddClass(false); setAddSuccess(null); }, 1200);
     }
   };
 
@@ -493,7 +556,7 @@ const AdminStudentProfilePage = () => {
               Class History
             </CardTitle>
             {activePackage && (
-              <Button size="sm" className="gap-1" onClick={() => { setShowAddClass(true); setAddError(null); }}>
+              <Button size="sm" className="gap-1" onClick={() => { setSelectedSlots({}); setAddError(null); setAddSuccess(null); setShowAddClass(true); }}>
                 <Plus className="h-4 w-4" /> Add Class
               </Button>
             )}
@@ -698,44 +761,20 @@ const AdminStudentProfilePage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Add Class Dialog */}
-      <Dialog open={showAddClass} onOpenChange={(o) => { if (!o) setShowAddClass(false); }}>
-        <DialogContent className="max-w-sm">
+      {/* Add Class Dialog — Weekly Multi-Day Scheduler */}
+      <Dialog open={showAddClass} onOpenChange={(o) => { if (!o) { setShowAddClass(false); setAddError(null); setAddSuccess(null); } }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Schedule a Class</DialogTitle>
+            <DialogTitle>Schedule Classes</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            {addError && (
-              <p className="text-sm text-destructive">{addError}</p>
-            )}
+          <div className="space-y-4 py-2">
+            {addError && <p className="text-sm text-destructive whitespace-pre-line">{addError}</p>}
+            {addSuccess && <p className="text-sm text-green-600">{addSuccess}</p>}
+
+            {/* Teacher selector */}
             <div className="space-y-1.5">
-              <Label>Date <span className="text-destructive">*</span></Label>
-              <Input
-                type="date"
-                value={addForm.date}
-                onChange={(e) => setAddForm((f) => ({ ...f, date: e.target.value }))}
-                min={new Date().toISOString().split("T")[0]}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Time <span className="text-destructive">*</span></Label>
-              <Select value={addForm.time} onValueChange={(v) => setAddForm((f) => ({ ...f, time: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select time" /></SelectTrigger>
-                <SelectContent className="max-h-60">
-                  {TIME_SLOTS.map((t) => {
-                    const [hStr, mStr] = t.split(":");
-                    const h = Number(hStr);
-                    const suffix = h >= 12 ? "PM" : "AM";
-                    const h12 = h % 12 === 0 ? 12 : h % 12;
-                    const label = `${h12}:${mStr} ${suffix}`;
-                    return <SelectItem key={t} value={t}>{label}</SelectItem>;
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Teacher</Label>
-              <Select value={addForm.teacher_id} onValueChange={(v) => setAddForm((f) => ({ ...f, teacher_id: v }))}>
+              <Label>Teacher (applies to all)</Label>
+              <Select value={addTeacherId} onValueChange={setAddTeacherId}>
                 <SelectTrigger><SelectValue placeholder="Select teacher (optional)" /></SelectTrigger>
                 <SelectContent>
                   {teachers.map((t) => (
@@ -744,14 +783,97 @@ const AdminStudentProfilePage = () => {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Week navigation */}
+            <div className="flex items-center justify-between">
+              <Button variant="ghost" size="sm" onClick={() => shiftWeek(-1)}>
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm font-medium">
+                {(() => {
+                  const days = getWeekDays(weekStart);
+                  return `${days[0].label} — ${days[6].label}`;
+                })()}
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => shiftWeek(1)}>
+                <ArrowLeft className="h-4 w-4 rotate-180" />
+              </Button>
+            </div>
+
+            {/* Week grid */}
+            <div className="grid grid-cols-7 gap-1.5">
+              {getWeekDays(weekStart).map((day) => {
+                const isSelected = day.date in selectedSlots;
+                const isPast = day.date < new Date().toISOString().split("T")[0];
+                return (
+                  <div key={day.date} className="text-center">
+                    <p className="text-[10px] text-muted-foreground font-medium">{day.dayName}</p>
+                    <button
+                      disabled={isPast}
+                      onClick={() => {
+                        if (isSelected) {
+                          removeSlot(day.date);
+                        } else {
+                          toggleSlot(day.date, "09:00");
+                        }
+                      }}
+                      className={`w-full rounded-lg py-2 text-xs font-medium transition-colors ${
+                        isPast
+                          ? "bg-gray-50 text-gray-300 cursor-not-allowed"
+                          : isSelected
+                            ? "bg-primary text-white"
+                            : "bg-muted/50 hover:bg-primary/10 text-gray-700"
+                      }`}
+                    >
+                      {day.label}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Selected slots with time pickers */}
+            {Object.keys(selectedSlots).length > 0 && (
+              <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
+                <p className="text-xs font-medium text-muted-foreground">Selected classes — pick a time for each:</p>
+                {Object.entries(selectedSlots)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([date, time]) => {
+                    const d = new Date(date + "T00:00:00");
+                    const label = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+                    return (
+                      <div key={date} className="flex items-center gap-2">
+                        <span className="text-sm font-medium w-28 shrink-0">{label}</span>
+                        <Select value={time} onValueChange={(v) => toggleSlot(date, v)}>
+                          <SelectTrigger className="h-8 text-xs flex-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-60">
+                            {TIME_SLOTS.map((t) => {
+                              const [hStr, mStr] = t.split(":");
+                              const h = Number(hStr);
+                              const suffix = h >= 12 ? "PM" : "AM";
+                              const h12 = h % 12 === 0 ? 12 : h % 12;
+                              return <SelectItem key={t} value={t}>{`${h12}:${mStr} ${suffix}`}</SelectItem>;
+                            })}
+                          </SelectContent>
+                        </Select>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" onClick={() => removeSlot(date)}>
+                          ×
+                        </Button>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddClass(false)}>Cancel</Button>
             <Button
-              onClick={handleAddClass}
-              disabled={addLoading || !addForm.date || !addForm.time}
+              onClick={handleAddClasses}
+              disabled={addLoading || Object.keys(selectedSlots).length === 0}
             >
-              {addLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Schedule"}
+              {addLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : `Schedule ${Object.keys(selectedSlots).length} Class${Object.keys(selectedSlots).length !== 1 ? "es" : ""}`}
             </Button>
           </DialogFooter>
         </DialogContent>
