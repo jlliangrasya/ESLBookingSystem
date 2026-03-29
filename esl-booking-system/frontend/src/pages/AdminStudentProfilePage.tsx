@@ -229,7 +229,10 @@ const AdminStudentProfilePage = () => {
   const [weekStart, setWeekStart] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - d.getDay() + 1); // Monday
-    return d.toISOString().split("T")[0];
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
   });
   const [selectedSlots, setSelectedSlots] = useState<Record<string, string>>({}); // { "2026-03-30": "09:00", ... }
   const [addTeacherId, setAddTeacherId] = useState("");
@@ -237,15 +240,20 @@ const AdminStudentProfilePage = () => {
   const [addError, setAddError] = useState<string | null>(null);
   const [addSuccess, setAddSuccess] = useState<string | null>(null);
 
+  const toLocalIso = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
   const getWeekDays = (start: string) => {
     const days: { date: string; label: string; dayName: string }[] = [];
-    const d = new Date(start + "T00:00:00");
+    const [sy, sm, sd] = start.split("-").map(Number);
     for (let i = 0; i < 7; i++) {
-      const current = new Date(d);
-      current.setDate(d.getDate() + i);
-      const iso = current.toISOString().split("T")[0];
+      const current = new Date(sy, sm - 1, sd + i);
       days.push({
-        date: iso,
+        date: toLocalIso(current),
         label: current.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
         dayName: current.toLocaleDateString("en-US", { weekday: "short" }),
       });
@@ -254,9 +262,9 @@ const AdminStudentProfilePage = () => {
   };
 
   const shiftWeek = (dir: number) => {
-    const d = new Date(weekStart + "T00:00:00");
-    d.setDate(d.getDate() + dir * 7);
-    setWeekStart(d.toISOString().split("T")[0]);
+    const [sy, sm, sd] = weekStart.split("-").map(Number);
+    const d = new Date(sy, sm - 1, sd + dir * 7);
+    setWeekStart(toLocalIso(d));
   };
 
   const toggleSlot = (date: string, time: string) => {
@@ -804,7 +812,9 @@ const AdminStudentProfilePage = () => {
             <div className="grid grid-cols-7 gap-1.5">
               {getWeekDays(weekStart).map((day) => {
                 const isSelected = day.date in selectedSlots;
-                const isPast = day.date < new Date().toISOString().split("T")[0];
+                const now = new Date();
+                const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+                const isPast = day.date < todayIso;
                 return (
                   <div key={day.date} className="text-center">
                     <p className="text-[10px] text-muted-foreground font-medium">{day.dayName}</p>
@@ -839,8 +849,8 @@ const AdminStudentProfilePage = () => {
                 {Object.entries(selectedSlots)
                   .sort(([a], [b]) => a.localeCompare(b))
                   .map(([date, time]) => {
-                    const d = new Date(date + "T00:00:00");
-                    const label = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+                    const [yy, mm, dd] = date.split("-").map(Number);
+                    const label = new Date(yy, mm - 1, dd).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
                     return (
                       <div key={date} className="flex items-center gap-2">
                         <span className="text-sm font-medium w-28 shrink-0">{label}</span>
