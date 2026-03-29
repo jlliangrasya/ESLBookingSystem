@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History,
+  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly, localToMysql } from "@/utils/timezone";
 
@@ -60,6 +60,7 @@ interface BookingRecord {
   meeting_link: string | null;
   student_absent: boolean;
   teacher_absent: boolean;
+  teacher_id: number | null;
   teacher_name: string | null;
   has_report: boolean;
 }
@@ -140,6 +141,45 @@ const AdminStudentProfilePage = () => {
       setAssignError(msg);
     } finally {
       setAssignLoading(false);
+    }
+  };
+
+  // Teacher assignment
+  const [assigningBookingId, setAssigningBookingId] = useState<number | null>(null);
+  const [showBulkAssign, setShowBulkAssign] = useState(false);
+  const [bulkTeacherId, setBulkTeacherId] = useState("");
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null);
+
+  const handleAssignTeacherToBooking = async (bookingId: number, teacherId: string) => {
+    setAssigningBookingId(bookingId);
+    try {
+      await axios.put(`${base}/api/admin/bookings/${bookingId}/assign-teacher`, {
+        teacher_id: teacherId ? Number(teacherId) : null,
+      }, { headers });
+      fetchData();
+    } catch (err) {
+      console.error("Error assigning teacher:", err);
+    } finally {
+      setAssigningBookingId(null);
+    }
+  };
+
+  const handleBulkAssignTeacher = async () => {
+    if (!bulkTeacherId) return;
+    setBulkLoading(true);
+    setBulkMsg(null);
+    try {
+      const res = await axios.post(`${base}/api/admin/students/${id}/bulk-assign-teacher`, {
+        teacher_id: Number(bulkTeacherId),
+      }, { headers });
+      setBulkMsg(res.data.message);
+      fetchData();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed";
+      setBulkMsg(msg);
+    } finally {
+      setBulkLoading(false);
     }
   };
 
@@ -564,9 +604,14 @@ const AdminStudentProfilePage = () => {
               Class History
             </CardTitle>
             {activePackage && (
-              <Button size="sm" className="gap-1" onClick={() => { setSelectedSlots({}); setAddError(null); setAddSuccess(null); setShowAddClass(true); }}>
-                <Plus className="h-4 w-4" /> Add Class
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="gap-1" onClick={() => { setBulkTeacherId(""); setBulkMsg(null); setShowBulkAssign(true); }}>
+                  <Users className="h-4 w-4" /> Assign Teacher
+                </Button>
+                <Button size="sm" className="gap-1" onClick={() => { setSelectedSlots({}); setAddError(null); setAddSuccess(null); setShowAddClass(true); }}>
+                  <Plus className="h-4 w-4" /> Add Class
+                </Button>
+              </div>
             )}
           </CardHeader>
           <CardContent>
@@ -594,7 +639,29 @@ const AdminStudentProfilePage = () => {
                       <TableCell className="text-sm">
                         {fmtDate(b.appointment_date, "MMM d, yyyy h:mm a")}
                       </TableCell>
-                      <TableCell className="text-sm">{b.teacher_name || "—"}</TableCell>
+                      <TableCell className="text-sm">
+                        {(b.status === "pending" || b.status === "confirmed") ? (
+                          <Select
+                            value={b.teacher_id ? String(b.teacher_id) : "unassigned"}
+                            onValueChange={(v) => handleAssignTeacherToBooking(b.id, v === "unassigned" ? "" : v)}
+                            disabled={assigningBookingId === b.id}
+                          >
+                            <SelectTrigger className={`h-7 text-xs w-32 ${!b.teacher_name ? "border-amber-300 bg-amber-50" : ""}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unassigned">
+                                <span className="text-muted-foreground">Unassigned</span>
+                              </SelectItem>
+                              {teachers.map((t) => (
+                                <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          b.teacher_name || "—"
+                        )}
+                      </TableCell>
                       <TableCell>
                         <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColors[b.status] || "bg-gray-100 text-gray-700"}`}>
                           {b.status}
@@ -954,6 +1021,43 @@ const AdminStudentProfilePage = () => {
               ) : (
                 showAdjust === "add" ? "Add Sessions" : "Deduct Sessions"
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Assign Teacher Dialog */}
+      <Dialog open={showBulkAssign} onOpenChange={(o) => { if (!o) setShowBulkAssign(false); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" /> Assign Teacher to All Classes
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Select a teacher to assign to all <strong>unassigned upcoming classes</strong> for this student.
+              Classes where the teacher is unavailable (on leave, slot closed, or already booked) will be skipped.
+            </p>
+            {bulkMsg && (
+              <p className={`text-sm ${bulkMsg.includes("Failed") ? "text-destructive" : "text-green-600"}`}>{bulkMsg}</p>
+            )}
+            <div className="space-y-1.5">
+              <Label>Teacher <span className="text-destructive">*</span></Label>
+              <Select value={bulkTeacherId} onValueChange={setBulkTeacherId}>
+                <SelectTrigger><SelectValue placeholder="Select teacher" /></SelectTrigger>
+                <SelectContent>
+                  {teachers.map((t) => (
+                    <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBulkAssign(false)}>Cancel</Button>
+            <Button onClick={handleBulkAssignTeacher} disabled={bulkLoading || !bulkTeacherId}>
+              {bulkLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Assign to All"}
             </Button>
           </DialogFooter>
         </DialogContent>
