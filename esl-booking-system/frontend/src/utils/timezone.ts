@@ -67,9 +67,18 @@ export function localToUTC(dateStr: string, timeStr: string, tz?: string): strin
     return utcDate.toISOString();
 }
 
-/** Convert a UTC ISO string into MySQL DATETIME (UTC) */
+/** Convert a local date+time (in user's timezone) to MySQL DATETIME in UTC */
 export function localToMysql(dateStr: string, timeStr: string): string {
-    return `${dateStr} ${timeStr}:00`;
+    const timezone = getUserTimezone();
+    const localDatetime = `${dateStr}T${timeStr}:00`;
+    const utcDate = fromZonedTime(localDatetime, timezone);
+    const y = utcDate.getUTCFullYear();
+    const m = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(utcDate.getUTCDate()).padStart(2, '0');
+    const hh = String(utcDate.getUTCHours()).padStart(2, '0');
+    const mm = String(utcDate.getUTCMinutes()).padStart(2, '0');
+    const ss = String(utcDate.getUTCSeconds()).padStart(2, '0');
+    return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
 }
 
 /**
