@@ -22,7 +22,14 @@ router.get("/closed-slots", authenticateToken, requireRole('company_admin', 'tea
       "SELECT * FROM closed_slots WHERE company_id = ?",
       [companyId]
     );
-    res.json(rows);
+    // Normalize DATE objects to "yyyy-MM-dd" strings for frontend comparison
+    const formatted = rows.map(row => ({
+      ...row,
+      date: row.date instanceof Date
+        ? `${row.date.getUTCFullYear()}-${String(row.date.getUTCMonth()+1).padStart(2,'0')}-${String(row.date.getUTCDate()).padStart(2,'0')}`
+        : typeof row.date === 'string' ? row.date.split('T')[0] : row.date,
+    }));
+    res.json(formatted);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server Error" });
@@ -304,10 +311,11 @@ router.get("/teachers/:id/availability", authenticateToken, requireRole('company
       `SELECT date, time FROM closed_slots WHERE company_id = ? AND teacher_id = ? ORDER BY date ASC, time ASC`,
       [companyId, id]
     );
-    const formatted = rows.map(row => ({
-      date: new Date(row.date + 'T00:00:00').toLocaleDateString('en-CA'),
-      time: normalizeTimeToAmPm(row.time),
-    }));
+    const formatted = rows.map(row => {
+      const d = row.date instanceof Date ? row.date : new Date(row.date + 'T00:00:00Z');
+      const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+      return { date: dateStr, time: normalizeTimeToAmPm(row.time) };
+    });
     res.json(formatted);
   } catch (err) {
     res.status(500).json({ message: 'Server error' });

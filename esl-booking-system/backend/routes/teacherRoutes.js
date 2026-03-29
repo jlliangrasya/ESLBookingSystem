@@ -545,7 +545,14 @@ router.get('/availability', authenticateToken, requireRole('teacher'), async (re
              ORDER BY date ASC, time ASC`,
             [companyId, teacherId]
         );
-        res.json(rows);
+        // Normalize DATE objects to "yyyy-MM-dd" strings
+        const formatted = rows.map(row => ({
+            ...row,
+            date: row.date instanceof Date
+                ? `${row.date.getUTCFullYear()}-${String(row.date.getUTCMonth()+1).padStart(2,'0')}-${String(row.date.getUTCDate()).padStart(2,'0')}`
+                : typeof row.date === 'string' ? row.date.split('T')[0] : row.date,
+        }));
+        res.json(formatted);
     } catch (err) {
         res.status(500).json({ message: 'Server error' });
     }
