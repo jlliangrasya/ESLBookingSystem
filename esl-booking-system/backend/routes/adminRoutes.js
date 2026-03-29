@@ -752,6 +752,54 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
   }
 });
 
+// Admin assign a package to a student (bypasses student self-enrollment)
+router.post('/students/:id/assign-package', authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const studentId = Number(req.params.id);
+    const { package_id, teacher_id } = req.body;
+
+    if (!package_id) return res.status(400).json({ message: 'package_id is required' });
+
+    // Verify student belongs to this company
+    const [[student]] = await pool.query(
+      "SELECT id, name FROM users WHERE id = ? AND company_id = ? AND role = 'student'",
+      [studentId, companyId]
+    );
+    if (!student) return res.status(404).json({ message: 'Student not found' });
+
+    // Verify package belongs to this company and is active
+    const [[pkg]] = await pool.query(
+      'SELECT id, package_name, subject, session_limit FROM tutorial_packages WHERE id = ? AND company_id = ? AND is_active = TRUE',
+      [package_id, companyId]
+    );
+    if (!pkg) return res.status(404).json({ message: 'Package not found or inactive' });
+
+    // Create the student_package as paid (admin-assigned)
+    const [result] = await pool.query(
+      `INSERT INTO student_packages (company_id, student_id, package_id, teacher_id, subject, sessions_remaining, payment_status)
+       VALUES (?, ?, ?, ?, ?, ?, 'paid')`,
+      [companyId, studentId, package_id, teacher_id || null, pkg.subject || '', pkg.session_limit]
+    );
+
+    await notify({
+      userId: studentId, companyId,
+      type: 'package_assigned',
+      title: 'Package assigned',
+      message: `You have been enrolled in "${pkg.package_name}" with ${pkg.session_limit} sessions.`,
+    });
+
+    await logAction(companyId, req.user.id, 'admin_package_assigned', 'student_package', result.insertId, {
+      student_id: studentId, student_name: student.name, package_name: pkg.package_name,
+    });
+
+    res.status(201).json({ message: `Package "${pkg.package_name}" assigned to ${student.name}`, id: result.insertId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Create a student (company admin only)
 router.post('/students', authenticateToken, requireRole('company_admin'), async (req, res) => {
   try {

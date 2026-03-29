@@ -69,6 +69,15 @@ interface Teacher {
   name: string;
 }
 
+interface AvailablePackage {
+  id: number;
+  package_name: string;
+  session_limit: number;
+  price: number;
+  subject: string | null;
+  currency: string;
+}
+
 // Generate 30-min slots from 7:00 AM to 10:30 PM
 const TIME_SLOTS: string[] = [];
 for (let h = 7; h <= 22; h++) {
@@ -97,6 +106,42 @@ const AdminStudentProfilePage = () => {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+
+  // Assign package dialog
+  const [availablePackages, setAvailablePackages] = useState<AvailablePackage[]>([]);
+  const [showAssignPkg, setShowAssignPkg] = useState(false);
+  const [assignForm, setAssignForm] = useState({ package_id: "", teacher_id: "" });
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
+
+  const openAssignPackage = async () => {
+    setAssignForm({ package_id: "", teacher_id: "" });
+    setAssignError(null);
+    try {
+      const res = await axios.get(`${base}/api/student/packages`, { headers });
+      setAvailablePackages(Array.isArray(res.data) ? res.data.filter((p: AvailablePackage) => p) : []);
+    } catch { /* silent */ }
+    setShowAssignPkg(true);
+  };
+
+  const handleAssignPackage = async () => {
+    if (!assignForm.package_id) return;
+    setAssignLoading(true);
+    setAssignError(null);
+    try {
+      await axios.post(`${base}/api/admin/students/${id}/assign-package`, {
+        package_id: Number(assignForm.package_id),
+        teacher_id: assignForm.teacher_id ? Number(assignForm.teacher_id) : null,
+      }, { headers });
+      setShowAssignPkg(false);
+      fetchData();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to assign package";
+      setAssignError(msg);
+    } finally {
+      setAssignLoading(false);
+    }
+  };
 
   // Edit student dialog
   const [showEdit, setShowEdit] = useState(false);
@@ -375,9 +420,14 @@ const AdminStudentProfilePage = () => {
                 <Package className="h-5 w-5 text-primary" />
                 Active Package
               </CardTitle>
-              <Button size="sm" variant="ghost" className="gap-1 text-xs" onClick={fetchAdjustmentHistory} disabled={historyLoading}>
-                <History className="h-3.5 w-3.5" /> Adjustment History
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={openAssignPackage}>
+                  <Plus className="h-3.5 w-3.5" /> Assign New Package
+                </Button>
+                <Button size="sm" variant="ghost" className="gap-1 text-xs" onClick={fetchAdjustmentHistory} disabled={historyLoading}>
+                  <History className="h-3.5 w-3.5" /> Adjustment History
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
               <div>
@@ -427,7 +477,10 @@ const AdminStudentProfilePage = () => {
           <Card className="glow-card border-0 rounded-2xl">
             <CardContent className="py-6 text-center text-sm text-muted-foreground">
               <Package className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
-              No active package
+              <p className="mb-3">No active package</p>
+              <Button size="sm" className="gap-1" onClick={openAssignPackage}>
+                <Plus className="h-4 w-4" /> Assign Package
+              </Button>
             </CardContent>
           </Card>
         )}
@@ -769,6 +822,48 @@ const AdminStudentProfilePage = () => {
               ) : (
                 showAdjust === "add" ? "Add Sessions" : "Deduct Sessions"
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Package Dialog */}
+      <Dialog open={showAssignPkg} onOpenChange={(o) => { if (!o) setShowAssignPkg(false); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Assign Package to Student</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {assignError && <p className="text-sm text-destructive">{assignError}</p>}
+            <div className="space-y-1.5">
+              <Label>Package <span className="text-destructive">*</span></Label>
+              <Select value={assignForm.package_id} onValueChange={(v) => setAssignForm((f) => ({ ...f, package_id: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select a package" /></SelectTrigger>
+                <SelectContent>
+                  {availablePackages.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      {p.package_name} — {p.session_limit} sessions{p.subject ? ` (${p.subject})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Assign Teacher (optional)</Label>
+              <Select value={assignForm.teacher_id} onValueChange={(v) => setAssignForm((f) => ({ ...f, teacher_id: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select teacher" /></SelectTrigger>
+                <SelectContent>
+                  {teachers.map((t) => (
+                    <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAssignPkg(false)}>Cancel</Button>
+            <Button onClick={handleAssignPackage} disabled={assignLoading || !assignForm.package_id}>
+              {assignLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Assign Package"}
             </Button>
           </DialogFooter>
         </DialogContent>
