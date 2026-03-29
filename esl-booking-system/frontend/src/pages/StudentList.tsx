@@ -67,7 +67,8 @@ const StudentListPage: React.FC = () => {
         `${import.meta.env.VITE_API_URL}/api/student/students`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setStudents(response.data);
+      const d = response.data;
+      setStudents(Array.isArray(d) ? d : d.data ?? []);
     } catch (error) {
       console.error("Error fetching students:", error);
     } finally {

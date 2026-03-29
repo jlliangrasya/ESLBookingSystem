@@ -137,8 +137,10 @@ const AdminDashboard = () => {
           axios.get(`${base}/api/admin/teachers`, { headers }),
         ]);
 
-      setStudents(studentsRes.data);
-      setBookings(bookingsRes.data);
+      const sd = studentsRes.data;
+      setStudents(Array.isArray(sd) ? sd : sd.data ?? []);
+      const bd = bookingsRes.data;
+      setBookings(Array.isArray(bd) ? bd : bd.data ?? []);
       setStudentPackages(pendingRes.data);
       setPaidStudentPackages(paidRes.data);
       setFeedback(feedbackRes.data);
