@@ -278,9 +278,10 @@ const TimeslotPage = () => {
 
       alert("Booking confirmed successfully!");
       setShowBookingModal(false);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Error confirming booking:", error);
-      alert("Failed to confirm booking. Please try again.");
+      const msg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to confirm booking. Please try again.";
+      alert(msg);
     } finally {
       setBookingLoading(false);
     }
