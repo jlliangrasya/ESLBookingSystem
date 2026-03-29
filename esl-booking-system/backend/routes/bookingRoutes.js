@@ -115,12 +115,13 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
             const time12 = `${String(hr12).padStart(2, '0')}:${appointmentMin} ${ampm}`;
             const time24 = `${String(appointmentHour).padStart(2, '0')}:${appointmentMin}:00`;
 
-            // Check if teacher is on leave that day
+            // Check if teacher is on leave that day (use display date)
+            const leaveCheckDate = req.body.slot_date || appointmentDateStr;
             const [leaveRows] = await connection.query(
                 `SELECT id FROM teacher_leaves
                  WHERE teacher_id = ? AND company_id = ? AND leave_date = ?
                    AND status IN ('pending', 'approved')`,
-                [teacherId, companyId, appointmentDateStr]
+                [teacherId, companyId, leaveCheckDate]
             );
             if (leaveRows.length > 0) {
                 await connection.rollback();
@@ -129,11 +130,13 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
             }
 
             // Check if teacher has this slot OPEN in teacher_available_slots
-            const slotTime24 = `${String(appointmentHour).padStart(2, '0')}:${appointmentMin}`;
+            // Use display date/time (from frontend) since teacher_available_slots stores display times
+            const checkDate = req.body.slot_date || appointmentDateStr;
+            const checkTime = req.body.slot_time || `${String(appointmentHour).padStart(2, '0')}:${appointmentMin}`;
             const [openSlotRows] = await connection.query(
                 `SELECT id FROM teacher_available_slots
                  WHERE company_id = ? AND teacher_id = ? AND slot_date = ? AND TIME_FORMAT(slot_time, '%H:%i') = ?`,
-                [companyId, teacherId, appointmentDateStr, slotTime24]
+                [companyId, teacherId, checkDate, checkTime]
             );
             if (openSlotRows.length === 0) {
                 await connection.rollback();

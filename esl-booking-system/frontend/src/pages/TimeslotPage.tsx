@@ -269,6 +269,8 @@ const TimeslotPage = () => {
         {
           student_package_id: studentPackageId,
           appointment_date: appointmentDate,
+          slot_date: date,
+          slot_time: time24.slice(0, 5),
           status: "confirmed",
           rescheduled_by_admin: false,
           ...(selectedTeacherId ? { teacher_id: selectedTeacherId } : {}),
