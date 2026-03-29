@@ -50,6 +50,7 @@ interface TutorialPackage {
   duration_minutes: number;
   description: string | null;
   is_active: boolean;
+  currency: string;
 }
 
 interface CompanySettings {
@@ -58,7 +59,6 @@ interface CompanySettings {
   cancellation_hours: number;
   cancellation_penalty_enabled: boolean;
   payment_method: "encasher" | "communication_platform" | null;
-  currency: string;
 }
 
 const CURRENCIES: { code: string; symbol: string; name: string }[] = [
@@ -78,6 +78,8 @@ const CURRENCIES: { code: string; symbol: string; name: string }[] = [
   { code: "GBP", symbol: "£", name: "British Pound" },
 ];
 
+const currencySymbol = (code: string) => CURRENCIES.find(c => c.code === code)?.symbol ?? "₱";
+
 const EMPTY_FORM = {
   package_name: "",
   subject: "",
@@ -86,6 +88,7 @@ const EMPTY_FORM = {
   price: "",
   description: "",
   is_active: true,
+  currency: "PHP",
 };
 
 const PackageSetupPage = () => {
@@ -100,7 +103,6 @@ const PackageSetupPage = () => {
     cancellation_hours: 1,
     cancellation_penalty_enabled: false,
     payment_method: null,
-    currency: "PHP",
   });
   const [loading, setLoading] = useState(true);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -168,6 +170,7 @@ const PackageSetupPage = () => {
       price: String(pkg.price),
       description: pkg.description || "",
       is_active: pkg.is_active,
+      currency: pkg.currency || "PHP",
     });
     setShowModal(true);
   };
@@ -183,6 +186,7 @@ const PackageSetupPage = () => {
         price: Number(form.price),
         description: form.description || null,
         is_active: form.is_active,
+        currency: form.currency,
       };
       if (editPackage) {
         await axios.put(
@@ -250,7 +254,6 @@ const PackageSetupPage = () => {
           cancellation_hours: settings.cancellation_hours,
           cancellation_penalty_enabled: settings.cancellation_penalty_enabled,
           payment_method: settings.payment_method,
-          currency: settings.currency,
         },
         { headers },
       );
@@ -335,7 +338,7 @@ const PackageSetupPage = () => {
                         {pkg.duration_minutes} min
                       </TableCell>
                       <TableCell className="text-sm">
-                        {(CURRENCIES.find(c => c.code === settings.currency)?.symbol ?? "₱")}{Number(pkg.price).toLocaleString()}
+                        {currencySymbol(pkg.currency)}{Number(pkg.price).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-sm">
                         <Badge
@@ -401,29 +404,6 @@ const PackageSetupPage = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Currency selector */}
-            <div className="border rounded-lg p-4 space-y-2">
-              <p className="font-medium text-sm">Currency</p>
-              <p className="text-xs text-muted-foreground">
-                Choose the currency for package prices displayed to students and admins.
-              </p>
-              <Select
-                value={settings.currency}
-                onValueChange={(v) => setSettings((prev) => ({ ...prev, currency: v }))}
-              >
-                <SelectTrigger className="w-64">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CURRENCIES.map((cur) => (
-                    <SelectItem key={cur.code} value={cur.code}>
-                      {cur.symbol} — {cur.name} ({cur.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
             {/* Teacher picker toggle */}
             <div className="flex items-center justify-between border rounded-lg p-4">
               <div>
@@ -709,17 +689,37 @@ const PackageSetupPage = () => {
                 </Select>
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>
-                Price ({CURRENCIES.find(c => c.code === settings.currency)?.symbol ?? "₱"}) <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                type="number"
-                min="0"
-                placeholder="2000"
-                value={form.price}
-                onChange={(e) => setForm({ ...form, price: e.target.value })}
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>
+                  Price ({currencySymbol(form.currency)}) <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  type="number"
+                  min="0"
+                  placeholder="2000"
+                  value={form.price}
+                  onChange={(e) => setForm({ ...form, price: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Currency</Label>
+                <Select
+                  value={form.currency}
+                  onValueChange={(v) => setForm({ ...form, currency: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CURRENCIES.map((cur) => (
+                      <SelectItem key={cur.code} value={cur.code}>
+                        {cur.symbol} {cur.code}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label>Description (optional)</Label>

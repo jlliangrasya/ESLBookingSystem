@@ -552,10 +552,10 @@ router.post("/teacher-leaves/:id/reject", authenticateToken, requireRole('compan
 router.get('/company-settings', authenticateToken, async (req, res) => {
   try {
     const [[company]] = await pool.query(
-      'SELECT allow_student_pick_teacher, payment_qr_image, cancellation_hours, cancellation_penalty_enabled, payment_method, currency FROM companies WHERE id = ?',
+      'SELECT allow_student_pick_teacher, payment_qr_image, cancellation_hours, cancellation_penalty_enabled, payment_method FROM companies WHERE id = ?',
       [req.user.company_id]
     );
-    res.json(company || { allow_student_pick_teacher: true, payment_qr_image: null, cancellation_hours: 1, cancellation_penalty_enabled: false, payment_method: null, currency: 'PHP' });
+    res.json(company || { allow_student_pick_teacher: true, payment_qr_image: null, cancellation_hours: 1, cancellation_penalty_enabled: false, payment_method: null });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -564,12 +564,12 @@ router.get('/company-settings', authenticateToken, async (req, res) => {
 // Update company settings (company_admin only)
 router.put('/company-settings', authenticateToken, requireRole('company_admin'), async (req, res) => {
   try {
-    const { allow_student_pick_teacher, payment_qr_image, cancellation_hours, cancellation_penalty_enabled, payment_method, currency } = req.body;
+    const { allow_student_pick_teacher, payment_qr_image, cancellation_hours, cancellation_penalty_enabled, payment_method } = req.body;
     await pool.query(
-      'UPDATE companies SET allow_student_pick_teacher = ?, payment_qr_image = ?, cancellation_hours = ?, cancellation_penalty_enabled = ?, payment_method = ?, currency = ? WHERE id = ?',
-      [allow_student_pick_teacher, payment_qr_image ?? null, cancellation_hours ?? 1, cancellation_penalty_enabled ?? false, payment_method ?? null, currency ?? 'PHP', req.user.company_id]
+      'UPDATE companies SET allow_student_pick_teacher = ?, payment_qr_image = ?, cancellation_hours = ?, cancellation_penalty_enabled = ?, payment_method = ? WHERE id = ?',
+      [allow_student_pick_teacher, payment_qr_image ?? null, cancellation_hours ?? 1, cancellation_penalty_enabled ?? false, payment_method ?? null, req.user.company_id]
     );
-    await logAction(req.user.company_id, req.user.id, 'company_settings_updated', 'company', req.user.company_id, { allow_student_pick_teacher, cancellation_hours, cancellation_penalty_enabled, payment_method, currency });
+    await logAction(req.user.company_id, req.user.id, 'company_settings_updated', 'company', req.user.company_id, { allow_student_pick_teacher, cancellation_hours, cancellation_penalty_enabled, payment_method });
     res.json({ message: 'Settings updated' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });

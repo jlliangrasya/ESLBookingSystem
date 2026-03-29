@@ -33,17 +33,17 @@ router.get("/packages", authenticateToken, async (req, res) => {
 router.post("/packages", authenticateToken, requireRole('company_admin'), async (req, res) => {
     try {
         const companyId = req.user.company_id;
-        const { package_name, session_limit, price, subject, duration_minutes, description } = req.body;
+        const { package_name, session_limit, price, subject, duration_minutes, description, currency } = req.body;
 
         if (!package_name || !session_limit || !price) {
             return res.status(400).json({ message: "Missing required fields: package_name, session_limit, price" });
         }
 
         const [result] = await pool.query(
-            `INSERT INTO tutorial_packages (company_id, package_name, session_limit, price, subject, duration_minutes, description, is_active)
-             VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)`,
+            `INSERT INTO tutorial_packages (company_id, package_name, session_limit, price, subject, duration_minutes, description, is_active, currency)
+             VALUES (?, ?, ?, ?, ?, ?, ?, TRUE, ?)`,
             [companyId, package_name, session_limit, price,
-             subject || null, duration_minutes || 60, description || null]
+             subject || null, duration_minutes || 60, description || null, currency || 'PHP']
         );
 
         res.json({ message: "Package created", id: result.insertId });
@@ -57,16 +57,16 @@ router.put("/packages/:id", authenticateToken, requireRole('company_admin'), asy
     try {
         const companyId = req.user.company_id;
         const { id } = req.params;
-        const { package_name, session_limit, price, subject, duration_minutes, description, is_active } = req.body;
+        const { package_name, session_limit, price, subject, duration_minutes, description, is_active, currency } = req.body;
 
         const [result] = await pool.query(
             `UPDATE tutorial_packages
-             SET package_name = ?, session_limit = ?, price = ?, subject = ?, duration_minutes = ?, description = ?, is_active = ?
+             SET package_name = ?, session_limit = ?, price = ?, subject = ?, duration_minutes = ?, description = ?, is_active = ?, currency = ?
              WHERE id = ? AND company_id = ?`,
             [package_name, session_limit, price,
              subject || null, duration_minutes || 60, description || null,
              is_active !== undefined ? is_active : true,
-             id, companyId]
+             currency || 'PHP', id, companyId]
         );
 
         if (result.affectedRows === 0) return res.status(404).json({ message: "Package not found" });
