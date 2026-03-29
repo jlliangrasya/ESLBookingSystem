@@ -217,6 +217,67 @@ router.post('/feedback', authenticateToken, requireRole('student'), async (req, 
     }
 });
 
+// Get teacher slot statuses for a date (open, booked, your-class)
+router.get('/teacher-slots', authenticateToken, requireRole('student'), async (req, res) => {
+    try {
+        const studentId = req.user.id;
+        const companyId = req.user.company_id;
+        const { teacher_id, date } = req.query;
+        if (!date) return res.status(400).json({ message: 'date is required' });
+
+        let openSlots = [];
+        if (teacher_id) {
+            // Get open slots for specific teacher
+            const [rows] = await pool.query(
+                `SELECT TIME_FORMAT(slot_time, '%H:%i') AS slot_time
+                 FROM teacher_available_slots
+                 WHERE company_id = ? AND teacher_id = ? AND slot_date = ?`,
+                [companyId, teacher_id, date]
+            );
+            openSlots = rows.map(r => r.slot_time);
+        } else {
+            // No specific teacher — get open slots from ALL teachers (union)
+            const [rows] = await pool.query(
+                `SELECT DISTINCT TIME_FORMAT(slot_time, '%H:%i') AS slot_time
+                 FROM teacher_available_slots
+                 WHERE company_id = ? AND slot_date = ?`,
+                [companyId, date]
+            );
+            openSlots = rows.map(r => r.slot_time);
+        }
+
+        // Get all bookings on this date for the same teacher(s)
+        let bookedQuery, bookedParams;
+        if (teacher_id) {
+            bookedQuery = `SELECT b.id, b.appointment_date, sp.student_id
+                FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id
+                WHERE b.company_id = ? AND b.teacher_id = ? AND DATE(b.appointment_date) = ?
+                AND b.status NOT IN ('cancelled')`;
+            bookedParams = [companyId, teacher_id, date];
+        } else {
+            bookedQuery = `SELECT b.id, b.appointment_date, sp.student_id
+                FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id
+                WHERE b.company_id = ? AND DATE(b.appointment_date) = ?
+                AND b.status NOT IN ('cancelled')`;
+            bookedParams = [companyId, date];
+        }
+        const [bookingRows] = await pool.query(bookedQuery, bookedParams);
+
+        // Build booked map: { "09:00": "booked" | "your_class" }
+        const bookedMap = {};
+        for (const b of bookingRows) {
+            const dt = new Date(b.appointment_date);
+            const timeKey = `${String(dt.getUTCHours()).padStart(2, '0')}:${String(dt.getUTCMinutes()).padStart(2, '0')}`;
+            bookedMap[timeKey] = b.student_id === studentId ? 'your_class' : 'booked';
+        }
+
+        res.json({ open_slots: openSlots, booked_map: bookedMap });
+    } catch (err) {
+        console.error("Error fetching teacher slots:", err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // List active teachers in this student's company (for optional teacher selection)
 router.get('/teachers', authenticateToken, requireRole('student'), async (req, res) => {
     try {
@@ -233,63 +294,56 @@ router.get('/teachers', authenticateToken, requireRole('student'), async (req, r
 });
 
 // Get teachers available at a specific date+time (for student teacher picker)
+// Uses opt-in model: teacher must have the slot OPEN in teacher_available_slots
 router.get('/available-teachers', authenticateToken, requireRole('student'), async (req, res) => {
     try {
         const companyId = req.user.company_id;
         const { date, time } = req.query;
         if (!date || !time) return res.status(400).json({ message: 'date and time are required' });
 
-        // All active teachers
-        const [allTeachers] = await pool.query(
-            "SELECT id, name FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE",
-            [companyId]
-        );
-        if (allTeachers.length === 0) return res.json([]);
-
-        const teacherIds = allTeachers.map(t => t.id);
-
-        // Teachers on leave that day
-        const [onLeave] = await pool.query(
-            `SELECT teacher_id FROM teacher_leaves WHERE company_id = ? AND leave_date = ? AND status IN ('pending','approved') AND teacher_id IN (${teacherIds.map(() => '?').join(',')})`,
-            [companyId, date, ...teacherIds]
-        );
-        const leaveIds = new Set(onLeave.map(r => r.teacher_id));
-
-        // Teachers with closed slot at that time (check both AM/PM and raw format)
-        const [closed] = await pool.query(
-            `SELECT teacher_id FROM closed_slots WHERE company_id = ? AND date = ? AND (time = ? OR time = ?) AND teacher_id IN (${teacherIds.map(() => '?').join(',')})`,
-            [companyId, date, time, time.toUpperCase(), ...teacherIds]
-        );
-        const closedIds = new Set(closed.map(r => r.teacher_id));
-
-        // Teachers already booked within 30 min of this slot
-        const appointmentDatetime = `${date} ${time.replace(/ (AM|PM)/i, (m, p) => {
-            const [h, min] = time.split(':');
-            let hr = parseInt(h);
-            const isPM = p.toUpperCase() === 'PM';
-            if (isPM && hr !== 12) hr += 12;
-            if (!isPM && hr === 12) hr = 0;
-            return `:${min.substring(0, 2)}`;
-        })}`;
-        // Build a proper datetime for comparison
+        // Convert time to 24h format for matching
         const match = time.match(/^(\d{1,2}):(\d{2})\s?(AM|PM)?$/i);
-        let datetime24;
+        let time24;
         if (match && match[3]) {
             let hr = parseInt(match[1]);
             if (match[3].toUpperCase() === 'PM' && hr !== 12) hr += 12;
             if (match[3].toUpperCase() === 'AM' && hr === 12) hr = 0;
-            datetime24 = `${date} ${String(hr).padStart(2,'0')}:${match[2]}:00`;
+            time24 = `${String(hr).padStart(2, '0')}:${match[2]}`;
         } else {
-            datetime24 = `${date} ${time}:00`;
+            time24 = time.substring(0, 5);
         }
+        const datetime24 = `${date} ${time24}:00`;
 
+        // Teachers who have this slot OPEN
+        const [openTeachers] = await pool.query(
+            `SELECT teacher_id FROM teacher_available_slots WHERE company_id = ? AND slot_date = ? AND TIME_FORMAT(slot_time, '%H:%i') = ?`,
+            [companyId, date, time24]
+        );
+        if (openTeachers.length === 0) return res.json([]);
+
+        const openIds = openTeachers.map(r => r.teacher_id);
+
+        // Get teacher names
+        const [teachers] = await pool.query(
+            `SELECT id, name FROM users WHERE id IN (${openIds.map(() => '?').join(',')}) AND is_active = TRUE`,
+            openIds
+        );
+
+        // Exclude teachers on leave
+        const [onLeave] = await pool.query(
+            `SELECT teacher_id FROM teacher_leaves WHERE company_id = ? AND leave_date = ? AND status IN ('pending','approved') AND teacher_id IN (${openIds.map(() => '?').join(',')})`,
+            [companyId, date, ...openIds]
+        );
+        const leaveIds = new Set(onLeave.map(r => r.teacher_id));
+
+        // Exclude teachers already booked within 30 min
         const [booked] = await pool.query(
-            `SELECT teacher_id FROM bookings WHERE company_id = ? AND status NOT IN ('cancelled','done') AND ABS(TIMESTAMPDIFF(MINUTE, appointment_date, ?)) < 30 AND teacher_id IN (${teacherIds.map(() => '?').join(',')})`,
-            [companyId, datetime24, ...teacherIds]
+            `SELECT teacher_id FROM bookings WHERE company_id = ? AND status NOT IN ('cancelled','done') AND ABS(TIMESTAMPDIFF(MINUTE, appointment_date, ?)) < 30 AND teacher_id IN (${openIds.map(() => '?').join(',')})`,
+            [companyId, datetime24, ...openIds]
         );
         const bookedIds = new Set(booked.map(r => r.teacher_id));
 
-        const available = allTeachers.filter(t => !leaveIds.has(t.id) && !closedIds.has(t.id) && !bookedIds.has(t.id));
+        const available = teachers.filter(t => !leaveIds.has(t.id) && !bookedIds.has(t.id));
         res.json(available);
     } catch (err) {
         console.error("Error fetching available teachers:", err);

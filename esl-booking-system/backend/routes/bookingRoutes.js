@@ -128,14 +128,14 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
                 return res.status(409).json({ message: "This teacher is on leave on this date. Please choose a different date or teacher." });
             }
 
-            // Check if this slot is in the teacher's closed slots
-            const [closedSlotRows] = await connection.query(
-                `SELECT id FROM closed_slots
-                 WHERE company_id = ? AND teacher_id = ? AND date = ?
-                   AND (time = ? OR time = ?)`,
-                [companyId, teacherId, appointmentDateStr, time12, time24]
+            // Check if teacher has this slot OPEN in teacher_available_slots
+            const slotTime24 = `${String(appointmentHour).padStart(2, '0')}:${appointmentMin}`;
+            const [openSlotRows] = await connection.query(
+                `SELECT id FROM teacher_available_slots
+                 WHERE company_id = ? AND teacher_id = ? AND slot_date = ? AND TIME_FORMAT(slot_time, '%H:%i') = ?`,
+                [companyId, teacherId, appointmentDateStr, slotTime24]
             );
-            if (closedSlotRows.length > 0) {
+            if (openSlotRows.length === 0) {
                 await connection.rollback();
                 connection.release();
                 return res.status(409).json({ message: "This teacher is not available at this time. Please choose a different slot." });

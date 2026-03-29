@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
-import WeeklyCalendar from "@/components/WeeklyCalendar";
+import { format, addDays, startOfWeek } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  ArrowLeft, UserCircle, CalendarDays, Loader2, Pencil, Save, Eye, EyeOff, BookOpen, KeyRound,
+  ArrowLeft, UserCircle, CalendarDays, Loader2, Pencil, Save, Eye, EyeOff, BookOpen, KeyRound, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly } from "@/utils/timezone";
 
@@ -70,7 +70,10 @@ const AdminTeacherProfilePage = () => {
   const [schedule, setSchedule] = useState<ScheduleEntry[]>([]);
   const [leaves, setLeaves] = useState<LeaveEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [closedSlots, setClosedSlots] = useState<{ date: string; time: string }[]>([]);
+  // Opt-in availability (teacher_available_slots)
+  const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [openSlots, setOpenSlots] = useState<Set<string>>(new Set());
+  const [togglingSlot, setTogglingSlot] = useState<string | null>(null);
 
   // Edit dialog
   const [showEdit, setShowEdit] = useState(false);
@@ -114,27 +117,42 @@ const AdminTeacherProfilePage = () => {
     }
   };
 
-  const fetchClosedSlots = useCallback(async () => {
+  const fetchOpenSlots = useCallback(async (start: Date) => {
     try {
-      const res = await axios.get(`${base}/api/admin/teachers/${id}/availability`, { headers });
-      setClosedSlots(res.data);
+      const startStr = format(start, "yyyy-MM-dd");
+      const res = await axios.get(`${base}/api/admin/teachers/${id}/weekly-slots?startDate=${startStr}`, { headers });
+      const slotSet = new Set<string>(
+        (res.data as { slot_date: string; slot_time: string }[]).map(s => `${s.slot_date}|${s.slot_time}`)
+      );
+      setOpenSlots(slotSet);
     } catch (err) {
-      console.error("Error fetching teacher closed slots:", err);
+      console.error("Error fetching open slots:", err);
     }
   }, [id]);
 
-  const handleAdminUpdateSlots = async (
-    slots: { date: string; time: string }[],
-    action: "close" | "open"
-  ) => {
-    await axios.post(
-      `${base}/api/admin/teachers/${id}/availability`,
-      { slots, action },
-      { headers }
-    );
+  const toggleSlot = async (dateStr: string, time: string) => {
+    const key = `${dateStr}|${time}`;
+    const isOpen = openSlots.has(key);
+    const action = isOpen ? "close" : "open";
+    setTogglingSlot(key);
+    try {
+      await axios.post(`${base}/api/admin/teachers/${id}/weekly-slots`, {
+        slot_date: dateStr, slot_time: `${time}:00`, action,
+      }, { headers });
+      setOpenSlots(prev => {
+        const next = new Set(prev);
+        if (isOpen) next.delete(key); else next.add(key);
+        return next;
+      });
+    } catch (err) {
+      console.error("Error toggling slot:", err);
+    } finally {
+      setTogglingSlot(null);
+    }
   };
 
-  useEffect(() => { fetchData(); fetchClosedSlots(); }, [id]);
+  useEffect(() => { fetchData(); }, [id]);
+  useEffect(() => { fetchOpenSlots(weekStart); }, [weekStart, fetchOpenSlots]);
 
   const openEdit = () => {
     if (!teacher) return;
@@ -273,13 +291,91 @@ const AdminTeacherProfilePage = () => {
           </CardContent>
         </Card>
 
-        {/* Availability Calendar */}
-        <WeeklyCalendar
-          bookings={schedule}
-          closedSlots={closedSlots}
-          fetchClosedSlots={fetchClosedSlots}
-          onUpdateSlots={handleAdminUpdateSlots}
-        />
+        {/* Weekly Availability (Opt-in) */}
+        <Card className="glow-card border-0 rounded-2xl">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5 text-primary" />
+              Weekly Availability
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Click slots to open/close them for this teacher</p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between mb-4">
+              <Button variant="outline" size="sm" onClick={() => setWeekStart(addDays(weekStart, -7))}>
+                <ChevronLeft className="h-4 w-4 mr-1" /> Prev
+              </Button>
+              <span className="text-sm font-medium">
+                {format(weekStart, "MMM d")} – {format(addDays(weekStart, 6), "MMM d, yyyy")}
+              </span>
+              <Button variant="outline" size="sm" onClick={() => setWeekStart(addDays(weekStart, 7))}>
+                Next <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr>
+                    <th className="p-1 text-left w-16">Time</th>
+                    {[...Array(7)].map((_, i) => (
+                      <th key={i} className="p-1 text-center">{format(addDays(weekStart, i), "EEE MM/dd")}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const slots: string[] = [];
+                    for (let h = 7; h <= 22; h++) {
+                      slots.push(`${String(h).padStart(2, "0")}:00`);
+                      if (h < 22 || h === 22) slots.push(`${String(h).padStart(2, "0")}:30`);
+                    }
+                    return slots.map((time) => (
+                      <tr key={time}>
+                        <td className="p-1 font-medium text-muted-foreground">{(() => {
+                          const [hh, mm] = time.split(":");
+                          const h = Number(hh);
+                          return `${h % 12 === 0 ? 12 : h % 12}:${mm} ${h >= 12 ? "PM" : "AM"}`;
+                        })()}</td>
+                        {[...Array(7)].map((_, j) => {
+                          const day = format(addDays(weekStart, j), "yyyy-MM-dd");
+                          const key = `${day}|${time}`;
+                          const isOpen = openSlots.has(key);
+                          const isPast = new Date(`${day}T${time}:00`) < new Date();
+                          const isToggling = togglingSlot === key;
+                          // Check if booked
+                          const bookedEntry = schedule.find(s => {
+                            const d = fmtDate(s.appointment_date, "yyyy-MM-dd");
+                            const t = fmtDate(s.appointment_date, "HH:mm");
+                            return d === day && t === time;
+                          });
+                          return (
+                            <td
+                              key={j}
+                              onClick={() => !isPast && !bookedEntry && !isToggling && toggleSlot(day, time)}
+                              className={`p-1 text-center border cursor-pointer transition-colors ${
+                                isPast ? "bg-gray-50 text-gray-300 cursor-not-allowed"
+                                : bookedEntry ? "bg-blue-100 text-blue-700 cursor-default"
+                                : isOpen ? "bg-green-100 text-green-700 hover:bg-green-200"
+                                : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                              }`}
+                            >
+                              {isToggling ? "..." : bookedEntry ? "Booked" : isOpen ? "✓" : "+"}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ));
+                  })()}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
+              <span><span className="inline-block w-3 h-3 bg-green-100 border rounded mr-1" />Open (✓)</span>
+              <span><span className="inline-block w-3 h-3 bg-gray-100 border rounded mr-1" />Closed (+)</span>
+              <span><span className="inline-block w-3 h-3 bg-blue-100 border rounded mr-1" />Booked</span>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Leave Requests */}
         <Card className="glow-card border-0 rounded-2xl">

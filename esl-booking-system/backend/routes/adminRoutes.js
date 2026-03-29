@@ -354,6 +354,56 @@ router.post("/teachers/:id/availability", authenticateToken, requireRole('compan
   }
 });
 
+// GET teacher's open slots (admin view — mirrors teacher's weekly-slots)
+router.get("/teachers/:id/weekly-slots", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const { id } = req.params;
+    const startDate = req.query.startDate || new Date().toISOString().split('T')[0];
+    const endDt = new Date(startDate);
+    endDt.setDate(endDt.getDate() + 7);
+    const endDate = endDt.toISOString().split('T')[0];
+
+    const [rows] = await pool.query(
+      `SELECT id, DATE_FORMAT(slot_date, '%Y-%m-%d') AS slot_date, TIME_FORMAT(slot_time, '%H:%i') AS slot_time
+       FROM teacher_available_slots
+       WHERE company_id = ? AND teacher_id = ? AND slot_date >= ? AND slot_date < ?
+       ORDER BY slot_date ASC, slot_time ASC`,
+      [companyId, id, startDate, endDate]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// POST toggle teacher's open slots (admin — mirrors teacher's weekly-slots)
+router.post("/teachers/:id/weekly-slots", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const { id } = req.params;
+    const { slot_date, slot_time, action } = req.body;
+
+    if (!slot_date || !slot_time || !action) {
+      return res.status(400).json({ message: 'slot_date, slot_time, and action are required' });
+    }
+    if (action === 'open') {
+      await pool.query(
+        'INSERT IGNORE INTO teacher_available_slots (company_id, teacher_id, slot_date, slot_time) VALUES (?, ?, ?, ?)',
+        [companyId, id, slot_date, slot_time]
+      );
+    } else if (action === 'close') {
+      await pool.query(
+        'DELETE FROM teacher_available_slots WHERE company_id = ? AND teacher_id = ? AND slot_date = ? AND slot_time = ?',
+        [companyId, id, slot_date, slot_time]
+      );
+    }
+    res.json({ message: `Slot ${action}d successfully` });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Get teacher schedule (upcoming bookings)
 router.get("/teachers/:id/schedule", authenticateToken, requireRole('company_admin'), async (req, res) => {
   try {

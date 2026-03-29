@@ -50,6 +50,8 @@ const TimeslotPage = () => {
   const [effectiveTeacherId, setEffectiveTeacherId] = useState<number | null>(null);
   const [needsTeacherPicker, setNeedsTeacherPicker] = useState(false);
   const [selectedTeacherId, setSelectedTeacherId] = useState<number | null>(null);
+  const [openSlots, setOpenSlots] = useState<Set<string>>(new Set()); // "HH:MM" format
+  const [bookedMap, setBookedMap] = useState<Record<string, string>>({}); // { "HH:MM": "booked"|"your_class" }
 
   useEffect(() => {
     if (!localStorage.getItem("token")) navigate("/login");
@@ -88,6 +90,7 @@ const TimeslotPage = () => {
     fetchStudentContext();
   }, []);
 
+  // Fetch student's own bookings (for class info modal) + teacher slot statuses
   useEffect(() => {
     if (!date || userPackageId === null) return;
 
@@ -98,19 +101,14 @@ const TimeslotPage = () => {
           `${import.meta.env.VITE_API_URL}/api/student/bookings`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-
         const slotsMap: { [key: string]: Booking } = {};
         response.data.forEach((booking) => {
           const bookingDate = fmtDate(booking.appointment_date, "yyyy-MM-dd");
           if (bookingDate === date) {
             const formattedTime = fmtTime(booking.appointment_date).toUpperCase();
-            slotsMap[formattedTime] = {
-              ...booking,
-              timeslot: formattedTime,
-            };
+            slotsMap[formattedTime] = { ...booking, timeslot: formattedTime };
           }
         });
-
         setBookedSlots(slotsMap);
       } catch (error) {
         console.error("Error fetching booked slots:", error);
@@ -120,31 +118,26 @@ const TimeslotPage = () => {
     fetchBookedSlots();
   }, [date, userPackageId]);
 
+  // Fetch open slots and booked map from teacher-slots endpoint
   useEffect(() => {
     if (!date) return;
 
-    const fetchClosedSlots = async () => {
-      // Scenarios 3 & 4: no effective teacher → all slots available (no closed slots shown)
-      if (effectiveTeacherId === null) {
-        setClosedSlots([]);
-        return;
-      }
+    const fetchTeacherSlots = async () => {
       try {
         const token = localStorage.getItem("token");
-        const response = await axios.get<ClosedSlot[]>(
-          `${import.meta.env.VITE_API_URL}/api/admin/closed-slots?teacher_id=${effectiveTeacherId}`,
+        const teacherParam = effectiveTeacherId ? `&teacher_id=${effectiveTeacherId}` : "";
+        const res = await axios.get(
+          `${import.meta.env.VITE_API_URL}/api/student/teacher-slots?date=${date}${teacherParam}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        const slots = response.data
-          .filter((slot) => slot.date === date)
-          .map((slot) => slot.time.toUpperCase());
-        setClosedSlots(slots);
+        setOpenSlots(new Set(res.data.open_slots || []));
+        setBookedMap(res.data.booked_map || {});
       } catch (error) {
-        console.error("Error fetching closed slots:", error);
+        console.error("Error fetching teacher slots:", error);
       }
     };
 
-    fetchClosedSlots();
+    fetchTeacherSlots();
   }, [date, effectiveTeacherId]);
 
   const generateTimeSlots = () => {
@@ -311,11 +304,11 @@ const TimeslotPage = () => {
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 inline-block" />
-          Your booking
+          Your Class
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-slate-400 inline-block" />
-          Closed / Booked
+          <span className="w-3 h-3 rounded-full bg-amber-400 inline-block" />
+          Booked
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full bg-gray-300 inline-block" />
@@ -328,11 +321,24 @@ const TimeslotPage = () => {
           const now = new Date();
           const slotDateTime = new Date(`${date} ${slot}`);
           const isPast = slotDateTime < now;
-          const isBooked = slot in bookedSlots;
-          const bookedByUser = isBooked && bookedSlots[slot].student_package_id === userPackageId;
-          const isClosed = closedSlots.includes(slot);
 
-          const isDisabled = isPast || (!bookedByUser && (isBooked || isClosed));
+          // Convert display time (12h) to 24h for matching
+          const match24 = slot.match(/^(\d{1,2}):(\d{2})\s?(AM|PM)$/i);
+          let time24 = "";
+          if (match24) {
+            let h = parseInt(match24[1]);
+            if (match24[3].toUpperCase() === "PM" && h !== 12) h += 12;
+            if (match24[3].toUpperCase() === "AM" && h === 12) h = 0;
+            time24 = `${String(h).padStart(2, "0")}:${match24[2]}`;
+          }
+
+          const isOpen = openSlots.has(time24);
+          const bookedStatus = bookedMap[time24]; // "booked" | "your_class" | undefined
+          const isBookedByUser = slot in bookedSlots && bookedSlots[slot].student_package_id === userPackageId;
+          const isBookedByOther = bookedStatus === "booked" && !isBookedByUser;
+          const isYourClass = bookedStatus === "your_class" || isBookedByUser;
+
+          const isDisabled = isPast || (!isYourClass && (!isOpen || isBookedByOther));
 
           return (
             <button
@@ -341,10 +347,12 @@ const TimeslotPage = () => {
                 "p-2.5 w-full rounded-xl text-sm text-center font-medium transition-all border",
                 isPast
                   ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200"
-                  : bookedByUser
+                  : isYourClass
                   ? "bookedByUser-timeslot"
-                  : isBooked || isClosed
-                  ? "closed-timeslot"
+                  : isBookedByOther
+                  ? "bg-amber-100 text-amber-700 border-amber-200 cursor-not-allowed"
+                  : !isOpen
+                  ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200"
                   : "student-timeslots"
               )}
               onClick={() => !isDisabled && handleSlotClick(slot)}
@@ -352,10 +360,12 @@ const TimeslotPage = () => {
             >
               {isPast
                 ? "UNAVAILABLE"
-                : bookedByUser
+                : isYourClass
+                ? "YOUR CLASS"
+                : isBookedByOther
                 ? "BOOKED"
-                : isBooked || isClosed
-                ? "CLOSED"
+                : !isOpen
+                ? "UNAVAILABLE"
                 : slot}
             </button>
           );
