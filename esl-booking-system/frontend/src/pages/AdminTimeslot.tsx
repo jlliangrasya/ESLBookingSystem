@@ -9,6 +9,7 @@ const AdminTimeslotPage = () => {
   const navigate = useNavigate();
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
+  const [bookingLoading, setBookingLoading] = useState(false);
 
   useEffect(() => {
     if (!localStorage.getItem("token")) navigate("/login");
@@ -33,7 +34,8 @@ const AdminTimeslotPage = () => {
   };
 
   const confirmBooking = async () => {
-    if (!selectedSlot) return;
+    if (!selectedSlot || bookingLoading) return;
+    setBookingLoading(true);
     try {
       const token = localStorage.getItem("token");
       if (!token) { navigate("/login"); return; }
@@ -80,6 +82,8 @@ const AdminTimeslotPage = () => {
     } catch (error) {
       console.error("Error confirming booking:", error);
       alert("Failed to confirm booking. Please try again.");
+    } finally {
+      setBookingLoading(false);
     }
   };
 
@@ -104,6 +108,7 @@ const AdminTimeslotPage = () => {
         show={showBookingModal}
         onHide={() => setShowBookingModal(false)}
         confirmBooking={confirmBooking}
+        loading={bookingLoading}
       />
     </div>
   );

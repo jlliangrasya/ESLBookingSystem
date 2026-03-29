@@ -7,21 +7,23 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { CalendarCheck } from "lucide-react";
+import { CalendarCheck, Loader2 } from "lucide-react";
 
 interface Props {
   show: boolean;
   onHide: () => void;
   confirmBooking: () => void;
+  loading?: boolean;
 }
 
 const BookingConfirmationModal: React.FC<Props> = ({
   show,
   onHide,
   confirmBooking,
+  loading = false,
 }) => {
   return (
-    <Dialog open={show} onOpenChange={onHide}>
+    <Dialog open={show} onOpenChange={(o) => { if (!o && !loading) onHide(); }}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <div className="flex justify-center mb-2">
@@ -36,10 +38,12 @@ const BookingConfirmationModal: React.FC<Props> = ({
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="flex gap-2 sm:justify-center">
-          <Button variant="outline" onClick={onHide}>
+          <Button variant="outline" onClick={onHide} disabled={loading}>
             Cancel
           </Button>
-          <Button onClick={confirmBooking}>Yes, Book It</Button>
+          <Button onClick={confirmBooking} disabled={loading}>
+            {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Booking...</> : "Yes, Book It"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -34,6 +34,7 @@ const TimeslotPage = () => {
   const navigate = useNavigate();
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
+  const [bookingLoading, setBookingLoading] = useState(false);
   const [bookedSlots, setBookedSlots] = useState<{ [key: string]: Booking }>({});
   const [closedSlots, setClosedSlots] = useState<string[]>([]);
   const [userPackageId, setUserPackageId] = useState<number | null>(null);
@@ -210,7 +211,8 @@ const TimeslotPage = () => {
   };
 
   const confirmBooking = async () => {
-    if (!selectedSlot) return;
+    if (!selectedSlot || bookingLoading) return;
+    setBookingLoading(true);
     try {
       const token = localStorage.getItem("token");
       if (!token) { navigate("/login"); return; }
@@ -257,6 +259,8 @@ const TimeslotPage = () => {
     } catch (error) {
       console.error("Error confirming booking:", error);
       alert("Failed to confirm booking. Please try again.");
+    } finally {
+      setBookingLoading(false);
     }
   };
 
@@ -333,6 +337,7 @@ const TimeslotPage = () => {
         show={showBookingModal}
         onHide={() => setShowBookingModal(false)}
         confirmBooking={confirmBooking}
+        loading={bookingLoading}
       />
 
       {/* Class Info Modal */}
