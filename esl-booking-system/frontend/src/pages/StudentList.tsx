@@ -17,13 +17,17 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, UserPlus, Eye, EyeOff, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2, UserPlus, Eye, EyeOff, Search, ChevronLeft, ChevronRight, Copy, Check } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const PAGE_SIZE = 10;
 
 interface Student {
   id: number;
   name: string;
+  email: string;
+  age: number | null;
+  guardian_name: string | null;
   package_name: string;
   subject: string;
   sessions_remaining: number;
@@ -44,6 +48,20 @@ const StudentListPage: React.FC = () => {
   const [search, setSearch] = useState("");
   const [sessionFilter, setSessionFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+
+  const handleCopyInfo = (student: Student) => {
+    const text = `Name: ${student.name}
+Age: ${student.age ?? ""}
+Guardian: ${student.guardian_name ?? ""}
+Email: ${student.email}
+Password: (set during account creation)
+
+Please use the email and password to login to https://esl-booking-system.vercel.app`;
+    navigator.clipboard.writeText(text);
+    setCopiedId(student.id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   const filtered = useMemo(() => {
     return students.filter((s) => {
@@ -182,7 +200,20 @@ const StudentListPage: React.FC = () => {
                           </Badge>
                         </TableCell>
                         <TableCell>{student.nationality || "—"}</TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right flex items-center justify-end gap-1">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                                  onClick={() => handleCopyInfo(student)}>
+                                  {copiedId === student.id ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{copiedId === student.id ? "Copied!" : "Copy Student's Information"}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                           <Button size="sm" variant="ghost" className="h-7 text-xs"
                             onClick={() => navigate(`/admin/students/${student.id}`)}>
                             View
