@@ -1,5 +1,6 @@
 import { useState, useEffect, useContext } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
@@ -46,6 +47,7 @@ interface AvailablePackage {
   subject: string | null;
   duration_minutes: number;
   description: string | null;
+  currency: string;
 }
 
 interface Booking {
@@ -134,6 +136,7 @@ const StudentDashboard = () => {
   const [teachers, setTeachers] = useState<{ id: number; name: string }[]>([]);
 
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const authContext = useContext(AuthContext);
   const token = authContext?.token ?? null;
 
@@ -233,12 +236,12 @@ const StudentDashboard = () => {
     }
   };
 
-  const confirmPackage = async (receiptImage: string | null, teacherId: number | null) => {
+  const confirmPackage = async (transactionOrderNumber: string | null, teacherId: number | null) => {
     if (!selectedPackage) return;
     try {
       await axios.post(`${import.meta.env.VITE_API_URL}/api/student/avail`, {
         package_id: selectedPackage,
-        receipt_image: receiptImage,
+        transaction_order_number: transactionOrderNumber,
         teacher_id: teacherId || undefined,
       }, { headers: { Authorization: `Bearer ${token}` } });
       setShowPackageModal(false);
@@ -366,9 +369,9 @@ const StudentDashboard = () => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setFeedbackText("");
-      setFeedbackMsg("Feedback submitted! Your teacher and admin have been notified.");
+      setFeedbackMsg(t("student.feedbackSuccess"));
     } catch {
-      setFeedbackMsg("Failed to submit feedback. Please try again.");
+      setFeedbackMsg(t("student.feedbackFailed"));
     } finally {
       setFeedbackLoading(false);
     }
@@ -386,7 +389,7 @@ const StudentDashboard = () => {
       );
       setWaitlistForm({ teacher_id: "", desired_date: "", desired_time: "" });
       setShowWaitlistForm(false);
-      setWaitlistMsg("Added to waitlist! You'll be notified when the slot opens.");
+      setWaitlistMsg(t("student.waitlistSuccess"));
       const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/waitlist`, { headers: { Authorization: `Bearer ${token}` } });
       setWaitlistEntries(res.data);
     } catch (err: unknown) {
@@ -424,10 +427,10 @@ const StudentDashboard = () => {
 
           <div className="hidden md:flex flex-col items-end">
             <p className="text-xs text-white/60">
-              Nationality: {student?.nationality || "N/A"}
+              {t("student.nationality")} {student?.nationality || "N/A"}
             </p>
             <p className="text-xs text-white/60">
-              Age: {student?.age || "N/A"}
+              {t("student.age")} {student?.age || "N/A"}
             </p>
           </div>
 
@@ -449,13 +452,13 @@ const StudentDashboard = () => {
               className="text-white/70 hover:text-white hover:bg-white/10"
             >
               <LogOut className="h-4 w-4 mr-1" />
-              Logout
+              {t("student.logout")}
             </Button>
           </div>
         </div>
 
         <div className="max-w-7xl mx-auto px-4 pb-5">
-          <p className="text-sm text-white/60">Hi, I am</p>
+          <p className="text-sm text-white/60">{t("student.hiIAm")}</p>
           <h1 className="text-3xl font-bold text-white">
             {student?.name || "Student"}
           </h1>
@@ -468,13 +471,13 @@ const StudentDashboard = () => {
         <div className="space-y-5">
           <div className="flex items-center gap-2 text-sm">
             <User className="h-4 w-4 text-primary" />
-            <span className="text-muted-foreground">Guardian:</span>
+            <span className="text-muted-foreground">{t("student.guardian")}</span>
             <span className="font-medium">{student?.guardian_name || "N/A"}</span>
           </div>
 
           <div className="flex items-center gap-2 text-sm">
             <CalendarDays className="h-4 w-4 text-primary" />
-            <span className="text-muted-foreground">Date Enrolled:</span>
+            <span className="text-muted-foreground">{t("student.dateEnrolled")}</span>
             <span className="font-medium">
               {student?.created_at
                 ? fmtDateOnly(student.created_at)
@@ -492,28 +495,28 @@ const StudentDashboard = () => {
               </div>
               <div className="flex items-center gap-2">
                 <Badge className="bg-[#D0E8F0] text-[#2E6B9E] border-0">
-                  {packageDetails.sessions_remaining} sessions remaining
+                  {t("student.sessionsRemaining", { count: packageDetails.sessions_remaining })}
                 </Badge>
               </div>
             </div>
           ) : (
             <p className="text-muted-foreground text-sm italic">
-              No package availed yet.
+              {t("student.noPackage")}
             </p>
           )}
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Feedback</label>
+            <label className="text-sm font-medium">{t("student.feedback")}</label>
             <Textarea
               rows={3}
-              placeholder="Leave your feedback here..."
+              placeholder={t("student.feedbackPlaceholder")}
               className="resize-none"
               value={feedbackText}
               onChange={(e) => { setFeedbackText(e.target.value); setFeedbackMsg(null); }}
               disabled={feedbackLoading}
             />
             {feedbackMsg && (
-              <p className={`text-xs ${feedbackMsg.startsWith("Failed") ? "text-destructive" : "text-green-600"}`}>
+              <p className={`text-xs ${feedbackMsg === t("student.feedbackFailed") ? "text-destructive" : "text-green-600"}`}>
                 {feedbackMsg}
               </p>
             )}
@@ -524,7 +527,7 @@ const StudentDashboard = () => {
               disabled={feedbackLoading || !feedbackText.trim()}
             >
               <Send className="h-3.5 w-3.5" />
-              {feedbackLoading ? "Submitting..." : "Submit Feedback"}
+              {feedbackLoading ? t("student.submitting") : t("student.submitFeedback")}
             </Button>
           </div>
         </div>
@@ -535,10 +538,10 @@ const StudentDashboard = () => {
             onClick={handleAvailPackage}
             className="w-full accent-gradient text-white shadow-md hover:shadow-lg transition-shadow border-0"
           >
-            Avail a Package
+            {t("student.availPackage")}
           </Button>
 
-          <h4 className="font-semibold text-gray-700">Booked Classes</h4>
+          <h4 className="font-semibold text-gray-700">{t("student.bookedClasses")}</h4>
           <Calendar
             className="custom-calendar"
             onClickDay={handleDateClick}
@@ -565,7 +568,7 @@ const StudentDashboard = () => {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <FileText className="h-4 w-4 text-primary" />
-                My Class Reports
+                {t("student.myReports")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -580,7 +583,7 @@ const StudentDashboard = () => {
                         {fmtDateOnly(r.appointment_date)}
                       </span>
                       <span className="text-xs text-muted-foreground ml-2">
-                        by {r.teacher_name}
+                        {t("student.by")} {r.teacher_name}
                       </span>
                     </div>
                     <span className="text-xs text-muted-foreground">
@@ -591,25 +594,25 @@ const StudentDashboard = () => {
                     <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 border-t">
                       {r.new_words && (
                         <div className="pt-3">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">New Words</p>
+                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">{t("student.newWords")}</p>
                           <p className="text-sm whitespace-pre-wrap">{r.new_words}</p>
                         </div>
                       )}
                       {r.sentences && (
                         <div className="pt-3">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Sentences</p>
+                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">{t("student.sentences")}</p>
                           <p className="text-sm whitespace-pre-wrap">{r.sentences}</p>
                         </div>
                       )}
                       {r.notes && (
                         <div className="pt-3">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Notes</p>
+                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">{t("student.notes")}</p>
                           <p className="text-sm whitespace-pre-wrap">{r.notes}</p>
                         </div>
                       )}
                       {r.remarks && (
                         <div className="pt-3">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Remarks</p>
+                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">{t("student.remarks")}</p>
                           <p className="text-sm whitespace-pre-wrap">{r.remarks}</p>
                         </div>
                       )}
@@ -629,16 +632,16 @@ const StudentDashboard = () => {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <UserX className="h-4 w-4 text-primary" />
-                Absence History
+                {t("student.absenceHistory")}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date &amp; Time</TableHead>
-                    <TableHead>Teacher</TableHead>
-                    <TableHead>Reason</TableHead>
+                    <TableHead>{t("student.dateTime")}</TableHead>
+                    <TableHead>{t("student.teacher")}</TableHead>
+                    <TableHead>{t("student.reason")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -651,12 +654,12 @@ const StudentDashboard = () => {
                       <TableCell>
                         {a.student_absent && (
                           <span className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-700">
-                            You were absent
+                            {t("student.youAbsent")}
                           </span>
                         )}
                         {a.teacher_absent && (
                           <span className="text-xs px-2 py-1 rounded-full font-medium bg-red-100 text-red-700 ml-1">
-                            Teacher absent
+                            {t("student.teacherAbsent")}
                           </span>
                         )}
                       </TableCell>
@@ -676,12 +679,12 @@ const StudentDashboard = () => {
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 <Clock className="h-4 w-4 text-primary" />
-                My Waitlist
+                {t("student.myWaitlist")}
               </CardTitle>
               <Button size="sm" variant="outline" className="gap-1.5"
                 onClick={() => { setShowWaitlistForm(v => !v); setWaitlistMsg(null); }}>
                 <Plus className="h-3.5 w-3.5" />
-                {showWaitlistForm ? "Cancel" : "Join Waitlist"}
+                {showWaitlistForm ? t("student.cancel") : t("student.joinWaitlist")}
               </Button>
             </div>
           </CardHeader>
@@ -690,24 +693,24 @@ const StudentDashboard = () => {
             {showWaitlistForm && (
               <div className="rounded-lg border p-4 space-y-3 bg-gray-50">
                 <p className="text-xs text-muted-foreground">
-                  Select a teacher, date, and time slot you want to be notified about when it becomes available.
+                  {t("student.waitlistHint")}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-medium">Teacher</label>
+                    <label className="text-xs font-medium">{t("student.teacher")}</label>
                     <select
                       value={waitlistForm.teacher_id}
                       onChange={e => setWaitlistForm(f => ({ ...f, teacher_id: e.target.value }))}
                       className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     >
-                      <option value="">Select teacher...</option>
+                      <option value="">{t("student.selectTeacher")}</option>
                       {waitlistTeachers.map(t => (
                         <option key={t.id} value={t.id}>{t.name}</option>
                       ))}
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium">Date</label>
+                    <label className="text-xs font-medium">{t("student.date")}</label>
                     <input
                       type="date"
                       value={waitlistForm.desired_date}
@@ -717,7 +720,7 @@ const StudentDashboard = () => {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium">Time</label>
+                    <label className="text-xs font-medium">{t("student.time")}</label>
                     <input
                       type="time"
                       value={waitlistForm.desired_time}
@@ -729,14 +732,14 @@ const StudentDashboard = () => {
                 <div className="flex items-center gap-2">
                   <Button size="sm" onClick={handleJoinWaitlist}
                     disabled={waitlistSubmitting || !waitlistForm.teacher_id || !waitlistForm.desired_date || !waitlistForm.desired_time}>
-                    {waitlistSubmitting ? "Joining..." : "Join Waitlist"}
+                    {waitlistSubmitting ? t("student.joining") : t("student.joinWaitlist")}
                   </Button>
                 </div>
               </div>
             )}
 
             {waitlistMsg && (
-              <p className={`text-xs ${waitlistMsg.startsWith("Added") ? "text-green-600" : "text-destructive"}`}>
+              <p className={`text-xs ${waitlistMsg === t("student.waitlistSuccess") ? "text-green-600" : "text-destructive"}`}>
                 {waitlistMsg}
               </p>
             )}
@@ -744,16 +747,16 @@ const StudentDashboard = () => {
             {/* Entries table */}
             {waitlistEntries.length === 0 ? (
               <p className="text-sm text-muted-foreground italic">
-                No waitlist entries. Click "Join Waitlist" to be notified when a slot opens up.
+                {t("student.noWaitlist")}
               </p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Teacher</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>{t("student.date")}</TableHead>
+                    <TableHead>{t("student.time")}</TableHead>
+                    <TableHead>{t("student.teacher")}</TableHead>
+                    <TableHead>{t("student.status")}</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -771,7 +774,7 @@ const StudentDashboard = () => {
                           : entry.status === "notified" ? "bg-green-100 text-green-700"
                           : "bg-gray-100 text-gray-600"
                         }`}>
-                          {entry.status}
+                          {t(`student.status${entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}`)}
                         </span>
                       </TableCell>
                       <TableCell>
@@ -816,18 +819,18 @@ const StudentDashboard = () => {
       <Dialog open={showCancelPolicyModal} onOpenChange={setShowCancelPolicyModal}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Cancellation Not Allowed</DialogTitle>
+            <DialogTitle>{t("student.cancelNotAllowed")}</DialogTitle>
           </DialogHeader>
           <div className="py-2 text-sm text-muted-foreground space-y-2">
             <p>
-              Cancellation of classes within <span className="font-semibold text-foreground">{cancellationHours} hour(s)</span> of the scheduled time is not allowed.
+              {t("student.cancelPolicyMsg", { hours: cancellationHours })}
             </p>
             <p>
-              If you cannot attend the class, you will be marked as absent and the session will be deducted accordingly. Your teacher has been notified.
+              {t("student.cancelPolicyNote")}
             </p>
           </div>
           <div className="flex justify-end">
-            <Button onClick={() => setShowCancelPolicyModal(false)}>Understood</Button>
+            <Button onClick={() => setShowCancelPolicyModal(false)}>{t("student.understood")}</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -836,14 +839,14 @@ const StudentDashboard = () => {
       <Dialog open={showCancelConfirm !== null} onOpenChange={(o) => { if (!o) setShowCancelConfirm(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Cancel Class</DialogTitle>
+            <DialogTitle>{t("student.cancelClass")}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground py-2">
-            Are you sure you want to cancel this class? Your teacher and admin will be notified.
+            {t("student.cancelConfirm")}
           </p>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowCancelConfirm(null)}>No, Keep It</Button>
-            <Button variant="destructive" onClick={handleConfirmCancel}>Yes, Cancel</Button>
+            <Button variant="outline" onClick={() => setShowCancelConfirm(null)}>{t("student.noKeepIt")}</Button>
+            <Button variant="destructive" onClick={handleConfirmCancel}>{t("student.yesCancel")}</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -854,7 +857,7 @@ const StudentDashboard = () => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Video className="h-4 w-4 text-primary" />
-              Class Details
+              {t("student.classDetails")}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -870,22 +873,22 @@ const StudentDashboard = () => {
                       : b.status === "pending" ? "bg-yellow-100 text-yellow-700"
                       : "bg-gray-100 text-gray-700"
                     }`}>
-                      {b.status}
+                      {t(`student.status${b.status.charAt(0).toUpperCase() + b.status.slice(1)}`)}
                     </span>
                   </div>
                   <div className="text-sm text-muted-foreground space-y-1.5">
                     <div className="flex items-center gap-1.5">
                       <User className="h-3.5 w-3.5" />
-                      <span>Teacher: <span className="text-foreground font-medium">{b.teacher_name || "TBA"}</span></span>
+                      <span>{t("student.teacher")}: <span className="text-foreground font-medium">{b.teacher_name || t("student.tba")}</span></span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <Video className="h-3.5 w-3.5" />
-                      <span>Mode: <span className="text-foreground font-medium">{b.class_mode || "Not set"}</span></span>
+                      <span>{t("student.mode")} <span className="text-foreground font-medium">{b.class_mode || t("student.notSet")}</span></span>
                     </div>
                     {b.meeting_link ? (
                       <div className="flex items-start gap-1.5">
                         <CalendarDays className="h-3.5 w-3.5 mt-0.5" />
-                        <span className="flex items-center gap-1.5 flex-wrap">Link: <a href={b.meeting_link} target="_blank" rel="noopener noreferrer"
+                        <span className="flex items-center gap-1.5 flex-wrap">{t("student.link")} <a href={b.meeting_link} target="_blank" rel="noopener noreferrer"
                           className="text-primary underline break-all font-medium">{b.meeting_link}</a>
                           <button
                             onClick={() => {
@@ -894,16 +897,16 @@ const StudentDashboard = () => {
                               setTimeout(() => setCopiedLinkId(null), 2000);
                             }}
                             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-                            title="Copy meeting link"
+                            title={t("student.copyLink")}
                           >
-                            {copiedLinkId === b.id ? <><Check className="h-3 w-3" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
+                            {copiedLinkId === b.id ? <><Check className="h-3 w-3" /> {t("student.copied")}</> : <><Copy className="h-3 w-3" /> {t("student.copy")}</>}
                           </button>
                         </span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-1.5">
                         <CalendarDays className="h-3.5 w-3.5" />
-                        <span>Link: <span className="text-foreground font-medium">Not set</span></span>
+                        <span>{t("student.link")} <span className="text-foreground font-medium">{t("student.notSet")}</span></span>
                       </div>
                     )}
                   </div>
@@ -911,14 +914,14 @@ const StudentDashboard = () => {
                   {b.student_absent && (
                     <div className="pt-1">
                       <span className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-700">
-                        You were marked absent
+                        {t("student.youMarkedAbsent")}
                       </span>
                     </div>
                   )}
                   {b.teacher_absent ? (
                     <div className="pt-1">
                       <span className="text-xs px-2 py-1 rounded-full font-medium bg-red-100 text-red-700">
-                        Teacher marked as absent
+                        {t("student.teacherMarkedAbsent")}
                       </span>
                     </div>
                   ) : canMarkTeacherAbsent ? (
@@ -930,7 +933,7 @@ const StudentDashboard = () => {
                         disabled={absentLoadingId === b.id}
                         onClick={() => handleMarkTeacherAbsent(b.id)}
                       >
-                        {absentLoadingId === b.id ? "Marking..." : "Mark Teacher Absent"}
+                        {absentLoadingId === b.id ? t("student.marking") : t("student.markTeacherAbsent")}
                       </Button>
                     </div>
                   ) : null}
@@ -944,7 +947,7 @@ const StudentDashboard = () => {
                         disabled={cancellingId === b.id}
                         onClick={() => handleStudentCancel(b.id, b.appointment_datetime)}
                       >
-                        {cancellingId === b.id ? "Cancelling..." : "Cancel Class"}
+                        {cancellingId === b.id ? t("student.cancelling") : t("student.cancelClass")}
                       </Button>
                     </div>
                   )}
