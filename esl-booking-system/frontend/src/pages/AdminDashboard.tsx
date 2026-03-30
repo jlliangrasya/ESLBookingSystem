@@ -64,6 +64,7 @@ interface StudentPackage {
   sessions_remaining: number;
   payment_status: "paid" | "unpaid";
   receipt_image: string | null;
+  purchased_at: string | null;
 }
 
 
@@ -347,8 +348,14 @@ const AdminDashboard = () => {
                             className="h-7 px-2 text-xs"
                             onClick={() => setReceiptImage(enrollee.receipt_image)}
                           >
-                            <Eye className="h-3 w-3 mr-1" /> Receipt
+                            <Eye className="h-3 w-3 mr-1" />
+                            {enrollee.receipt_image.startsWith("data:") ? "Receipt" : "Details"}
                           </Button>
+                        )}
+                        {!enrollee.receipt_image && enrollee.purchased_at && (
+                          <span className="text-xs text-muted-foreground mr-2">
+                            {fmtDate(enrollee.purchased_at, "MMM d, h:mm a")}
+                          </span>
                         )}
                         <Button
                           size="sm"
@@ -556,14 +563,23 @@ const AdminDashboard = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Receipt Image Modal */}
+      {/* Receipt / Reference Number Modal */}
       <Dialog open={!!receiptImage} onOpenChange={() => setReceiptImage(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Payment Receipt</DialogTitle>
+            <DialogTitle>{receiptImage?.startsWith("data:") ? "Payment Receipt" : "Payment Details"}</DialogTitle>
           </DialogHeader>
           {receiptImage && (
-            <img src={receiptImage} alt="Payment receipt" className="w-full rounded-lg" />
+            receiptImage.startsWith("data:") ? (
+              <img src={receiptImage} alt="Payment receipt" className="w-full rounded-lg" />
+            ) : (
+              <div className="space-y-3 py-2">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Transaction / Reference Number</p>
+                  <p className="text-lg font-semibold bg-muted/50 rounded-lg p-3 font-mono">{receiptImage}</p>
+                </div>
+              </div>
+            )
           )}
         </DialogContent>
       </Dialog>
