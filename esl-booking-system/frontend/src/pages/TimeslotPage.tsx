@@ -299,13 +299,19 @@ const TimeslotPage = () => {
         </Button>
       </div>
 
-      {/* Note */}
-      {slotsNeeded > 1 && (
-        <div className="flex items-start gap-2 mb-6 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700">
-          <Info className="h-4 w-4 mt-0.5 shrink-0" />
-          <span>Your {durationMinutes}-minute class will automatically book {slotsNeeded} consecutive timeslots ({slotsNeeded} sessions deducted).</span>
+      {/* Notes */}
+      <div className="space-y-2 mb-6">
+        <div className="flex items-start gap-2 bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs text-gray-600">
+          <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span>All times shown in Philippine / China / Singapore / Hong Kong time (UTC+8)</span>
         </div>
-      )}
+        {slotsNeeded > 1 && (
+          <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700">
+            <Info className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>Your {durationMinutes}-minute class will automatically book {slotsNeeded} consecutive timeslots ({slotsNeeded} sessions deducted).</span>
+          </div>
+        )}
+      </div>
 
       {/* Legend */}
       <div className="flex flex-wrap gap-4 mb-8 text-xs bg-white rounded-xl p-3 px-5 shadow-sm border">
