@@ -59,7 +59,10 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
 
         // Lock the student_package row to prevent concurrent booking races
         const [spRows] = await connection.query(
-            "SELECT teacher_id, sessions_remaining, payment_status FROM student_packages WHERE id = ? AND company_id = ? FOR UPDATE",
+            `SELECT sp.teacher_id, sp.sessions_remaining, sp.payment_status, tp.duration_minutes
+             FROM student_packages sp
+             JOIN tutorial_packages tp ON sp.package_id = tp.id
+             WHERE sp.id = ? AND sp.company_id = ? FOR UPDATE`,
             [student_package_id, companyId]
         );
         if (spRows.length === 0) {
@@ -75,11 +78,18 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
             return res.status(403).json({ message: "Your package payment has not been confirmed yet. Please wait for admin approval before booking classes." });
         }
 
-        // Block booking if no sessions remaining
-        if (spRows[0].sessions_remaining <= 0) {
+        // Calculate slots needed based on duration
+        const durationMinutes = spRows[0].duration_minutes || 25;
+        const slotsNeeded = Math.max(1, Math.ceil(durationMinutes / 30));
+
+        // Block booking if not enough sessions remaining
+        if (spRows[0].sessions_remaining < slotsNeeded) {
             await connection.rollback();
             connection.release();
-            return res.status(403).json({ message: "No sessions remaining in your package. Please enroll in a new package." });
+            if (spRows[0].sessions_remaining <= 0) {
+                return res.status(403).json({ message: "No sessions remaining in your package. Please enroll in a new package." });
+            }
+            return res.status(403).json({ message: `Your ${durationMinutes}-minute class requires ${slotsNeeded} sessions but you only have ${spRows[0].sessions_remaining} remaining.` });
         }
 
         let teacherId = spRows[0].teacher_id;
@@ -104,97 +114,116 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
             teacherId = req.body.teacher_id;
         }
 
-        // Issue #7: Enforce teacher availability and leave
-        if (teacherId) {
-            const appointmentDt = new Date(appointment_date);
-            const appointmentDateStr = appointmentDt.toISOString().split('T')[0];
-            const appointmentHour = appointmentDt.getHours();
-            const appointmentMin = String(appointmentDt.getMinutes()).padStart(2, '0');
-            const hr12 = appointmentHour > 12 ? appointmentHour - 12 : appointmentHour === 0 ? 12 : appointmentHour;
-            const ampm = appointmentHour >= 12 ? 'PM' : 'AM';
-            const time12 = `${String(hr12).padStart(2, '0')}:${appointmentMin} ${ampm}`;
-            const time24 = `${String(appointmentHour).padStart(2, '0')}:${appointmentMin}:00`;
+        // Build list of consecutive slots to book
+        const baseDate = req.body.slot_date || new Date(appointment_date).toISOString().split('T')[0];
+        const baseTime = req.body.slot_time || (() => {
+            const dt = new Date(appointment_date);
+            return `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+        })();
+        const [baseH, baseM] = baseTime.split(':').map(Number);
 
-            // Check if teacher is on leave that day (use display date)
-            const leaveCheckDate = req.body.slot_date || appointmentDateStr;
+        const slotList = [];
+        for (let i = 0; i < slotsNeeded; i++) {
+            const totalMin = baseH * 60 + baseM + i * 30;
+            const h = Math.floor(totalMin / 60);
+            const m = totalMin % 60;
+            if (h >= 23 && m > 0) {
+                await connection.rollback(); connection.release();
+                return res.status(409).json({ message: `Cannot book a ${durationMinutes}-minute class at ${baseTime} — not enough timeslots remaining in the day.` });
+            }
+            const t24 = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+            slotList.push({ slot_date: baseDate, slot_time: t24 });
+        }
+
+        // Validate ALL consecutive slots
+        const leaveCheckDate = baseDate;
+        if (teacherId) {
+            // Check teacher leave
             const [leaveRows] = await connection.query(
-                `SELECT id FROM teacher_leaves
-                 WHERE teacher_id = ? AND company_id = ? AND leave_date = ?
-                   AND status IN ('pending', 'approved')`,
+                `SELECT id FROM teacher_leaves WHERE teacher_id = ? AND company_id = ? AND leave_date = ? AND status IN ('pending', 'approved')`,
                 [teacherId, companyId, leaveCheckDate]
             );
             if (leaveRows.length > 0) {
-                await connection.rollback();
-                connection.release();
+                await connection.rollback(); connection.release();
                 return res.status(409).json({ message: "This teacher is on leave on this date. Please choose a different date or teacher." });
             }
 
-            // Check if teacher has this slot OPEN in teacher_available_slots
-            // Use display date/time (from frontend) since teacher_available_slots stores display times
-            const checkDate = req.body.slot_date || appointmentDateStr;
-            const checkTime = req.body.slot_time || `${String(appointmentHour).padStart(2, '0')}:${appointmentMin}`;
-            const [openSlotRows] = await connection.query(
-                `SELECT id FROM teacher_available_slots
-                 WHERE company_id = ? AND teacher_id = ? AND slot_date = ? AND TIME_FORMAT(slot_time, '%H:%i') = ?`,
-                [companyId, teacherId, checkDate, checkTime]
-            );
-            if (openSlotRows.length === 0) {
-                await connection.rollback();
-                connection.release();
-                return res.status(409).json({ message: "This teacher is not available at this time. Please choose a different slot." });
+            // Check all slots are OPEN in teacher_available_slots
+            for (const slot of slotList) {
+                const [openRows] = await connection.query(
+                    `SELECT id FROM teacher_available_slots WHERE company_id = ? AND teacher_id = ? AND slot_date = ? AND TIME_FORMAT(slot_time, '%H:%i') = ?`,
+                    [companyId, teacherId, slot.slot_date, slot.slot_time]
+                );
+                if (openRows.length === 0) {
+                    await connection.rollback(); connection.release();
+                    const hr = Number(slot.slot_time.split(':')[0]);
+                    const mn = slot.slot_time.split(':')[1];
+                    const ampm = hr >= 12 ? 'PM' : 'AM';
+                    const h12 = hr % 12 === 0 ? 12 : hr % 12;
+                    return res.status(409).json({ message: `Cannot book — your teacher is not available at ${h12}:${mn} ${ampm}.` });
+                }
             }
         }
 
-        // --- Student-to-Student overlap check (within transaction) ---
-        const [studentOverlap] = await connection.query(
-            `SELECT b.id FROM bookings b
-             JOIN student_packages sp ON b.student_package_id = sp.id
-             WHERE sp.student_id = ? AND b.company_id = ?
-               AND b.status NOT IN ('cancelled', 'done')
-               AND ABS(TIMESTAMPDIFF(MINUTE, b.appointment_date, ?)) < 30`,
-            [studentId, companyId, appointment_date]
-        );
-        if (studentOverlap.length > 0) {
-            await connection.rollback();
-            connection.release();
-            return res.status(409).json({ message: "You already have a class booked at this time." });
+        // Check student overlap for all slots
+        for (const slot of slotList) {
+            const slotDatetime = `${slot.slot_date} ${slot.slot_time}:00`;
+            const [studentOverlap] = await connection.query(
+                `SELECT b.id FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id
+                 WHERE sp.student_id = ? AND b.company_id = ? AND b.status NOT IN ('cancelled', 'done')
+                 AND ABS(TIMESTAMPDIFF(MINUTE, b.appointment_date, ?)) < 30`,
+                [studentId, companyId, slotDatetime]
+            );
+            if (studentOverlap.length > 0) {
+                await connection.rollback(); connection.release();
+                return res.status(409).json({ message: `You already have a class booked at ${slot.slot_time}.` });
+            }
         }
 
-        // --- Teacher-to-Teacher overlap check (within transaction) ---
+        // Check teacher overlap for all slots
         if (teacherId) {
-            const [teacherOverlap] = await connection.query(
-                `SELECT id FROM bookings
-                 WHERE teacher_id = ? AND company_id = ?
-                   AND status NOT IN ('cancelled', 'done')
-                   AND ABS(TIMESTAMPDIFF(MINUTE, appointment_date, ?)) < 30`,
-                [teacherId, companyId, appointment_date]
-            );
-            if (teacherOverlap.length > 0) {
-                await connection.rollback();
-                connection.release();
-                return res.status(409).json({ message: "This teacher already has a class at this time. Please choose a different slot." });
+            for (const slot of slotList) {
+                const slotDatetime = `${slot.slot_date} ${slot.slot_time}:00`;
+                const [teacherOverlap] = await connection.query(
+                    `SELECT id FROM bookings WHERE teacher_id = ? AND company_id = ? AND status NOT IN ('cancelled', 'done')
+                     AND ABS(TIMESTAMPDIFF(MINUTE, appointment_date, ?)) < 30`,
+                    [teacherId, companyId, slotDatetime]
+                );
+                if (teacherOverlap.length > 0) {
+                    await connection.rollback(); connection.release();
+                    return res.status(409).json({ message: `This teacher already has a class at ${slot.slot_time}. Please choose a different slot.` });
+                }
             }
         }
 
-        const [result] = await connection.query(
-            `INSERT INTO bookings (company_id, student_package_id, teacher_id, appointment_date, status, rescheduled_by_admin, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-            [companyId, student_package_id, teacherId, appointment_date, status, rescheduled_by_admin]
-        );
+        // Insert all booking rows
+        const crypto = require('crypto');
+        const groupId = slotsNeeded > 1 ? crypto.randomUUID() : null;
+        const insertedIds = [];
+        for (const slot of slotList) {
+            const slotAppointment = `${slot.slot_date} ${slot.slot_time}:00`;
+            const [result] = await connection.query(
+                `INSERT INTO bookings (company_id, student_package_id, teacher_id, appointment_date, status, rescheduled_by_admin, booking_group_id, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+                [companyId, student_package_id, teacherId, slotAppointment, status, rescheduled_by_admin, groupId]
+            );
+            insertedIds.push(result.insertId);
+        }
 
         await connection.commit();
         connection.release();
 
-        // Notifications are fire-and-forget after the transaction commits
+        // Notifications
         const [[student]] = await pool.query('SELECT name FROM users WHERE id = ?', [studentId]);
         const dateStr = new Date(appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+        const slotMsg = slotsNeeded > 1 ? ` (${durationMinutes}-minute class, ${slotsNeeded} slots)` : '';
 
         if (teacherId) {
             await notify({
                 userId: teacherId, companyId,
                 type: 'booking_created',
                 title: 'New class booked',
-                message: `${student.name} booked a session on ${dateStr}.`,
+                message: `${student.name} booked a session on ${dateStr}${slotMsg}.`,
             });
         }
 
@@ -205,12 +234,12 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
             userId: admin.id, companyId,
             type: 'booking_created',
             title: 'New booking',
-            message: `${student.name} booked a session on ${dateStr}.`,
+            message: `${student.name} booked a session on ${dateStr}${slotMsg}.`,
         })));
 
-        await logAction(companyId, studentId, 'booking_created', 'booking', result.insertId, { appointment_date });
+        await logAction(companyId, studentId, 'booking_created', 'booking', insertedIds[0], { appointment_date, slots_booked: slotsNeeded });
 
-        res.json({ message: "Booking confirmed", booking_id: result.insertId });
+        res.json({ message: "Booking confirmed", booking_id: insertedIds[0], booking_ids: insertedIds, slots_booked: slotsNeeded });
     } catch (err) {
         try { await connection.rollback(); } catch (_) {}
         connection.release();
@@ -396,10 +425,18 @@ router.delete("/api/bookings/:id", authenticateToken, async (req, res) => {
             });
         }
 
-        const [result] = await pool.query(
-            "DELETE FROM bookings WHERE id = ? AND company_id = ?", [id, companyId]
-        );
-        if (result.affectedRows === 0) return res.status(404).json({ message: "Booking not found" });
+        // Group-aware cancellation: if booking is part of a multi-slot group, cancel all
+        if (booking.booking_group_id) {
+            await pool.query(
+                "DELETE FROM bookings WHERE booking_group_id = ? AND company_id = ?",
+                [booking.booking_group_id, companyId]
+            );
+        } else {
+            const [result] = await pool.query(
+                "DELETE FROM bookings WHERE id = ? AND company_id = ?", [id, companyId]
+            );
+            if (result.affectedRows === 0) return res.status(404).json({ message: "Booking not found" });
+        }
 
         const [[student]] = await pool.query('SELECT name FROM users WHERE id = ?', [studentId]);
         const dateStr = new Date(booking.appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
@@ -444,14 +481,34 @@ router.post("/api/bookings/done/:id", authenticateToken, requireRole('company_ad
     try {
         await connection.beginTransaction();
 
-        await connection.query(
-            `UPDATE student_packages SET sessions_remaining = sessions_remaining - 1
-             WHERE id = ? AND company_id = ? AND sessions_remaining > 0`,
-            [student_package_id, companyId]
-        );
-        await connection.query(
-            "UPDATE bookings SET status = 'done' WHERE id = ? AND company_id = ?",
+        // Check if this booking is part of a multi-slot group
+        const [[thisBooking]] = await connection.query(
+            "SELECT booking_group_id FROM bookings WHERE id = ? AND company_id = ?",
             [id, companyId]
+        );
+        let sessionsToDeduct = 1;
+        if (thisBooking?.booking_group_id) {
+            // Count bookings in the group and mark all as done
+            const [[{ cnt }]] = await connection.query(
+                "SELECT COUNT(*) AS cnt FROM bookings WHERE booking_group_id = ? AND status != 'done'",
+                [thisBooking.booking_group_id]
+            );
+            sessionsToDeduct = cnt || 1;
+            await connection.query(
+                "UPDATE bookings SET status = 'done' WHERE booking_group_id = ? AND company_id = ?",
+                [thisBooking.booking_group_id, companyId]
+            );
+        } else {
+            await connection.query(
+                "UPDATE bookings SET status = 'done' WHERE id = ? AND company_id = ?",
+                [id, companyId]
+            );
+        }
+
+        await connection.query(
+            `UPDATE student_packages SET sessions_remaining = GREATEST(0, sessions_remaining - ?)
+             WHERE id = ? AND company_id = ?`,
+            [sessionsToDeduct, student_package_id, companyId]
         );
 
         await connection.commit();

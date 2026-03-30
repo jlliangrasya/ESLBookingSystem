@@ -149,9 +149,11 @@ router.get("/avail", authenticateToken, requireRole('student'), async (req, res)
         const companyId = req.user.company_id;
 
         const [rows] = await pool.query(
-            `SELECT id AS student_package_id, teacher_id FROM student_packages
-             WHERE student_id = ? AND company_id = ?
-             ORDER BY purchased_at DESC LIMIT 1`,
+            `SELECT sp.id AS student_package_id, sp.teacher_id, tp.duration_minutes
+             FROM student_packages sp
+             JOIN tutorial_packages tp ON sp.package_id = tp.id
+             WHERE sp.student_id = ? AND sp.company_id = ?
+             ORDER BY sp.purchased_at DESC LIMIT 1`,
             [studentId, companyId]
         );
 

@@ -43,8 +43,10 @@ const TimeslotPage = () => {
   const [effectiveTeacherId, setEffectiveTeacherId] = useState<number | null>(null);
   const [needsTeacherPicker, setNeedsTeacherPicker] = useState(false);
   const [selectedTeacherId, setSelectedTeacherId] = useState<number | null>(null);
-  const [openSlots, setOpenSlots] = useState<Set<string>>(new Set()); // "HH:MM" format
-  const [bookedMap, setBookedMap] = useState<Record<string, string>>({}); // { "HH:MM": "booked"|"your_class" }
+  const [openSlots, setOpenSlots] = useState<Set<string>>(new Set());
+  const [bookedMap, setBookedMap] = useState<Record<string, string>>({});
+  const [durationMinutes, setDurationMinutes] = useState<number>(25);
+  const slotsNeeded = Math.max(1, Math.ceil(durationMinutes / 30));
 
   useEffect(() => {
     if (!localStorage.getItem("token")) navigate("/login");
@@ -68,6 +70,7 @@ const TimeslotPage = () => {
         const allowPick = settingsRes.data?.allow_student_pick_teacher ?? true;
 
         setUserPackageId(availRes.data?.student_package_id || null);
+        setDurationMinutes(availRes.data?.duration_minutes || 25);
 
         // Derive effective teacher: assigned > single teacher > none
         const effective = pkgTeacherId || (teachers.length === 1 ? teachers[0].id : null);
@@ -297,10 +300,12 @@ const TimeslotPage = () => {
       </div>
 
       {/* Note */}
-      <div className="flex items-start gap-2 mb-6 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700">
-        <Info className="h-4 w-4 mt-0.5 shrink-0" />
-        <span>Book two consecutive timeslots if you availed a 50-minute class.</span>
-      </div>
+      {slotsNeeded > 1 && (
+        <div className="flex items-start gap-2 mb-6 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700">
+          <Info className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>Your {durationMinutes}-minute class will automatically book {slotsNeeded} consecutive timeslots ({slotsNeeded} sessions deducted).</span>
+        </div>
+      )}
 
       {/* Legend */}
       <div className="flex flex-wrap gap-4 mb-8 text-xs bg-white rounded-xl p-3 px-5 shadow-sm border">
@@ -339,12 +344,28 @@ const TimeslotPage = () => {
           }
 
           const isOpen = openSlots.has(time24);
-          const bookedStatus = bookedMap[time24]; // "booked" | "your_class" | undefined
+          const bookedStatus = bookedMap[time24];
           const isBookedByUser = slot in bookedSlots && bookedSlots[slot].student_package_id === userPackageId;
           const isBookedByOther = bookedStatus === "booked" && !isBookedByUser;
           const isYourClass = bookedStatus === "your_class" || isBookedByUser;
 
-          const isDisabled = isPast || (!isYourClass && (!isOpen || isBookedByOther));
+          // Check if consecutive slots are available for multi-slot classes
+          const canStartHere = (() => {
+            if (slotsNeeded <= 1) return true;
+            const [hh, mm] = time24.split(":").map(Number);
+            for (let i = 1; i < slotsNeeded; i++) {
+              const totalMin = hh * 60 + mm + i * 30;
+              const nh = Math.floor(totalMin / 60);
+              const nm = totalMin % 60;
+              if (nh >= 23 && nm > 0) return false;
+              const nextTime = `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+              if (!openSlots.has(nextTime)) return false;
+              if (bookedMap[nextTime] === "booked") return false;
+            }
+            return true;
+          })();
+
+          const isDisabled = isPast || (!isYourClass && (!isOpen || isBookedByOther || !canStartHere));
 
           return (
             <button
@@ -357,7 +378,7 @@ const TimeslotPage = () => {
                   ? "bookedByUser-timeslot"
                   : isBookedByOther
                   ? "bg-amber-100 text-amber-700 border-amber-200 cursor-not-allowed"
-                  : !isOpen
+                  : !isOpen || !canStartHere
                   ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200"
                   : "student-timeslots"
               )}
@@ -370,7 +391,7 @@ const TimeslotPage = () => {
                 ? "YOUR CLASS"
                 : isBookedByOther
                 ? "BOOKED"
-                : !isOpen
+                : !isOpen || !canStartHere
                 ? "UNAVAILABLE"
                 : slot}
             </button>
@@ -384,6 +405,8 @@ const TimeslotPage = () => {
         confirmBooking={confirmBooking}
         loading={bookingLoading}
         showTeacherPicker={needsTeacherPicker}
+        slotsNeeded={slotsNeeded}
+        durationMinutes={durationMinutes}
         selectedDate={date}
         selectedTime={selectedSlot ?? undefined}
         selectedTeacherId={selectedTeacherId}

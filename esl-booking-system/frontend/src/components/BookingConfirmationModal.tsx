@@ -33,6 +33,8 @@ interface Props {
   selectedTime?: string;
   selectedTeacherId?: number | null;
   onTeacherSelected?: (id: number | null) => void;
+  slotsNeeded?: number;
+  durationMinutes?: number;
 }
 
 const BookingConfirmationModal: React.FC<Props> = ({
@@ -41,6 +43,8 @@ const BookingConfirmationModal: React.FC<Props> = ({
   confirmBooking,
   loading = false,
   showTeacherPicker = false,
+  slotsNeeded = 1,
+  durationMinutes = 25,
   selectedDate,
   selectedTime,
   selectedTeacherId,
@@ -85,8 +89,9 @@ const BookingConfirmationModal: React.FC<Props> = ({
           </div>
           <DialogTitle className="text-center">Confirm Booking</DialogTitle>
           <DialogDescription className="text-center">
-            Are you sure you want to book this schedule? This will use one
-            session from your package.
+            {slotsNeeded > 1
+              ? `Are you sure you want to book this ${durationMinutes}-minute class? This will book ${slotsNeeded} consecutive timeslots and use ${slotsNeeded} sessions from your package.`
+              : "Are you sure you want to book this schedule? This will use one session from your package."}
           </DialogDescription>
         </DialogHeader>
 
