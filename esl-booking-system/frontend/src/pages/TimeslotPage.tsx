@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import BookingConfirmationModal from "../components/BookingConfirmationModal";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { CalendarDays, Check, Copy, User, Video } from "lucide-react";
+import { CalendarDays, Check, Copy, Info, RefreshCw, User, Video } from "lucide-react";
 
 interface Booking {
   id: number;
@@ -82,55 +82,54 @@ const TimeslotPage = () => {
     fetchStudentContext();
   }, []);
 
-  // Fetch student's own bookings (for class info modal) + teacher slot statuses
-  useEffect(() => {
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchBookedSlots = useCallback(async () => {
     if (!date || userPackageId === null) return;
-
-    const fetchBookedSlots = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const response = await axios.get<Booking[]>(
-          `${import.meta.env.VITE_API_URL}/api/student/bookings`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        const slotsMap: { [key: string]: Booking } = {};
-        response.data.forEach((booking) => {
-          const bookingDate = fmtDate(booking.appointment_date, "yyyy-MM-dd");
-          if (bookingDate === date) {
-            const formattedTime = fmtTime(booking.appointment_date).toUpperCase();
-            slotsMap[formattedTime] = { ...booking, timeslot: formattedTime };
-          }
-        });
-        setBookedSlots(slotsMap);
-      } catch (error) {
-        console.error("Error fetching booked slots:", error);
-      }
-    };
-
-    fetchBookedSlots();
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.get<Booking[]>(
+        `${import.meta.env.VITE_API_URL}/api/student/bookings`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const slotsMap: { [key: string]: Booking } = {};
+      response.data.forEach((booking) => {
+        const bookingDate = fmtDate(booking.appointment_date, "yyyy-MM-dd");
+        if (bookingDate === date) {
+          const formattedTime = fmtTime(booking.appointment_date).toUpperCase();
+          slotsMap[formattedTime] = { ...booking, timeslot: formattedTime };
+        }
+      });
+      setBookedSlots(slotsMap);
+    } catch (error) {
+      console.error("Error fetching booked slots:", error);
+    }
   }, [date, userPackageId]);
 
-  // Fetch open slots and booked map from teacher-slots endpoint
-  useEffect(() => {
+  const fetchTeacherSlots = useCallback(async () => {
     if (!date) return;
-
-    const fetchTeacherSlots = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const teacherParam = effectiveTeacherId ? `&teacher_id=${effectiveTeacherId}` : "";
-        const res = await axios.get(
-          `${import.meta.env.VITE_API_URL}/api/student/teacher-slots?date=${date}${teacherParam}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        setOpenSlots(new Set(res.data.open_slots || []));
-        setBookedMap(res.data.booked_map || {});
-      } catch (error) {
-        console.error("Error fetching teacher slots:", error);
-      }
-    };
-
-    fetchTeacherSlots();
+    try {
+      const token = localStorage.getItem("token");
+      const teacherParam = effectiveTeacherId ? `&teacher_id=${effectiveTeacherId}` : "";
+      const res = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/student/teacher-slots?date=${date}${teacherParam}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setOpenSlots(new Set(res.data.open_slots || []));
+      setBookedMap(res.data.booked_map || {});
+    } catch (error) {
+      console.error("Error fetching teacher slots:", error);
+    }
   }, [date, effectiveTeacherId]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([fetchBookedSlots(), fetchTeacherSlots()]);
+    setRefreshing(false);
+  };
+
+  useEffect(() => { fetchBookedSlots(); }, [fetchBookedSlots]);
+  useEffect(() => { fetchTeacherSlots(); }, [fetchTeacherSlots]);
 
   const generateTimeSlots = () => {
     const slots: string[] = [];
@@ -284,11 +283,23 @@ const TimeslotPage = () => {
   return (
     <div className="min-h-screen brand-gradient-subtle pattern-dots-light">
       <div className="max-w-5xl mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-800">
-          Available Time Slots
-        </h2>
-        <p className="text-gray-500 text-sm mt-1">{date}</p>
+      <div className="flex items-start justify-between mb-8">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800">
+            Available Time Slots
+          </h2>
+          <p className="text-gray-500 text-sm mt-1">{date}</p>
+        </div>
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={handleRefresh} disabled={refreshing}>
+          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? "Refreshing..." : "Refresh"}
+        </Button>
+      </div>
+
+      {/* Note */}
+      <div className="flex items-start gap-2 mb-6 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700">
+        <Info className="h-4 w-4 mt-0.5 shrink-0" />
+        <span>Book two consecutive timeslots if you availed a 50-minute class.</span>
       </div>
 
       {/* Legend */}
