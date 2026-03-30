@@ -13,13 +13,34 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Users, UserCheck, Eye, MessageSquare, BarChart2, GraduationCap, CalendarCheck, CalendarDays } from "lucide-react";
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  Users,
+  UserCheck,
+  Eye,
+  MessageSquare,
+  BarChart2,
+  GraduationCap,
+  CalendarCheck,
+  CalendarDays,
+} from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { fmtDate } from "@/utils/timezone";
 
@@ -67,12 +88,12 @@ interface StudentPackage {
   purchased_at: string | null;
 }
 
-
-
 const AdminDashboard = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [paidStudentPackages, setPaidStudentPackages] = useState<StudentPackage[]>([]);
+  const [paidStudentPackages, setPaidStudentPackages] = useState<
+    StudentPackage[]
+  >([]);
   const [studentPackages, setStudentPackages] = useState<StudentPackage[]>([]);
   const navigate = useNavigate();
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
@@ -109,9 +130,12 @@ const AdminDashboard = () => {
   const fetchAnalytics = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/admin/analytics`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/admin/analytics`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
       setAnalytics(res.data);
     } catch (err) {
       console.error("Error fetching analytics:", err);
@@ -128,20 +152,26 @@ const AdminDashboard = () => {
       const headers = { Authorization: `Bearer ${token}` };
       const base = import.meta.env.VITE_API_URL;
 
-      const [studentsRes, bookingsRes, pendingRes, paidRes, feedbackRes, teachersRes] =
-        await Promise.all([
-          axios.get(`${base}/api/student/students`, { headers }),
-          axios.get(`${base}/api/student-bookings`, { headers }),
-          axios.get(`${base}/api/student/student-packages/pending`, { headers }),
-          axios.get(`${base}/api/student/student-packages/paid`, { headers }),
-          axios.get<Feedback[]>(`${base}/api/admin/feedback`, { headers }),
-          axios.get(`${base}/api/admin/teachers`, { headers }),
-        ]);
+      const [
+        studentsRes,
+        bookingsRes,
+        pendingRes,
+        paidRes,
+        feedbackRes,
+        teachersRes,
+      ] = await Promise.all([
+        axios.get(`${base}/api/student/students`, { headers }),
+        axios.get(`${base}/api/student-bookings`, { headers }),
+        axios.get(`${base}/api/student/student-packages/pending`, { headers }),
+        axios.get(`${base}/api/student/student-packages/paid`, { headers }),
+        axios.get<Feedback[]>(`${base}/api/admin/feedback`, { headers }),
+        axios.get(`${base}/api/admin/teachers`, { headers }),
+      ]);
 
       const sd = studentsRes.data;
-      setStudents(Array.isArray(sd) ? sd : sd.data ?? []);
+      setStudents(Array.isArray(sd) ? sd : (sd.data ?? []));
       const bd = bookingsRes.data;
-      setBookings(Array.isArray(bd) ? bd : bd.data ?? []);
+      setBookings(Array.isArray(bd) ? bd : (bd.data ?? []));
       setStudentPackages(pendingRes.data);
       setPaidStudentPackages(paidRes.data);
       setFeedback(feedbackRes.data);
@@ -157,7 +187,7 @@ const AdminDashboard = () => {
       await axios.post(
         `${import.meta.env.VITE_API_URL}/api/student/package/confirm/${id}`,
         {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       fetchDashboardData();
     } catch (error) {
@@ -171,7 +201,7 @@ const AdminDashboard = () => {
       await axios.post(
         `${import.meta.env.VITE_API_URL}/api/student/package/reject/${id}`,
         {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       fetchDashboardData();
     } catch (error) {
@@ -179,14 +209,13 @@ const AdminDashboard = () => {
     }
   };
 
-
   const handleCancelBooking = async (bookingId: number) => {
     try {
       const token = localStorage.getItem("token");
       await axios.post(
         `${import.meta.env.VITE_API_URL}/api/bookings/cancel/${bookingId}`,
         {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       fetchDashboardData();
     } catch (error) {
@@ -194,17 +223,16 @@ const AdminDashboard = () => {
     }
   };
 
-
   const enrolledStudents = paidStudentPackages.filter(
-    (sp) => sp.payment_status === "paid" && sp.sessions_remaining > 0
+    (sp) => sp.payment_status === "paid" && sp.sessions_remaining > 0,
   ).length;
   const pendingEnrollees = studentPackages.filter(
-    (sp) => sp.payment_status === "unpaid" && sp.sessions_remaining > 0
+    (sp) => sp.payment_status === "unpaid" && sp.sessions_remaining > 0,
   );
 
   const todayStr = new Date().toDateString();
   const todayBookings = bookings.filter(
-    (b) => new Date(b.appointment_date).toDateString() === todayStr
+    (b) => new Date(b.appointment_date).toDateString() === todayStr,
   );
 
   return (
@@ -217,8 +245,11 @@ const AdminDashboard = () => {
             <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-primary/10 text-primary border border-primary/20">
               {analytics.totals.planName} Plan
             </span>
-            {analytics.totals.totalStudents >= analytics.totals.maxStudents || analytics.totals.teachersCount >= analytics.totals.maxTeachers ? (
-              <span className="text-xs text-red-600 font-medium">⚠ You have reached a plan limit — consider upgrading.</span>
+            {analytics.totals.totalStudents >= analytics.totals.maxStudents ||
+            analytics.totals.teachersCount >= analytics.totals.maxTeachers ? (
+              <span className="text-xs text-red-600 font-medium">
+                ⚠ You have reached a plan limit — consider upgrading.
+              </span>
             ) : null}
           </div>
         )}
@@ -233,16 +264,25 @@ const AdminDashboard = () => {
               <p className="text-xs text-gray-500 font-medium">Students</p>
               {analytics?.totals.maxStudents != null ? (
                 <>
-                  <p className={`text-2xl font-bold ${analytics.totals.totalStudents >= analytics.totals.maxStudents ? "text-red-600" : analytics.totals.totalStudents >= analytics.totals.maxStudents * 0.8 ? "text-amber-600" : "text-gray-800"}`}>
+                  <p
+                    className={`text-2xl font-bold ${analytics.totals.totalStudents >= analytics.totals.maxStudents ? "text-red-600" : analytics.totals.totalStudents >= analytics.totals.maxStudents * 0.8 ? "text-amber-600" : "text-gray-800"}`}
+                  >
                     {analytics.totals.totalStudents}
-                    <span className="text-sm font-normal text-gray-400 ml-1">/ {analytics.totals.maxStudents}</span>
+                    <span className="text-sm font-normal text-gray-400 ml-1">
+                      / {analytics.totals.maxStudents}
+                    </span>
                   </p>
-                  {analytics.totals.totalStudents >= analytics.totals.maxStudents && (
-                    <p className="text-[10px] text-red-500 font-medium leading-none mt-0.5">Limit reached</p>
+                  {analytics.totals.totalStudents >=
+                    analytics.totals.maxStudents && (
+                    <p className="text-[10px] text-red-500 font-medium leading-none mt-0.5">
+                      Limit reached
+                    </p>
                   )}
                 </>
               ) : (
-                <p className="text-2xl font-bold text-gray-800">{analytics?.totals.totalStudents ?? students.length}</p>
+                <p className="text-2xl font-bold text-gray-800">
+                  {analytics?.totals.totalStudents ?? students.length}
+                </p>
               )}
             </div>
           </div>
@@ -254,16 +294,25 @@ const AdminDashboard = () => {
               <p className="text-xs text-gray-500 font-medium">Teachers</p>
               {analytics?.totals.maxTeachers != null ? (
                 <>
-                  <p className={`text-2xl font-bold ${analytics.totals.teachersCount >= analytics.totals.maxTeachers ? "text-red-600" : analytics.totals.teachersCount >= analytics.totals.maxTeachers * 0.8 ? "text-amber-600" : "text-gray-800"}`}>
+                  <p
+                    className={`text-2xl font-bold ${analytics.totals.teachersCount >= analytics.totals.maxTeachers ? "text-red-600" : analytics.totals.teachersCount >= analytics.totals.maxTeachers * 0.8 ? "text-amber-600" : "text-gray-800"}`}
+                  >
                     {analytics.totals.teachersCount}
-                    <span className="text-sm font-normal text-gray-400 ml-1">/ {analytics.totals.maxTeachers}</span>
+                    <span className="text-sm font-normal text-gray-400 ml-1">
+                      / {analytics.totals.maxTeachers}
+                    </span>
                   </p>
-                  {analytics.totals.teachersCount >= analytics.totals.maxTeachers && (
-                    <p className="text-[10px] text-red-500 font-medium leading-none mt-0.5">Limit reached</p>
+                  {analytics.totals.teachersCount >=
+                    analytics.totals.maxTeachers && (
+                    <p className="text-[10px] text-red-500 font-medium leading-none mt-0.5">
+                      Limit reached
+                    </p>
                   )}
                 </>
               ) : (
-                <p className="text-2xl font-bold text-gray-800">{teacherCount ?? "—"}</p>
+                <p className="text-2xl font-bold text-gray-800">
+                  {teacherCount ?? "—"}
+                </p>
               )}
             </div>
           </div>
@@ -273,7 +322,9 @@ const AdminDashboard = () => {
             </div>
             <div>
               <p className="text-xs text-gray-500 font-medium">Enrolled</p>
-              <p className="text-2xl font-bold text-gray-800">{enrolledStudents}</p>
+              <p className="text-2xl font-bold text-gray-800">
+                {enrolledStudents}
+              </p>
             </div>
           </div>
           <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
@@ -282,7 +333,9 @@ const AdminDashboard = () => {
             </div>
             <div>
               <p className="text-xs text-gray-500 font-medium">Classes Today</p>
-              <p className="text-2xl font-bold text-gray-800">{analytics?.totals.classesToday ?? "—"}</p>
+              <p className="text-2xl font-bold text-gray-800">
+                {analytics?.totals.classesToday ?? "—"}
+              </p>
             </div>
           </div>
           <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
@@ -291,7 +344,9 @@ const AdminDashboard = () => {
             </div>
             <div>
               <p className="text-xs text-gray-500 font-medium">This Month</p>
-              <p className="text-2xl font-bold text-gray-800">{analytics?.totals.classesThisMonth ?? "—"}</p>
+              <p className="text-2xl font-bold text-gray-800">
+                {analytics?.totals.classesThisMonth ?? "—"}
+              </p>
             </div>
           </div>
           <button
@@ -303,7 +358,9 @@ const AdminDashboard = () => {
             </div>
             <div>
               <p className="text-xs text-gray-500 font-medium">Feedback</p>
-              <p className="text-2xl font-bold text-gray-800">{feedback.length}</p>
+              <p className="text-2xl font-bold text-gray-800">
+                {feedback.length}
+              </p>
             </div>
           </button>
         </div>
@@ -311,7 +368,9 @@ const AdminDashboard = () => {
         {/* Pending Enrollees */}
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
           <div className="px-4 py-3 border-b brand-gradient-subtle">
-            <h2 className="font-semibold text-sm text-gray-800">Pending Enrollees</h2>
+            <h2 className="font-semibold text-sm text-gray-800">
+              Pending Enrollees
+            </h2>
           </div>
           <div className="overflow-x-auto">
             <Table>
@@ -325,7 +384,10 @@ const AdminDashboard = () => {
               <TableBody>
                 {pendingEnrollees.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={3} className="text-center text-muted-foreground py-6 text-sm">
+                    <TableCell
+                      colSpan={3}
+                      className="text-center text-muted-foreground py-6 text-sm"
+                    >
                       No pending enrollees
                     </TableCell>
                   </TableRow>
@@ -333,7 +395,10 @@ const AdminDashboard = () => {
                   pendingEnrollees.map((enrollee) => (
                     <TableRow key={enrollee.id}>
                       <TableCell className="text-sm font-medium">
-                        {enrollee.student_name || students.find((s) => s.id === enrollee.student_id)?.name || "Unknown"}
+                        {enrollee.student_name ||
+                          students.find((s) => s.id === enrollee.student_id)
+                            ?.name ||
+                          "Unknown"}
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="text-xs">
@@ -346,10 +411,14 @@ const AdminDashboard = () => {
                             size="sm"
                             variant="outline"
                             className="h-7 px-2 text-xs"
-                            onClick={() => setReceiptImage(enrollee.receipt_image)}
+                            onClick={() =>
+                              setReceiptImage(enrollee.receipt_image)
+                            }
                           >
                             <Eye className="h-3 w-3 mr-1" />
-                            {enrollee.receipt_image.startsWith("data:") ? "Receipt" : "Details"}
+                            {enrollee.receipt_image.startsWith("data:")
+                              ? "Receipt"
+                              : "Details"}
                           </Button>
                         )}
                         {!enrollee.receipt_image && enrollee.purchased_at && (
@@ -382,32 +451,55 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-
         {/* Schedule Summary + Today's Upcoming Classes */}
         <div className="space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="stat-card bg-white rounded-xl border shadow-sm p-3 pl-5 text-center">
-              <p className="text-xs text-gray-500 font-medium mb-1">Today's Classes</p>
-              <p className="text-xl font-bold text-amber-600">{analytics?.totals.classesToday ?? todayBookings.length}</p>
+              <p className="text-xs text-gray-500 font-medium mb-1">
+                Today's Classes
+              </p>
+              <p className="text-xl font-bold text-amber-600">
+                {analytics?.totals.classesToday ?? todayBookings.length}
+              </p>
             </div>
             <div className="stat-card bg-white rounded-xl border shadow-sm p-3 pl-5 text-center">
-              <p className="text-xs text-gray-500 font-medium mb-1">This Week</p>
-              <p className="text-xl font-bold text-blue-600">{analytics?.totals.classesThisWeek ?? "—"}</p>
+              <p className="text-xs text-gray-500 font-medium mb-1">
+                This Week
+              </p>
+              <p className="text-xl font-bold text-blue-600">
+                {analytics?.totals.classesThisWeek ?? "—"}
+              </p>
             </div>
             <div className="stat-card bg-white rounded-xl border shadow-sm p-3 pl-5 text-center">
-              <p className="text-xs text-gray-500 font-medium mb-1">This Month</p>
-              <p className="text-xl font-bold text-indigo-600">{analytics?.totals.classesThisMonth ?? "—"}</p>
+              <p className="text-xs text-gray-500 font-medium mb-1">
+                This Month
+              </p>
+              <p className="text-xl font-bold text-indigo-600">
+                {analytics?.totals.classesThisMonth ?? "—"}
+              </p>
             </div>
             <div className="stat-card bg-white rounded-xl border shadow-sm p-3 pl-5 text-center">
-              <p className="text-xs text-gray-500 font-medium mb-1">Total Done</p>
-              <p className="text-xl font-bold text-emerald-600">{analytics?.totals.totalSessions ?? "—"}</p>
+              <p className="text-xs text-gray-500 font-medium mb-1">
+                Total Done
+              </p>
+              <p className="text-xl font-bold text-emerald-600">
+                {analytics?.totals.totalSessions ?? "—"}
+              </p>
             </div>
           </div>
 
           <div className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
             <div className="px-4 py-3 border-b brand-gradient-subtle flex items-center justify-between">
-              <h2 className="font-semibold text-sm text-gray-800">Today's Upcoming Classes</h2>
-              <span className="text-xs text-muted-foreground">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</span>
+              <h2 className="font-semibold text-sm text-gray-800">
+                Today's Upcoming Classes
+              </h2>
+              <span className="text-xs text-muted-foreground">
+                {new Date().toLocaleDateString("en-US", {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </span>
             </div>
             <div className="overflow-x-auto">
               <Table>
@@ -423,27 +515,41 @@ const AdminDashboard = () => {
                 <TableBody>
                   {todayBookings.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-6 text-sm">
+                      <TableCell
+                        colSpan={5}
+                        className="text-center text-muted-foreground py-6 text-sm"
+                      >
                         No classes scheduled for today
                       </TableCell>
                     </TableRow>
                   ) : (
                     todayBookings.map((b) => (
                       <TableRow key={b.id}>
-                        <TableCell className="text-sm font-medium">{b.student_name}</TableCell>
+                        <TableCell className="text-sm font-medium">
+                          {b.student_name}
+                        </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {fmtDate(b.appointment_date, "h:mm a")}
                         </TableCell>
-                        <TableCell className="text-sm">{b.teacher_name || "—"}</TableCell>
+                        <TableCell className="text-sm">
+                          {b.teacher_name || "—"}
+                        </TableCell>
                         <TableCell>
-                          <Badge variant="secondary" className="text-xs capitalize">{b.status}</Badge>
+                          <Badge
+                            variant="secondary"
+                            className="text-xs capitalize"
+                          >
+                            {b.status}
+                          </Badge>
                         </TableCell>
                         <TableCell className="text-right space-x-1">
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-7 px-2 text-xs"
-                            onClick={() => navigate(`/admin/students/${b.student_id}`)}
+                            onClick={() =>
+                              navigate(`/admin/students/${b.student_id}`)
+                            }
                           >
                             View Student
                           </Button>
@@ -475,53 +581,88 @@ const AdminDashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
                 <div>
-                  <p className="text-xs text-gray-500 font-medium">Total Sessions</p>
-                  <p className="text-2xl font-bold text-gray-800">{analytics.totals.totalSessions}</p>
+                  <p className="text-xs text-gray-500 font-medium">
+                    Total Sessions
+                  </p>
+                  <p className="text-2xl font-bold text-gray-800">
+                    {analytics.totals.totalSessions}
+                  </p>
                 </div>
               </div>
               <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
                 <div>
-                  <p className="text-xs text-gray-500 font-medium">Total Students</p>
-                  <p className="text-2xl font-bold text-gray-800">{analytics.totals.totalStudents}</p>
+                  <p className="text-xs text-gray-500 font-medium">
+                    Total Students
+                  </p>
+                  <p className="text-2xl font-bold text-gray-800">
+                    {analytics.totals.totalStudents}
+                  </p>
                 </div>
               </div>
               <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
                 <div>
-                  <p className="text-xs text-gray-500 font-medium">Est. Revenue</p>
-                  <p className="text-2xl font-bold text-gray-800">₱{Number(analytics.totals.totalRevenue || 0).toLocaleString()}</p>
+                  <p className="text-xs text-gray-500 font-medium">
+                    Est. Revenue
+                  </p>
+                  <p className="text-2xl font-bold text-gray-800">
+                    ₱
+                    {Number(
+                      analytics.totals.totalRevenue || 0,
+                    ).toLocaleString()}
+                  </p>
                 </div>
               </div>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold">Sessions per Month</CardTitle>
+                  <CardTitle className="text-sm font-semibold">
+                    Sessions per Month
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={analytics.sessionsPerMonth} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
+                    <BarChart
+                      data={analytics.sessionsPerMonth}
+                      margin={{ top: 4, right: 8, left: -10, bottom: 0 }}
+                    >
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                       <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                       <Tooltip />
-                      <Bar dataKey="sessions" fill="#4A9EAF" radius={[4, 4, 0, 0]} />
+                      <Bar
+                        dataKey="sessions"
+                        fill="#4A9EAF"
+                        radius={[4, 4, 0, 0]}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold">Student Growth</CardTitle>
+                  <CardTitle className="text-sm font-semibold">
+                    Student Growth
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={200}>
-                    <LineChart data={analytics.studentGrowth} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
+                    <LineChart
+                      data={analytics.studentGrowth}
+                      margin={{ top: 4, right: 8, left: -10, bottom: 0 }}
+                    >
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                       <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                       <Tooltip />
                       <Legend />
-                      <Line type="monotone" dataKey="students" stroke="#E76F7A" strokeWidth={2} dot={{ r: 3, fill: "#E76F7A" }} />
+                      <Line
+                        type="monotone"
+                        dataKey="students"
+                        stroke="#E76F7A"
+                        strokeWidth={2}
+                        dot={{ r: 3, fill: "#E76F7A" }}
+                      />
                     </LineChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -529,7 +670,6 @@ const AdminDashboard = () => {
             </div>
           </div>
         )}
-
       </div>
 
       {/* Feedback Modal */}
@@ -539,21 +679,29 @@ const AdminDashboard = () => {
             <DialogTitle>Student Feedback</DialogTitle>
           </DialogHeader>
           {feedback.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No feedback yet.</p>
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No feedback yet.
+            </p>
           ) : (
             <div className="space-y-3 py-2">
               {feedback.map((f) => (
                 <div key={f.id} className="border rounded-lg p-3 space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold">{f.student_name}</span>
+                    <span className="text-sm font-semibold">
+                      {f.student_name}
+                    </span>
                     <span className="text-xs text-muted-foreground">
                       {new Date(f.created_at).toLocaleDateString("en-US", {
-                        month: "short", day: "numeric", year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
                       })}
                     </span>
                   </div>
                   {f.teacher_name && (
-                    <p className="text-xs text-muted-foreground">To: {f.teacher_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      To: {f.teacher_name}
+                    </p>
                   )}
                   <p className="text-sm mt-1">{f.message}</p>
                 </div>
@@ -567,20 +715,31 @@ const AdminDashboard = () => {
       <Dialog open={!!receiptImage} onOpenChange={() => setReceiptImage(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{receiptImage?.startsWith("data:") ? "Payment Receipt" : "Payment Details"}</DialogTitle>
+            <DialogTitle>
+              {receiptImage?.startsWith("data:")
+                ? "Payment Receipt"
+                : "Payment Details"}
+            </DialogTitle>
           </DialogHeader>
-          {receiptImage && (
-            receiptImage.startsWith("data:") ? (
-              <img src={receiptImage} alt="Payment receipt" className="w-full rounded-lg" />
+          {receiptImage &&
+            (receiptImage.startsWith("data:") ? (
+              <img
+                src={receiptImage}
+                alt="Payment receipt"
+                className="w-full rounded-lg"
+              />
             ) : (
               <div className="space-y-3 py-2">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Transaction / Reference Number</p>
-                  <p className="text-lg font-semibold bg-muted/50 rounded-lg p-3 font-mono">{receiptImage}</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Transaction Order Number (Last 5 digits)
+                  </p>
+                  <p className="text-lg font-semibold bg-muted/50 rounded-lg p-3 font-mono">
+                    {receiptImage}
+                  </p>
                 </div>
               </div>
-            )
-          )}
+            ))}
         </DialogContent>
       </Dialog>
     </>
