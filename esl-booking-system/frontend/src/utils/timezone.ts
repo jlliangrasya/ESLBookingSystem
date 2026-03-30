@@ -21,13 +21,14 @@ export function setUserTimezone(tz: string): void {
  * @param fmt     — date-fns format string, default "MMM d, yyyy h:mm a"
  * @param tz      — override timezone (defaults to getUserTimezone())
  */
-export function fmtDate(utcStr: string, fmt = "MMM d, yyyy h:mm a", tz?: string): string {
+export function fmtDate(utcStr: string, fmt = "MMM d, yyyy h:mm a", _tz?: string): string {
     if (!utcStr) return '—';
     try {
-        const timezone = tz || getUserTimezone();
-        // Treat stored DATETIME as local (no UTC conversion)
+        // Dates are stored as display time (not UTC) — parse without timezone conversion
         const normalized = utcStr.includes('T') ? utcStr : utcStr.replace(' ', 'T');
-        return formatInTimeZone(new Date(normalized), timezone, fmt);
+        // Append local timezone to prevent JS Date from treating it as UTC
+        const localDate = new Date(normalized + (normalized.endsWith('Z') ? '' : '+00:00'));
+        return formatInTimeZone(localDate, 'UTC', fmt);
     } catch {
         return utcStr;
     }
@@ -67,18 +68,9 @@ export function localToUTC(dateStr: string, timeStr: string, tz?: string): strin
     return utcDate.toISOString();
 }
 
-/** Convert a local date+time (in user's timezone) to MySQL DATETIME in UTC */
+/** Convert a local date+time to MySQL DATETIME (stored as display time, not UTC) */
 export function localToMysql(dateStr: string, timeStr: string): string {
-    const timezone = getUserTimezone();
-    const localDatetime = `${dateStr}T${timeStr}:00`;
-    const utcDate = fromZonedTime(localDatetime, timezone);
-    const y = utcDate.getUTCFullYear();
-    const m = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
-    const d = String(utcDate.getUTCDate()).padStart(2, '0');
-    const hh = String(utcDate.getUTCHours()).padStart(2, '0');
-    const mm = String(utcDate.getUTCMinutes()).padStart(2, '0');
-    const ss = String(utcDate.getUTCSeconds()).padStart(2, '0');
-    return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+    return `${dateStr} ${timeStr}:00`;
 }
 
 /**

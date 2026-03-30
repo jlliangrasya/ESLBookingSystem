@@ -248,26 +248,31 @@ router.get('/teacher-slots', authenticateToken, requireRole('student'), async (r
 
         // Get all bookings on this date for the same teacher(s)
         let bookedQuery, bookedParams;
+        const dateStart = `${date} 00:00:00`;
+        const dateEnd = `${date} 23:59:59`;
         if (teacher_id) {
             bookedQuery = `SELECT b.id, b.appointment_date, sp.student_id
                 FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id
-                WHERE b.company_id = ? AND b.teacher_id = ? AND DATE(b.appointment_date) = ?
+                WHERE b.company_id = ? AND b.teacher_id = ? AND b.appointment_date BETWEEN ? AND ?
                 AND b.status NOT IN ('cancelled')`;
-            bookedParams = [companyId, teacher_id, date];
+            bookedParams = [companyId, teacher_id, dateStart, dateEnd];
         } else {
             bookedQuery = `SELECT b.id, b.appointment_date, sp.student_id
                 FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id
-                WHERE b.company_id = ? AND DATE(b.appointment_date) = ?
+                WHERE b.company_id = ? AND b.appointment_date BETWEEN ? AND ?
                 AND b.status NOT IN ('cancelled')`;
-            bookedParams = [companyId, date];
+            bookedParams = [companyId, dateStart, dateEnd];
         }
         const [bookingRows] = await pool.query(bookedQuery, bookedParams);
 
         // Build booked map: { "09:00": "booked" | "your_class" }
+        // appointment_date is stored in UTC. Extract hours directly from the stored string
+        // since MySQL2 may apply timezone offset with Date objects.
         const bookedMap = {};
         for (const b of bookingRows) {
-            const dt = new Date(b.appointment_date);
-            const timeKey = `${String(dt.getUTCHours()).padStart(2, '0')}:${String(dt.getUTCMinutes()).padStart(2, '0')}`;
+            const raw = String(b.appointment_date);
+            const timeMatch = raw.match(/(\d{2}):(\d{2}):\d{2}/);
+            const timeKey = timeMatch ? `${timeMatch[1]}:${timeMatch[2]}` : '00:00';
             bookedMap[timeKey] = b.student_id === studentId ? 'your_class' : 'booked';
         }
 

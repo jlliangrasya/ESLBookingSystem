@@ -196,7 +196,7 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
             }
         }
 
-        // Insert all booking rows
+        // Insert all booking rows using display time (matches teacher_available_slots)
         const crypto = require('crypto');
         const groupId = slotsNeeded > 1 ? crypto.randomUUID() : null;
         const insertedIds = [];
