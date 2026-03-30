@@ -24,11 +24,6 @@ interface Booking {
   student_absent?: boolean;
 }
 
-interface ClosedSlot {
-  date: string;
-  time: string;
-}
-
 const TimeslotPage = () => {
   const { date } = useParams<{ date: string }>();
   const navigate = useNavigate();
@@ -36,7 +31,6 @@ const TimeslotPage = () => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookedSlots, setBookedSlots] = useState<{ [key: string]: Booking }>({});
-  const [closedSlots, setClosedSlots] = useState<string[]>([]);
   const [userPackageId, setUserPackageId] = useState<number | null>(null);
   const [, setSubject] = useState<string | null>(null);
   const [showClassModal, setShowClassModal] = useState(false);
@@ -46,7 +40,6 @@ const TimeslotPage = () => {
   const [cancellingId, setCancellingId] = useState<number | null>(null);
 
   // Teacher-aware scheduling
-  const [assignedTeacherId, setAssignedTeacherId] = useState<number | null>(null);
   const [effectiveTeacherId, setEffectiveTeacherId] = useState<number | null>(null);
   const [needsTeacherPicker, setNeedsTeacherPicker] = useState(false);
   const [selectedTeacherId, setSelectedTeacherId] = useState<number | null>(null);
@@ -75,7 +68,6 @@ const TimeslotPage = () => {
         const allowPick = settingsRes.data?.allow_student_pick_teacher ?? true;
 
         setUserPackageId(availRes.data?.student_package_id || null);
-        setAssignedTeacherId(pkgTeacherId);
 
         // Derive effective teacher: assigned > single teacher > none
         const effective = pkgTeacherId || (teachers.length === 1 ? teachers[0].id : null);

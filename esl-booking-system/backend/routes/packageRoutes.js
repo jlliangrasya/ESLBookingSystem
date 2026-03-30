@@ -97,7 +97,7 @@ router.delete("/packages/:id", authenticateToken, requireRole('company_admin'), 
 // Student avails a package
 router.post("/avail", authenticateToken, requireRole('student'), async (req, res) => {
     try {
-        const { package_id, receipt_image, teacher_id } = req.body;
+        const { package_id, receipt_image, transaction_order_number, teacher_id } = req.body;
         const studentId = req.user.id;
         const companyId = req.user.company_id;
 
@@ -131,7 +131,7 @@ router.post("/avail", authenticateToken, requireRole('student'), async (req, res
              VALUES (?, ?, ?, ?, ?, 'unpaid', ?, ?, NOW())`,
             [companyId, studentId, package_id,
              pkg.subject || '', pkg.session_limit,
-             receipt_image || null,
+             receipt_image || transaction_order_number || null,
              teacher_id || null]
         );
 
