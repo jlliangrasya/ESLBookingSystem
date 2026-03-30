@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import BookingConfirmationModal from "../components/BookingConfirmationModal";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,7 @@ interface Booking {
 }
 
 const TimeslotPage = () => {
+  const { t } = useTranslation();
   const { date } = useParams<{ date: string }>();
   const navigate = useNavigate();
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
@@ -289,13 +291,13 @@ const TimeslotPage = () => {
       <div className="flex items-start justify-between mb-8">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">
-            Available Time Slots
+            {t("timeslot.title")}
           </h2>
           <p className="text-gray-500 text-sm mt-1">{date}</p>
         </div>
         <Button variant="outline" size="sm" className="gap-1.5" onClick={handleRefresh} disabled={refreshing}>
           <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-          {refreshing ? "Refreshing..." : "Refresh"}
+          {refreshing ? t("timeslot.refreshing") : t("timeslot.refresh")}
         </Button>
       </div>
 
@@ -303,12 +305,12 @@ const TimeslotPage = () => {
       <div className="space-y-2 mb-6">
         <div className="flex items-start gap-2 bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs text-gray-600">
           <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          <span>All times shown in Philippine / China / Singapore / Hong Kong time (UTC+8)</span>
+          <span>{t("timeslot.timezoneNote")}</span>
         </div>
         {slotsNeeded > 1 && (
           <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700">
             <Info className="h-4 w-4 mt-0.5 shrink-0" />
-            <span>Your {durationMinutes}-minute class will automatically book {slotsNeeded} consecutive timeslots ({slotsNeeded} sessions deducted).</span>
+            <span>{t("timeslot.durationNote", { duration: durationMinutes, slots: slotsNeeded })}</span>
           </div>
         )}
       </div>
@@ -317,19 +319,19 @@ const TimeslotPage = () => {
       <div className="flex flex-wrap gap-4 mb-8 text-xs bg-white rounded-xl p-3 px-5 shadow-sm border">
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full bg-[#D0E8F0] border border-[#B0D4E8] inline-block" />
-          Available
+          {t("timeslot.available")}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 inline-block" />
-          Your Class
+          {t("timeslot.yourClass")}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full bg-amber-400 inline-block" />
-          Booked
+          {t("timeslot.booked")}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full bg-gray-300 inline-block" />
-          Unavailable
+          {t("timeslot.unavailable")}
         </span>
       </div>
 
@@ -392,13 +394,13 @@ const TimeslotPage = () => {
               disabled={isDisabled}
             >
               {isPast
-                ? "UNAVAILABLE"
+                ? t("timeslot.unavailable")
                 : isYourClass
-                ? "YOUR CLASS"
+                ? t("timeslot.yourClass")
                 : isBookedByOther
-                ? "BOOKED"
+                ? t("timeslot.booked")
                 : !isOpen || !canStartHere
-                ? "UNAVAILABLE"
+                ? t("timeslot.unavailable")
                 : slot}
             </button>
           );

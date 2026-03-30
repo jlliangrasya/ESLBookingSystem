@@ -175,5 +175,47 @@
     "filterDuration": "时长",
     "filterCurrency": "币种",
     "minutesShort": "{{min}}分钟"
+  },
+  "timeslot": {
+    "title": "可预约时间段",
+    "timezoneNote": "所有时间均为菲律宾/中国/新加坡/香港时间 (UTC+8)",
+    "durationNote": "您的 {{duration}} 分钟课程将自动预约 {{slots}} 个连续时间段（扣除 {{slots}} 节课时）。",
+    "available": "可预约",
+    "yourClass": "我的课程",
+    "booked": "已被预约",
+    "unavailable": "不可用",
+    "refresh": "刷新",
+    "refreshing": "刷新中...",
+    "confirmBooking": "确认预约",
+    "confirmSingle": "确定要预约此课程吗？将从您的课程包中扣除1节课时。",
+    "confirmMulti": "确定要预约此 {{duration}} 分钟课程吗？将预约 {{slots}} 个连续时间段并扣除 {{slots}} 节课时。",
+    "yesBookIt": "是的，预约",
+    "booking": "预约中...",
+    "selectTeacher": "选择教师",
+    "loadingTeachers": "正在加载可用教师...",
+    "noTeachers": "该时间段没有可用教师，请选择其他时间段。",
+    "chooseTeacher": "请选择教师"
+  },
+  "notifications": {
+    "title": "通知",
+    "markAllRead": "全部标为已读",
+    "empty": "暂无通知"
+  },
+  "profile": {
+    "title": "我的资料",
+    "backToDashboard": "返回仪表盘",
+    "fullName": "姓名",
+    "email": "邮箱",
+    "guardianName": "监护人姓名",
+    "nationality": "国籍",
+    "age": "年龄",
+    "timezone": "时区",
+    "password": "密码",
+    "passwordHint": "不修改请留空",
+    "editProfile": "编辑资料",
+    "save": "保存",
+    "saving": "保存中...",
+    "updateSuccess": "资料更新成功！",
+    "updateFailed": "资料更新失败。"
   }
 }

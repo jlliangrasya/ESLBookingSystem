@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import BrandLogo from "@/components/BrandLogo";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ interface StudentProfile {
 }
 
 const StudentProfilePage = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
@@ -74,7 +76,7 @@ const StudentProfilePage = () => {
       payload.timezone = profile.timezone;
       await axios.put(`${base}/api/student/profile`, payload, { headers });
       setUserTimezone(profile.timezone);
-      setSaveMsg("Profile updated successfully!");
+      setSaveMsg(t("profile.updateSuccess"));
       setIsEditing(false);
       setPassword("");
     } catch (err: unknown) {
@@ -109,28 +111,28 @@ const StudentProfilePage = () => {
 
       <div className="max-w-lg mx-auto px-4 py-8 space-y-4">
         <Button variant="ghost" className="gap-2 -ml-2" onClick={() => navigate("/studentdashboard")}>
-          <ArrowLeft className="h-4 w-4" /> Back to Dashboard
+          <ArrowLeft className="h-4 w-4" /> {t("profile.backToDashboard")}
         </Button>
 
         <Card className="glow-card border-0 rounded-2xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <UserCircle className="h-5 w-5 text-primary" />
-              My Profile
+              {t("profile.title")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {saveMsg && <p className="text-sm text-green-600 font-medium">{saveMsg}</p>}
             {saveError && <p className="text-sm text-destructive">{saveError}</p>}
 
-            {field("s-name", "Full Name", profile.name, "name")}
-            {field("s-email", "Email", profile.email, "email", "email")}
-            {field("s-guardian", "Guardian Name", profile.guardian_name, "guardian_name")}
-            {field("s-nationality", "Nationality", profile.nationality, "nationality")}
-            {field("s-age", "Age", profile.age, "age", "number")}
+            {field("s-name", t("profile.fullName"), profile.name, "name")}
+            {field("s-email", t("profile.email"), profile.email, "email", "email")}
+            {field("s-guardian", t("profile.guardianName"), profile.guardian_name, "guardian_name")}
+            {field("s-nationality", t("profile.nationality"), profile.nationality, "nationality")}
+            {field("s-age", t("profile.age"), profile.age, "age", "number")}
 
             <div className="space-y-1.5">
-              <Label>Timezone</Label>
+              <Label>{t("profile.timezone")}</Label>
               <Select
                 value={profile.timezone}
                 onValueChange={(v) => setProfile((p) => ({ ...p, timezone: v }))}
@@ -147,7 +149,7 @@ const StudentProfilePage = () => {
 
             <div className="space-y-1.5">
               <Label htmlFor="s-password">
-                Password <span className="text-muted-foreground text-xs">(leave blank to keep current)</span>
+                {t("profile.password")} <span className="text-muted-foreground text-xs">({t("profile.passwordHint")})</span>
               </Label>
               <div className="relative">
                 <Input
@@ -175,12 +177,12 @@ const StudentProfilePage = () => {
               {isEditing ? (
                 <Button onClick={handleSave} disabled={saving} className="gap-2">
                   <Save className="h-4 w-4" />
-                  {saving ? "Saving..." : "Save"}
+                  {saving ? t("profile.saving") : t("profile.save")}
                 </Button>
               ) : (
                 <Button variant="outline" onClick={handleEdit} className="gap-2">
                   <Pencil className="h-4 w-4" />
-                  Edit Profile
+                  {t("profile.editProfile")}
                 </Button>
               )}
             </div>

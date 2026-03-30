@@ -175,5 +175,47 @@
     "filterDuration": "Duration",
     "filterCurrency": "Currency",
     "minutesShort": "{{min}}min"
+  },
+  "timeslot": {
+    "title": "Available Time Slots",
+    "timezoneNote": "All times shown in Philippine / China / Singapore / Hong Kong time (UTC+8)",
+    "durationNote": "Your {{duration}}-minute class will automatically book {{slots}} consecutive timeslots ({{slots}} sessions deducted).",
+    "available": "Available",
+    "yourClass": "YOUR CLASS",
+    "booked": "BOOKED",
+    "unavailable": "UNAVAILABLE",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing...",
+    "confirmBooking": "Confirm Booking",
+    "confirmSingle": "Are you sure you want to book this schedule? This will use one session from your package.",
+    "confirmMulti": "Are you sure you want to book this {{duration}}-minute class? This will book {{slots}} consecutive timeslots and use {{slots}} sessions from your package.",
+    "yesBookIt": "Yes, Book It",
+    "booking": "Booking...",
+    "selectTeacher": "Select a teacher",
+    "loadingTeachers": "Loading available teachers...",
+    "noTeachers": "No teachers available at this time. Please choose a different slot.",
+    "chooseTeacher": "Choose a teacher"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all read",
+    "empty": "No notifications yet"
+  },
+  "profile": {
+    "title": "My Profile",
+    "backToDashboard": "Back to Dashboard",
+    "fullName": "Full Name",
+    "email": "Email",
+    "guardianName": "Guardian Name",
+    "nationality": "Nationality",
+    "age": "Age",
+    "timezone": "Timezone",
+    "password": "Password",
+    "passwordHint": "Leave blank to keep current password",
+    "editProfile": "Edit Profile",
+    "save": "Save",
+    "saving": "Saving...",
+    "updateSuccess": "Profile updated successfully!",
+    "updateFailed": "Failed to update profile."
   }
 }

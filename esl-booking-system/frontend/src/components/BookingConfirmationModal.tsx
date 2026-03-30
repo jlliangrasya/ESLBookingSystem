@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import {
   Dialog,
@@ -53,6 +54,8 @@ const BookingConfirmationModal: React.FC<Props> = ({
   const [availableTeachers, setAvailableTeachers] = useState<Teacher[]>([]);
   const [teachersLoading, setTeachersLoading] = useState(false);
 
+  const { t } = useTranslation();
+
   useEffect(() => {
     if (!show || !showTeacherPicker || !selectedDate || !selectedTime) {
       setAvailableTeachers([]);
@@ -87,25 +90,25 @@ const BookingConfirmationModal: React.FC<Props> = ({
               <CalendarCheck className="h-8 w-8 text-white" />
             </div>
           </div>
-          <DialogTitle className="text-center">Confirm Booking</DialogTitle>
+          <DialogTitle className="text-center">{t("timeslot.confirmBooking")}</DialogTitle>
           <DialogDescription className="text-center">
             {slotsNeeded > 1
-              ? `Are you sure you want to book this ${durationMinutes}-minute class? This will book ${slotsNeeded} consecutive timeslots and use ${slotsNeeded} sessions from your package.`
-              : "Are you sure you want to book this schedule? This will use one session from your package."}
+              ? t("timeslot.confirmMulti", { duration: durationMinutes, slots: slotsNeeded })
+              : t("timeslot.confirmSingle")}
           </DialogDescription>
         </DialogHeader>
 
         {showTeacherPicker && (
           <div className="px-1 py-2">
-            <p className="text-sm font-medium mb-2">Select a teacher</p>
+            <p className="text-sm font-medium mb-2">{t("timeslot.selectTeacher")}</p>
             {teachersLoading ? (
               <div className="flex items-center justify-center py-3">
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                <span className="text-sm text-muted-foreground ml-2">Loading available teachers...</span>
+                <span className="text-sm text-muted-foreground ml-2">{t("timeslot.loadingTeachers")}</span>
               </div>
             ) : availableTeachers.length === 0 ? (
               <p className="text-sm text-destructive text-center py-2">
-                No teachers available at this time. Please choose a different slot.
+                {t("timeslot.noTeachers")}
               </p>
             ) : (
               <Select
@@ -113,7 +116,7 @@ const BookingConfirmationModal: React.FC<Props> = ({
                 onValueChange={(v) => onTeacherSelected?.(Number(v))}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose a teacher" />
+                  <SelectValue placeholder={t("timeslot.chooseTeacher")} />
                 </SelectTrigger>
                 <SelectContent>
                   {availableTeachers.map((t) => (
@@ -133,7 +136,7 @@ const BookingConfirmationModal: React.FC<Props> = ({
             onClick={confirmBooking}
             disabled={loading || !canConfirm || (showTeacherPicker && availableTeachers.length === 0)}
           >
-            {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Booking...</> : "Yes, Book It"}
+            {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> {t("timeslot.booking")}</> : t("timeslot.yesBookIt")}
           </Button>
         </DialogFooter>
       </DialogContent>

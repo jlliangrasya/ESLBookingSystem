@@ -175,5 +175,47 @@
     "filterDuration": "수업 시간",
     "filterCurrency": "통화",
     "minutesShort": "{{min}}분"
+  },
+  "timeslot": {
+    "title": "예약 가능한 시간대",
+    "timezoneNote": "모든 시간은 필리핀/중국/싱가포르/홍콩 시간 (UTC+8) 기준입니다",
+    "durationNote": "{{duration}}분 수업은 자동으로 {{slots}}개의 연속 시간대를 예약합니다 ({{slots}}회 차감).",
+    "available": "예약 가능",
+    "yourClass": "내 수업",
+    "booked": "예약됨",
+    "unavailable": "불가",
+    "refresh": "새로고침",
+    "refreshing": "새로고침 중...",
+    "confirmBooking": "예약 확인",
+    "confirmSingle": "이 일정을 예약하시겠습니까? 패키지에서 1회가 차감됩니다.",
+    "confirmMulti": "{{duration}}분 수업을 예약하시겠습니까? {{slots}}개의 연속 시간대가 예약되며 {{slots}}회가 차감됩니다.",
+    "yesBookIt": "네, 예약합니다",
+    "booking": "예약 중...",
+    "selectTeacher": "강사 선택",
+    "loadingTeachers": "가능한 강사를 불러오는 중...",
+    "noTeachers": "이 시간에 가능한 강사가 없습니다. 다른 시간대를 선택해 주세요.",
+    "chooseTeacher": "강사를 선택하세요"
+  },
+  "notifications": {
+    "title": "알림",
+    "markAllRead": "모두 읽음 처리",
+    "empty": "알림이 없습니다"
+  },
+  "profile": {
+    "title": "내 프로필",
+    "backToDashboard": "대시보드로 돌아가기",
+    "fullName": "이름",
+    "email": "이메일",
+    "guardianName": "보호자 이름",
+    "nationality": "국적",
+    "age": "나이",
+    "timezone": "시간대",
+    "password": "비밀번호",
+    "passwordHint": "변경하지 않으려면 비워두세요",
+    "editProfile": "프로필 수정",
+    "save": "저장",
+    "saving": "저장 중...",
+    "updateSuccess": "프로필이 업데이트되었습니다!",
+    "updateFailed": "프로필 업데이트에 실패했습니다."
   }
 }

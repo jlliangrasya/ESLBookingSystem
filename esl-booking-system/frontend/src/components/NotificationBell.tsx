@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useContext } from "react";
+import { useTranslation } from "react-i18next";
 import { io } from "socket.io-client";
 import axios from "axios";
 import { Bell } from "lucide-react";
@@ -23,6 +24,7 @@ interface Notification {
 }
 
 const NotificationBell: React.FC<{ variant?: "default" | "white" }> = ({ variant = "default" }) => {
+  const { t } = useTranslation();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const authContext = useContext(AuthContext);
   const token = authContext?.token ?? null;
@@ -119,13 +121,13 @@ const NotificationBell: React.FC<{ variant?: "default" | "white" }> = ({ variant
 
       <DropdownMenuContent align="end" className="w-80 max-h-96 overflow-y-auto">
         <div className="flex items-center justify-between px-3 py-2">
-          <span className="text-sm font-semibold">Notifications</span>
+          <span className="text-sm font-semibold">{t("notifications.title")}</span>
           {unreadCount > 0 && (
             <button
               onClick={markAllRead}
               className="text-xs text-primary hover:underline"
             >
-              Mark all read
+              {t("notifications.markAllRead")}
             </button>
           )}
         </div>
@@ -133,7 +135,7 @@ const NotificationBell: React.FC<{ variant?: "default" | "white" }> = ({ variant
 
         {notifications.length === 0 ? (
           <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-            No notifications yet
+            {t("notifications.empty")}
           </div>
         ) : (
           notifications.map((n) => (
