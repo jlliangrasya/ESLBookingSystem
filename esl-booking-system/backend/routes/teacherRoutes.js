@@ -35,9 +35,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
             SELECT
                 u.id, u.name, u.nationality, u.age,
                 tp.package_name,
-                (tp.session_limit - COALESCE((
-                    SELECT COUNT(*) FROM bookings WHERE student_package_id = sp.id AND status = 'done'
-                ), 0)) AS sessions_remaining,
+                sp.sessions_remaining,
                 sp.subject,
                 sp.payment_status
             FROM student_packages sp
@@ -186,8 +184,8 @@ router.put('/bookings/:id/class-info', authenticateToken, requireRole('teacher')
         if (!booking) return res.status(404).json({ message: 'Booking not found or not editable' });
 
         await pool.query(
-            'UPDATE bookings SET class_mode = ?, meeting_link = ? WHERE id = ?',
-            [class_mode || null, meeting_link || null, id]
+            'UPDATE bookings SET class_mode = ?, meeting_link = ? WHERE id = ? AND teacher_id = ?',
+            [class_mode || null, meeting_link || null, id, teacherId]
         );
         res.json({ message: 'Class info updated' });
     } catch (err) {
@@ -215,7 +213,7 @@ router.post('/bookings/:id/mark-student-absent', authenticateToken, requireRole(
             return res.status(400).json({ message: 'Student already marked as absent for this class.' });
         }
 
-        await pool.query('UPDATE bookings SET student_absent = TRUE WHERE id = ?', [id]);
+        await pool.query('UPDATE bookings SET student_absent = TRUE WHERE id = ? AND teacher_id = ?', [id, teacherId]);
         res.json({ message: 'Student marked as absent' });
     } catch (err) {
         console.error(err);
@@ -231,7 +229,7 @@ router.post('/bookings/:id/cancel', authenticateToken, requireRole('teacher'), a
         const { id } = req.params;
 
         const [[booking]] = await pool.query(
-            `SELECT b.id, b.appointment_date, b.teacher_id, sp.student_id, u.name AS student_name
+            `SELECT b.id, b.appointment_date, b.teacher_id, b.student_package_id, sp.student_id, u.name AS student_name
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
              JOIN users u ON sp.student_id = u.id
@@ -268,7 +266,29 @@ router.post('/bookings/:id/cancel', authenticateToken, requireRole('teacher'), a
             });
         }
 
-        await pool.query("UPDATE bookings SET status = 'cancelled' WHERE id = ?", [id]);
+        // Group-aware: cancel all bookings in the multi-slot group
+        let slotsToRefund = 1;
+        const [[fullBooking]] = await pool.query("SELECT booking_group_id FROM bookings WHERE id = ?", [id]);
+        if (fullBooking?.booking_group_id) {
+            const [[{ cnt }]] = await pool.query(
+                "SELECT COUNT(*) AS cnt FROM bookings WHERE booking_group_id = ? AND status NOT IN ('done', 'cancelled')",
+                [fullBooking.booking_group_id]
+            );
+            slotsToRefund = cnt || 1;
+            await pool.query(
+                "UPDATE bookings SET status = 'cancelled' WHERE booking_group_id = ? AND company_id = ? AND status NOT IN ('done', 'cancelled')",
+                [fullBooking.booking_group_id, companyId]
+            );
+        } else {
+            await pool.query("UPDATE bookings SET status = 'cancelled' WHERE id = ? AND teacher_id = ? AND company_id = ?", [id, teacherId, companyId]);
+        }
+
+        // Refund sessions back to the student package
+        await pool.query(
+            `UPDATE student_packages SET sessions_remaining = sessions_remaining + ?
+             WHERE id = ? AND company_id = ?`,
+            [slotsToRefund, booking.student_package_id, companyId]
+        );
 
         const dateStr = new Date(booking.appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
         const [[teacher]] = await pool.query('SELECT name FROM users WHERE id = ?', [teacherId]);
@@ -441,14 +461,10 @@ router.post('/bookings/:id/done', authenticateToken, requireRole('teacher'), asy
 
         await connection.beginTransaction();
 
+        // Mark as done — sessions were already deducted at booking time
         await connection.query(
-            `UPDATE student_packages SET sessions_remaining = sessions_remaining - 1
-             WHERE id = ? AND company_id = ? AND sessions_remaining > 0`,
-            [booking.student_package_id, companyId]
-        );
-        await connection.query(
-            "UPDATE bookings SET status = 'done' WHERE id = ?",
-            [id]
+            "UPDATE bookings SET status = 'done' WHERE id = ? AND teacher_id = ? AND company_id = ?",
+            [id, teacherId, companyId]
         );
 
         await connection.commit();

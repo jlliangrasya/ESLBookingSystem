@@ -272,8 +272,50 @@ router.delete("/teachers/:id", authenticateToken, requireRole('company_admin'), 
       [id, companyId]
     );
     if (result.affectedRows === 0) return res.status(404).json({ message: 'Teacher not found' });
-    await logAction(companyId, adminId, 'teacher_deactivated', 'user', Number(id), {});
-    res.json({ message: 'Teacher removed successfully' });
+
+    // Cancel future bookings assigned to this teacher and refund sessions
+    const [futureBookings] = await pool.query(
+      `SELECT id, student_package_id, booking_group_id FROM bookings
+       WHERE teacher_id = ? AND company_id = ? AND status NOT IN ('done', 'cancelled')
+         AND appointment_date >= NOW()`,
+      [id, companyId]
+    );
+    const refundMap = {};
+    for (const b of futureBookings) {
+      refundMap[b.student_package_id] = (refundMap[b.student_package_id] || 0) + 1;
+    }
+    if (futureBookings.length > 0) {
+      await pool.query(
+        `UPDATE bookings SET status = 'cancelled'
+         WHERE teacher_id = ? AND company_id = ? AND status NOT IN ('done', 'cancelled')
+           AND appointment_date >= NOW()`,
+        [id, companyId]
+      );
+      for (const [spId, count] of Object.entries(refundMap)) {
+        await pool.query(
+          `UPDATE student_packages SET sessions_remaining = sessions_remaining + ? WHERE id = ? AND company_id = ?`,
+          [count, spId, companyId]
+        );
+      }
+    }
+
+    // Notify affected students
+    const [affectedStudents] = await pool.query(
+      `SELECT DISTINCT sp.student_id FROM student_packages sp
+       WHERE sp.id IN (${futureBookings.length > 0 ? futureBookings.map(b => b.student_package_id).join(',') : '0'})`,
+    );
+    const [[teacherInfo]] = await pool.query('SELECT name FROM users WHERE id = ?', [id]);
+    for (const s of affectedStudents) {
+      await notify({
+        userId: s.student_id, companyId,
+        type: 'class_cancelled',
+        title: 'Classes cancelled — teacher removed',
+        message: `Your upcoming classes with ${teacherInfo?.name || 'your teacher'} have been cancelled. Sessions have been refunded to your package.`,
+      });
+    }
+
+    await logAction(companyId, adminId, 'teacher_deactivated', 'user', Number(id), { bookings_cancelled: futureBookings.length });
+    res.json({ message: `Teacher removed. ${futureBookings.length} future booking(s) cancelled and sessions refunded.` });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -499,6 +541,15 @@ router.put("/admins/:id/permissions", authenticateToken, requireRole('company_ad
     if (!requester?.is_owner) return res.status(403).json({ message: 'Only the company owner can edit permissions' });
 
     const { id } = req.params;
+    const companyId = req.user.company_id;
+
+    // Verify target user belongs to the same company
+    const [[targetUser]] = await pool.query(
+      'SELECT id FROM users WHERE id = ? AND company_id = ?',
+      [id, companyId]
+    );
+    if (!targetUser) return res.status(404).json({ message: 'Admin not found in your company' });
+
     const { can_add_teacher = false, can_edit_teacher = false, can_delete_teacher = false } = req.body;
     await pool.query(
       `INSERT INTO admin_permissions (user_id, can_add_teacher, can_edit_teacher, can_delete_teacher)
@@ -507,7 +558,7 @@ router.put("/admins/:id/permissions", authenticateToken, requireRole('company_ad
       [id, can_add_teacher, can_edit_teacher, can_delete_teacher,
            can_add_teacher, can_edit_teacher, can_delete_teacher]
     );
-    await logAction(req.user.company_id, req.user.id, 'admin_permissions_updated', 'user', Number(id), { can_add_teacher, can_edit_teacher, can_delete_teacher });
+    await logAction(companyId, req.user.id, 'admin_permissions_updated', 'user', Number(id), { can_add_teacher, can_edit_teacher, can_delete_teacher });
     res.json({ message: 'Permissions updated' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -623,9 +674,23 @@ router.get('/company-settings', authenticateToken, async (req, res) => {
 router.put('/company-settings', authenticateToken, requireRole('company_admin'), async (req, res) => {
   try {
     const { allow_student_pick_teacher, payment_qr_image, cancellation_hours, cancellation_penalty_enabled, payment_method } = req.body;
+
+    // Validate cancellation_hours
+    const parsedHours = parseInt(cancellation_hours);
+    if (cancellation_hours !== undefined && cancellation_hours !== null) {
+      if (isNaN(parsedHours) || parsedHours < 0 || parsedHours > 168) {
+        return res.status(400).json({ message: 'Cancellation hours must be a number between 0 and 168 (1 week).' });
+      }
+    }
+
+    const validPaymentMethods = ['encasher', 'communication_platform', null];
+    if (payment_method !== undefined && !validPaymentMethods.includes(payment_method)) {
+      return res.status(400).json({ message: 'Invalid payment method.' });
+    }
+
     await pool.query(
       'UPDATE companies SET allow_student_pick_teacher = ?, payment_qr_image = ?, cancellation_hours = ?, cancellation_penalty_enabled = ?, payment_method = ? WHERE id = ?',
-      [allow_student_pick_teacher, payment_qr_image ?? null, cancellation_hours ?? 1, cancellation_penalty_enabled ?? false, payment_method ?? null, req.user.company_id]
+      [allow_student_pick_teacher, payment_qr_image ?? null, isNaN(parsedHours) ? 1 : parsedHours, cancellation_penalty_enabled ?? false, payment_method ?? null, req.user.company_id]
     );
     await logAction(req.user.company_id, req.user.id, 'company_settings_updated', 'company', req.user.company_id, { allow_student_pick_teacher, cancellation_hours, cancellation_penalty_enabled, payment_method });
     res.json({ message: 'Settings updated' });
@@ -671,12 +736,10 @@ router.get('/students/:id', authenticateToken, requireRole('company_admin'), asy
     const [[activePackage]] = await pool.query(
       `SELECT sp.id, sp.payment_status, sp.subject, sp.teacher_id,
               tp.package_name, tp.price,
-              (tp.session_limit - COALESCE((
-                  SELECT COUNT(*) FROM bookings WHERE student_package_id = sp.id AND status = 'done'
-              ), 0)) AS sessions_remaining
+              sp.sessions_remaining
        FROM student_packages sp
        JOIN tutorial_packages tp ON sp.package_id = tp.id
-       WHERE sp.student_id = ? AND sp.company_id = ?
+       WHERE sp.student_id = ? AND sp.company_id = ? AND sp.payment_status = 'paid' AND sp.sessions_remaining > 0
        ORDER BY sp.purchased_at DESC LIMIT 1`,
       [id, companyId]
     );
@@ -737,8 +800,9 @@ router.put('/students/:id', authenticateToken, requireRole('company_admin'), asy
   }
 });
 
-// Admin creates a booking for a student
+// Admin creates a booking for a student (wrapped in transaction to prevent double-deduction)
 router.post('/bookings', authenticateToken, requireRole('company_admin'), async (req, res) => {
+  const connection = await pool.getConnection();
   try {
     const companyId = req.user.company_id;
     const { student_package_id, appointment_date, teacher_id } = req.body;
@@ -746,14 +810,19 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
       return res.status(400).json({ message: 'student_package_id and appointment_date are required' });
     }
 
-    const [[sp]] = await pool.query(
-      'SELECT id, student_id FROM student_packages WHERE id = ? AND company_id = ?',
+    await connection.beginTransaction();
+
+    // Lock package row to prevent concurrent session deductions
+    const [[sp]] = await connection.query(
+      'SELECT id, student_id, sessions_remaining, payment_status FROM student_packages WHERE id = ? AND company_id = ? FOR UPDATE',
       [student_package_id, companyId]
     );
-    if (!sp) return res.status(404).json({ message: 'Student package not found' });
+    if (!sp) { await connection.rollback(); return res.status(404).json({ message: 'Student package not found' }); }
+    if (sp.payment_status !== 'paid') { await connection.rollback(); return res.status(403).json({ message: 'Package payment has not been confirmed yet.' }); }
+    if (sp.sessions_remaining <= 0) { await connection.rollback(); return res.status(403).json({ message: 'No sessions remaining in this package.' }); }
 
     // Student-to-Student overlap check
-    const [studentOverlap] = await pool.query(
+    const [studentOverlap] = await connection.query(
       `SELECT b.id FROM bookings b
        JOIN student_packages spp ON b.student_package_id = spp.id
        WHERE spp.student_id = ? AND b.company_id = ?
@@ -762,12 +831,13 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
       [sp.student_id, companyId, appointment_date]
     );
     if (studentOverlap.length > 0) {
+      await connection.rollback();
       return res.status(409).json({ message: 'Student already has a class at this time.' });
     }
 
     // Teacher-to-Teacher overlap check
     if (teacher_id) {
-      const [teacherOverlap] = await pool.query(
+      const [teacherOverlap] = await connection.query(
         `SELECT id FROM bookings
          WHERE teacher_id = ? AND company_id = ?
            AND status NOT IN ('cancelled', 'done')
@@ -775,15 +845,25 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
         [teacher_id, companyId, appointment_date]
       );
       if (teacherOverlap.length > 0) {
+        await connection.rollback();
         return res.status(409).json({ message: 'Teacher already has a class at this time.' });
       }
     }
 
-    const [result] = await pool.query(
+    const [result] = await connection.query(
       `INSERT INTO bookings (company_id, student_package_id, teacher_id, appointment_date, status, rescheduled_by_admin, created_at)
        VALUES (?, ?, ?, ?, 'pending', 1, NOW())`,
       [companyId, student_package_id, teacher_id || null, appointment_date]
     );
+
+    // Deduct session immediately at booking time
+    await connection.query(
+      `UPDATE student_packages SET sessions_remaining = GREATEST(0, sessions_remaining - 1)
+       WHERE id = ? AND company_id = ?`,
+      [student_package_id, companyId]
+    );
+
+    await connection.commit();
 
     const dateStr = new Date(appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -806,7 +886,10 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
     await logAction(companyId, req.user.id, 'admin_booking_created', 'booking', result.insertId, { student_id: sp.student_id, appointment_date });
     res.status(201).json({ message: 'Booking created', booking_id: result.insertId });
   } catch (err) {
+    try { await connection.rollback(); } catch (_) {}
     res.status(500).json({ message: 'Server error' });
+  } finally {
+    connection.release();
   }
 });
 
@@ -892,7 +975,7 @@ router.post('/students/:id/bulk-assign-teacher', authenticateToken, requireRole(
       );
       if (conflict) { skipped++; continue; }
 
-      await pool.query('UPDATE bookings SET teacher_id = ? WHERE id = ?', [teacher_id, b.id]);
+      await pool.query('UPDATE bookings SET teacher_id = ? WHERE id = ? AND company_id = ?', [teacher_id, b.id, companyId]);
       assigned++;
     }
 
@@ -934,12 +1017,39 @@ router.post('/students/:id/assign-package', authenticateToken, requireRole('comp
     );
     if (!pkg) return res.status(404).json({ message: 'Package not found or inactive' });
 
-    // Create the student_package as paid (admin-assigned)
-    const [result] = await pool.query(
-      `INSERT INTO student_packages (company_id, student_id, package_id, teacher_id, subject, sessions_remaining, payment_status)
-       VALUES (?, ?, ?, ?, ?, ?, 'paid')`,
-      [companyId, studentId, package_id, teacher_id || null, pkg.subject || '', pkg.session_limit]
+    // Check if student already has a paid package — if so, append sessions
+    // Prefer the one with sessions remaining (the active one bookings are made against)
+    const [[existingPkg]] = await pool.query(
+      `SELECT id FROM student_packages
+       WHERE student_id = ? AND company_id = ? AND payment_status = 'paid'
+       ORDER BY CASE WHEN sessions_remaining > 0 THEN 0 ELSE 1 END, purchased_at DESC
+       LIMIT 1`,
+      [studentId, companyId]
     );
+
+    let resultId;
+    if (existingPkg) {
+      // Append sessions to existing paid package
+      await pool.query(
+        `UPDATE student_packages SET sessions_remaining = sessions_remaining + ? WHERE id = ? AND company_id = ?`,
+        [pkg.session_limit, existingPkg.id, companyId]
+      );
+      // Create an audit record with 0 sessions
+      const [result] = await pool.query(
+        `INSERT INTO student_packages (company_id, student_id, package_id, teacher_id, subject, sessions_remaining, payment_status)
+         VALUES (?, ?, ?, ?, ?, 0, 'paid')`,
+        [companyId, studentId, package_id, teacher_id || null, pkg.subject || '']
+      );
+      resultId = result.insertId;
+    } else {
+      // No existing paid package — create new one
+      const [result] = await pool.query(
+        `INSERT INTO student_packages (company_id, student_id, package_id, teacher_id, subject, sessions_remaining, payment_status)
+         VALUES (?, ?, ?, ?, ?, ?, 'paid')`,
+        [companyId, studentId, package_id, teacher_id || null, pkg.subject || '', pkg.session_limit]
+      );
+      resultId = result.insertId;
+    }
 
     await notify({
       userId: studentId, companyId,
@@ -948,11 +1058,11 @@ router.post('/students/:id/assign-package', authenticateToken, requireRole('comp
       message: `You have been enrolled in "${pkg.package_name}" with ${pkg.session_limit} sessions.`,
     });
 
-    await logAction(companyId, req.user.id, 'admin_package_assigned', 'student_package', result.insertId, {
+    await logAction(companyId, req.user.id, 'admin_package_assigned', 'student_package', resultId, {
       student_id: studentId, student_name: student.name, package_name: pkg.package_name,
     });
 
-    res.status(201).json({ message: `Package "${pkg.package_name}" assigned to ${student.name}`, id: result.insertId });
+    res.status(201).json({ message: `Package "${pkg.package_name}" assigned to ${student.name}`, id: resultId });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -1006,8 +1116,34 @@ router.post('/students/:id/deactivate', authenticateToken, requireRole('company_
       [id, companyId]
     );
     if (result.affectedRows === 0) return res.status(404).json({ message: 'Student not found' });
-    await logAction(companyId, req.user.id, 'student_deactivated', 'user', Number(id), {});
-    res.json({ message: 'Student deactivated' });
+
+    // Cancel future bookings for this student and refund sessions
+    const [futureBookings] = await pool.query(
+      `SELECT b.id, b.student_package_id FROM bookings b
+       JOIN student_packages sp ON b.student_package_id = sp.id
+       WHERE sp.student_id = ? AND b.company_id = ? AND b.status NOT IN ('done', 'cancelled')
+         AND b.appointment_date >= NOW()`,
+      [id, companyId]
+    );
+    const refundMap = {};
+    for (const b of futureBookings) {
+      refundMap[b.student_package_id] = (refundMap[b.student_package_id] || 0) + 1;
+    }
+    if (futureBookings.length > 0) {
+      await pool.query(
+        `UPDATE bookings SET status = 'cancelled'
+         WHERE id IN (${futureBookings.map(b => b.id).join(',')})`,
+      );
+      for (const [spId, count] of Object.entries(refundMap)) {
+        await pool.query(
+          `UPDATE student_packages SET sessions_remaining = sessions_remaining + ? WHERE id = ? AND company_id = ?`,
+          [count, spId, companyId]
+        );
+      }
+    }
+
+    await logAction(companyId, req.user.id, 'student_deactivated', 'user', Number(id), { bookings_cancelled: futureBookings.length });
+    res.json({ message: `Student deactivated. ${futureBookings.length} future booking(s) cancelled and sessions refunded.` });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -1160,7 +1296,7 @@ router.put('/users/:id/reset-password', authenticateToken, requireRole('company_
     );
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    await pool.query('UPDATE users SET password = ? WHERE id = ?', [password, req.params.id]);
+    await pool.query('UPDATE users SET password = ? WHERE id = ? AND company_id = ?', [password, req.params.id, req.user.company_id]);
     await logAction(req.user.company_id, req.user.id, 'password_reset_by_admin', 'user', Number(req.params.id), {});
     res.json({ message: 'Password reset successfully' });
   } catch (err) {

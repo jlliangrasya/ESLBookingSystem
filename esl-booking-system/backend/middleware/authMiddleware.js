@@ -16,6 +16,18 @@ const authenticateToken = async (req, res, next) => {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         req.user = decoded;
 
+        // Check if user is still active (immediate revocation on deactivation/deletion)
+        const [[user]] = await pool.query(
+            'SELECT is_active FROM users WHERE id = ?',
+            [decoded.id]
+        );
+        if (!user) {
+            return res.status(401).json({ message: 'Account no longer exists.' });
+        }
+        if (user.is_active === false || user.is_active === 0) {
+            return res.status(403).json({ message: 'Your account has been deactivated. Please contact your administrator.' });
+        }
+
         // Check company status and trial expiry for non-super_admin users
         if (decoded.company_id) {
             const [[company]] = await pool.query(

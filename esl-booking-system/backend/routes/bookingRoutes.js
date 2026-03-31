@@ -210,6 +210,13 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
             insertedIds.push(result.insertId);
         }
 
+        // Deduct sessions immediately at booking time (prevents overbooking)
+        await connection.query(
+            `UPDATE student_packages SET sessions_remaining = GREATEST(0, sessions_remaining - ?)
+             WHERE id = ? AND company_id = ?`,
+            [slotsNeeded, student_package_id, companyId]
+        );
+
         await connection.commit();
         connection.release();
 
@@ -320,11 +327,8 @@ router.get("/api/completed-bookings", authenticateToken, requireRole('company_ad
         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
         const offset = (page - 1) * limit;
 
-        await pool.query(
-            `UPDATE bookings SET status = 'done'
-             WHERE status IN ('pending', 'confirmed') AND appointment_date < NOW() AND company_id = ?`,
-            [companyId]
-        );
+        // Auto mark-done removed: classes should be explicitly confirmed by teacher or admin
+        // Sessions are deducted at booking time, so no session impact here
 
         const [rows] = await pool.query(`
             SELECT
@@ -425,8 +429,19 @@ router.delete("/api/bookings/:id", authenticateToken, async (req, res) => {
             });
         }
 
+        // Only allow cancelling active bookings (not already done or cancelled)
+        if (booking.status === 'done' || booking.status === 'cancelled') {
+            return res.status(400).json({ message: "This booking is already completed or cancelled." });
+        }
+
         // Group-aware cancellation: if booking is part of a multi-slot group, cancel all
+        let slotsToRefund = 1;
         if (booking.booking_group_id) {
+            const [[{ cnt }]] = await pool.query(
+                "SELECT COUNT(*) AS cnt FROM bookings WHERE booking_group_id = ? AND status NOT IN ('done', 'cancelled')",
+                [booking.booking_group_id]
+            );
+            slotsToRefund = cnt || 1;
             await pool.query(
                 "DELETE FROM bookings WHERE booking_group_id = ? AND company_id = ?",
                 [booking.booking_group_id, companyId]
@@ -437,6 +452,13 @@ router.delete("/api/bookings/:id", authenticateToken, async (req, res) => {
             );
             if (result.affectedRows === 0) return res.status(404).json({ message: "Booking not found" });
         }
+
+        // Refund sessions back to the student package
+        await pool.query(
+            `UPDATE student_packages SET sessions_remaining = sessions_remaining + ?
+             WHERE id = ? AND company_id = ?`,
+            [slotsToRefund, booking.student_package_id, companyId]
+        );
 
         const [[student]] = await pool.query('SELECT name FROM users WHERE id = ?', [studentId]);
         const dateStr = new Date(booking.appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
@@ -481,21 +503,24 @@ router.post("/api/bookings/done/:id", authenticateToken, requireRole('company_ad
     try {
         await connection.beginTransaction();
 
-        // Check if this booking is part of a multi-slot group
+        // Idempotency: check if booking is already done
         const [[thisBooking]] = await connection.query(
-            "SELECT booking_group_id FROM bookings WHERE id = ? AND company_id = ?",
+            "SELECT booking_group_id, status FROM bookings WHERE id = ? AND company_id = ?",
             [id, companyId]
         );
-        let sessionsToDeduct = 1;
-        if (thisBooking?.booking_group_id) {
-            // Count bookings in the group and mark all as done
-            const [[{ cnt }]] = await connection.query(
-                "SELECT COUNT(*) AS cnt FROM bookings WHERE booking_group_id = ? AND status != 'done'",
-                [thisBooking.booking_group_id]
-            );
-            sessionsToDeduct = cnt || 1;
+        if (!thisBooking) {
+            await connection.rollback();
+            return res.status(404).json({ message: "Booking not found" });
+        }
+        if (thisBooking.status === 'done') {
+            await connection.rollback();
+            return res.status(400).json({ message: "This class is already marked as done." });
+        }
+
+        // Mark booking(s) as done — sessions were already deducted at booking time
+        if (thisBooking.booking_group_id) {
             await connection.query(
-                "UPDATE bookings SET status = 'done' WHERE booking_group_id = ? AND company_id = ?",
+                "UPDATE bookings SET status = 'done' WHERE booking_group_id = ? AND company_id = ? AND status NOT IN ('done', 'cancelled')",
                 [thisBooking.booking_group_id, companyId]
             );
         } else {
@@ -504,12 +529,6 @@ router.post("/api/bookings/done/:id", authenticateToken, requireRole('company_ad
                 [id, companyId]
             );
         }
-
-        await connection.query(
-            `UPDATE student_packages SET sessions_remaining = GREATEST(0, sessions_remaining - ?)
-             WHERE id = ? AND company_id = ?`,
-            [sessionsToDeduct, student_package_id, companyId]
-        );
 
         await connection.commit();
 
@@ -587,10 +606,38 @@ router.post("/api/bookings/cancel/:id", authenticateToken, requireRole('company_
             [id, companyId]
         );
 
-        await pool.query(
-            "UPDATE bookings SET status = 'cancelled' WHERE id = ? AND company_id = ?",
-            [id, companyId]
-        );
+        // Only refund if booking is still active
+        if (booking && booking.status !== 'done' && booking.status !== 'cancelled') {
+            // Group-aware: cancel all bookings in the group
+            let slotsToRefund = 1;
+            if (booking.booking_group_id) {
+                const [[{ cnt }]] = await pool.query(
+                    "SELECT COUNT(*) AS cnt FROM bookings WHERE booking_group_id = ? AND status NOT IN ('done', 'cancelled')",
+                    [booking.booking_group_id]
+                );
+                slotsToRefund = cnt || 1;
+                await pool.query(
+                    "UPDATE bookings SET status = 'cancelled' WHERE booking_group_id = ? AND company_id = ? AND status NOT IN ('done', 'cancelled')",
+                    [booking.booking_group_id, companyId]
+                );
+            } else {
+                await pool.query(
+                    "UPDATE bookings SET status = 'cancelled' WHERE id = ? AND company_id = ?",
+                    [id, companyId]
+                );
+            }
+            // Refund sessions back to the student package
+            await pool.query(
+                `UPDATE student_packages SET sessions_remaining = sessions_remaining + ?
+                 WHERE id = ? AND company_id = ?`,
+                [slotsToRefund, booking.student_package_id, companyId]
+            );
+        } else {
+            await pool.query(
+                "UPDATE bookings SET status = 'cancelled' WHERE id = ? AND company_id = ?",
+                [id, companyId]
+            );
+        }
 
         if (booking) {
             const dateStr = new Date(booking.appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });

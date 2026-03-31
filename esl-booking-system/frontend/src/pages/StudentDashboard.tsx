@@ -140,51 +140,52 @@ const StudentDashboard = () => {
   const authContext = useContext(AuthContext);
   const token = authContext?.token ?? null;
 
+  const fetchStudentData = async () => {
+    if (!token) return;
+    try {
+      const [dashRes, settingsRes] = await Promise.all([
+        axios.get(`${import.meta.env.VITE_API_URL}/api/student/dashboard`,
+          { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${import.meta.env.VITE_API_URL}/api/admin/company-settings`,
+          { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+
+      setStudent(dashRes.data.student);
+      setPackageDetails(dashRes.data.package || null);
+      setAbsences(dashRes.data.absences || []);
+      setCancellationHours(settingsRes.data.cancellation_hours ?? 1);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const processedBookings: Record<string, string[]> = {};
+      const todayAndFutureBookings: Booking[] = [];
+
+      const normalizedBookings = (dashRes.data.bookings as Booking[]).map((booking) => {
+        const localDate = fmtDate(booking.appointment_datetime, "yyyy-MM-dd");
+        const localTime = fmtTime(booking.appointment_datetime).toUpperCase();
+        return { ...booking, appointment_date: localDate, timeslot: localTime };
+      });
+
+      normalizedBookings.forEach((booking: Booking) => {
+        const appointmentDateTime = parseUTC(booking.appointment_datetime) ?? new Date(booking.appointment_datetime);
+        // Include all of today's classes (even past ones) plus future classes
+        if (appointmentDateTime >= today) {
+          const dateKey = booking.appointment_date;
+          if (!processedBookings[dateKey]) processedBookings[dateKey] = [];
+          processedBookings[dateKey].push(booking.timeslot);
+          todayAndFutureBookings.push(booking);
+        }
+      });
+
+      setCalendarBookings(processedBookings);
+      setRawBookings(todayAndFutureBookings);
+    } catch (error) {
+      console.error("Error fetching student data:", error);
+    }
+  };
+
   useEffect(() => {
     if (!token) return;
-
-    const fetchStudentData = async () => {
-      try {
-        const [dashRes, settingsRes] = await Promise.all([
-          axios.get(`${import.meta.env.VITE_API_URL}/api/student/dashboard`,
-            { headers: { Authorization: `Bearer ${token}` } }),
-          axios.get(`${import.meta.env.VITE_API_URL}/api/admin/company-settings`,
-            { headers: { Authorization: `Bearer ${token}` } }),
-        ]);
-
-        setStudent(dashRes.data.student);
-        setPackageDetails(dashRes.data.package || null);
-        setAbsences(dashRes.data.absences || []);
-        setCancellationHours(settingsRes.data.cancellation_hours ?? 1);
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const processedBookings: Record<string, string[]> = {};
-        const todayAndFutureBookings: Booking[] = [];
-
-        const normalizedBookings = (dashRes.data.bookings as Booking[]).map((booking) => {
-          const localDate = fmtDate(booking.appointment_datetime, "yyyy-MM-dd");
-          const localTime = fmtTime(booking.appointment_datetime).toUpperCase();
-          return { ...booking, appointment_date: localDate, timeslot: localTime };
-        });
-
-        normalizedBookings.forEach((booking: Booking) => {
-          const appointmentDateTime = parseUTC(booking.appointment_datetime) ?? new Date(booking.appointment_datetime);
-          // Include all of today's classes (even past ones) plus future classes
-          if (appointmentDateTime >= today) {
-            const dateKey = booking.appointment_date;
-            if (!processedBookings[dateKey]) processedBookings[dateKey] = [];
-            processedBookings[dateKey].push(booking.timeslot);
-            todayAndFutureBookings.push(booking);
-          }
-        });
-
-        setCalendarBookings(processedBookings);
-        setRawBookings(todayAndFutureBookings);
-      } catch (error) {
-        console.error("Error fetching student data:", error);
-      }
-    };
 
     const fetchReports = async () => {
       try {
@@ -245,8 +246,11 @@ const StudentDashboard = () => {
         teacher_id: teacherId || undefined,
       }, { headers: { Authorization: `Bearer ${token}` } });
       setShowPackageModal(false);
-    } catch (error) {
-      console.error("Error confirming package:", error);
+      // Refresh dashboard to show updated package info
+      fetchStudentData();
+    } catch (error: unknown) {
+      const msg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to avail package. Please try again.";
+      alert(msg);
     }
   };
 

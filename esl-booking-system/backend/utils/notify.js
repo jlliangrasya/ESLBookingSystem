@@ -11,21 +11,28 @@ const logger = require('./logger');
  * @param {string}  opts.title     - short title shown in the bell
  * @param {string}  [opts.message] - optional longer description
  */
-async function notify({ userId, companyId = null, type, title, message = '' }) {
-    try {
-        const [result] = await pool.query(
-            'INSERT INTO notifications (user_id, company_id, type, title, message) VALUES (?, ?, ?, ?, ?)',
-            [userId, companyId, type, title, message]
-        );
-        const [[row]] = await pool.query('SELECT * FROM notifications WHERE id = ?', [result.insertId]);
+/**
+ * Fire-and-forget: caller does NOT need to await this function.
+ * DB insert and socket emit happen in the background; failures are logged but never block the caller.
+ */
+function notify({ userId, companyId = null, type, title, message = '' }) {
+    // Intentionally not returning the promise — callers should not await
+    (async () => {
+        try {
+            const [result] = await pool.query(
+                'INSERT INTO notifications (user_id, company_id, type, title, message) VALUES (?, ?, ?, ?, ?)',
+                [userId, companyId, type, title, message]
+            );
+            const [[row]] = await pool.query('SELECT * FROM notifications WHERE id = ?', [result.insertId]);
 
-        const io = getIO();
-        if (io) {
-            io.to(`user:${userId}`).emit('notification', row);
+            const io = getIO();
+            if (io) {
+                io.to(`user:${userId}`).emit('notification', row);
+            }
+        } catch (err) {
+            logger.error('Notify error:', { error: err.message, userId, type });
         }
-    } catch (err) {
-        logger.error('Notify error:', { error: err.message });
-    }
+    })();
 }
 
 module.exports = notify;

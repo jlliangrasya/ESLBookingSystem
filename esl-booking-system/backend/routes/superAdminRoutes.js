@@ -73,11 +73,17 @@ router.put('/plans/:id', authenticateToken, requireRole('super_admin'), async (r
     }
 });
 
-// Disable a subscription plan
+// Disable a subscription plan (warns if companies are using it)
 router.post('/plans/:id/disable', authenticateToken, requireRole('super_admin'), async (req, res) => {
     try {
-        await pool.query('UPDATE subscription_plans SET is_active = FALSE WHERE id = ?', [req.params.id]);
-        res.json({ message: 'Plan disabled' });
+        const { id } = req.params;
+        const [[{ activeCount }]] = await pool.query(
+            "SELECT COUNT(*) AS activeCount FROM companies WHERE subscription_plan_id = ? AND status = 'active'",
+            [id]
+        );
+        await pool.query('UPDATE subscription_plans SET is_active = FALSE WHERE id = ?', [id]);
+        const warning = activeCount > 0 ? ` Warning: ${activeCount} active company(ies) are still on this plan.` : '';
+        res.json({ message: `Plan disabled.${warning}`, active_companies_affected: activeCount });
     } catch (err) {
         res.status(500).json({ message: 'Server error' });
     }
@@ -126,6 +132,8 @@ router.post('/upgrade-requests/:id/approve', authenticateToken, requireRole('sup
         if (request.status !== 'pending') return res.status(400).json({ message: 'Request already processed' });
 
         const [[plan]] = await pool.query('SELECT * FROM subscription_plans WHERE id = ?', [request.subscription_plan_id]);
+        if (!plan) return res.status(400).json({ message: 'Requested plan no longer exists. Please reject this request.' });
+        if (!plan.is_active) return res.status(400).json({ message: 'Requested plan has been disabled. Please reject this request.' });
 
         // Activate company with new plan, clear trial, set billing cycle
         await pool.query(
@@ -456,31 +464,54 @@ router.post('/users/:id/reactivate', authenticateToken, requireRole('super_admin
 });
 
 // Hard delete any user (super_admin only — permanent, use with caution)
+// Wrapped in transaction to prevent partial deletion.
 router.delete('/users/:id', authenticateToken, requireRole('super_admin'), async (req, res) => {
+    const connection = await pool.getConnection();
     try {
         const { id } = req.params;
-        const [[user]] = await pool.query('SELECT id, name, role FROM users WHERE id = ?', [id]);
+        const [[user]] = await connection.query('SELECT id, name, role, company_id FROM users WHERE id = ?', [id]);
         if (!user) return res.status(404).json({ message: 'User not found' });
         if (user.role === 'super_admin') return res.status(403).json({ message: 'Cannot delete a super admin' });
 
-        // Clean up related data
-        await pool.query('DELETE FROM notifications WHERE user_id = ?', [id]);
-        await pool.query('DELETE FROM admin_permissions WHERE user_id = ?', [id]);
-        await pool.query('DELETE FROM class_reports WHERE booking_id IN (SELECT b.id FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id WHERE sp.student_id = ?)', [id]);
-        await pool.query('DELETE FROM bookings WHERE student_package_id IN (SELECT id FROM student_packages WHERE student_id = ?)', [id]);
-        await pool.query('DELETE FROM bookings WHERE teacher_id = ?', [id]);
-        await pool.query('DELETE FROM student_packages WHERE student_id = ?', [id]);
-        await pool.query('DELETE FROM student_feedback WHERE student_id = ?', [id]);
-        await pool.query('DELETE FROM teacher_leaves WHERE teacher_id = ?', [id]);
-        await pool.query('DELETE FROM teacher_available_slots WHERE teacher_id = ?', [id]);
-        await pool.query('DELETE FROM closed_slots WHERE teacher_id = ?', [id]);
-        await pool.query('DELETE FROM session_adjustments WHERE adjusted_by = ?', [id]);
-        await pool.query('DELETE FROM users WHERE id = ?', [id]);
+        await connection.beginTransaction();
+
+        // Clean up related data (complete cascade)
+        // Order matters: delete child records before parent records
+        await connection.query('DELETE FROM notifications WHERE user_id = ?', [id]);
+        await connection.query('DELETE FROM admin_permissions WHERE user_id = ?', [id]);
+        await connection.query('DELETE FROM class_reports WHERE booking_id IN (SELECT b.id FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id WHERE sp.student_id = ?)', [id]);
+        await connection.query('DELETE FROM class_reports WHERE teacher_id = ?', [id]);
+        // session_adjustments references student_packages — must delete BEFORE student_packages
+        await connection.query('DELETE FROM session_adjustments WHERE student_package_id IN (SELECT id FROM student_packages WHERE student_id = ?)', [id]);
+        await connection.query('DELETE FROM session_adjustments WHERE adjusted_by = ?', [id]);
+        await connection.query('DELETE FROM bookings WHERE student_package_id IN (SELECT id FROM student_packages WHERE student_id = ?)', [id]);
+        await connection.query('DELETE FROM bookings WHERE teacher_id = ?', [id]);
+        await connection.query('DELETE FROM student_packages WHERE student_id = ?', [id]);
+        await connection.query('DELETE FROM student_feedback WHERE student_id = ?', [id]);
+        await connection.query('DELETE FROM student_feedback WHERE teacher_id = ?', [id]);
+        await connection.query('DELETE FROM teacher_leaves WHERE teacher_id = ?', [id]);
+        await connection.query('DELETE FROM teacher_available_slots WHERE teacher_id = ?', [id]);
+        await connection.query('DELETE FROM closed_slots WHERE teacher_id = ?', [id]);
+        await connection.query('DELETE FROM waitlist WHERE student_id = ? OR teacher_id = ?', [id, id]);
+        await connection.query('UPDATE company_payments SET recorded_by = NULL WHERE recorded_by = ?', [id]);
+        await connection.query('UPDATE upgrade_requests SET processed_by = NULL WHERE processed_by = ?', [id]);
+        await connection.query('DELETE FROM users WHERE id = ?', [id]);
+
+        await connection.commit();
+
+        // Audit log (after commit, using pool — not part of transaction)
+        const { logAction } = require('../utils/audit');
+        await logAction(user.company_id, req.user.id, 'user_hard_deleted', 'user', Number(id), {
+            deleted_name: user.name, deleted_role: user.role,
+        });
 
         res.json({ message: `${user.name} (${user.role}) has been permanently deleted` });
     } catch (err) {
+        await connection.rollback();
         console.error(err);
         res.status(500).json({ message: 'Server error' });
+    } finally {
+        connection.release();
     }
 });
 

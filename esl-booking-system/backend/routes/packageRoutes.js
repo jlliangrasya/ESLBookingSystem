@@ -142,7 +142,7 @@ router.post("/avail", authenticateToken, requireRole('student'), async (req, res
     }
 });
 
-// Get student's active package
+// Get student's active (paid) package
 router.get("/avail", authenticateToken, requireRole('student'), async (req, res) => {
     try {
         const studentId = req.user.id;
@@ -152,7 +152,7 @@ router.get("/avail", authenticateToken, requireRole('student'), async (req, res)
             `SELECT sp.id AS student_package_id, sp.teacher_id, tp.duration_minutes
              FROM student_packages sp
              JOIN tutorial_packages tp ON sp.package_id = tp.id
-             WHERE sp.student_id = ? AND sp.company_id = ?
+             WHERE sp.student_id = ? AND sp.company_id = ? AND sp.payment_status = 'paid' AND sp.sessions_remaining > 0
              ORDER BY sp.purchased_at DESC LIMIT 1`,
             [studentId, companyId]
         );
@@ -169,21 +169,69 @@ router.get("/avail", authenticateToken, requireRole('student'), async (req, res)
 });
 
 // Confirm payment (company_admin only)
+// If the student already has a paid package, append sessions to it instead of creating a second active package.
+// Wrapped in transaction with FOR UPDATE to prevent race conditions (double-confirm).
 router.post("/package/confirm/:id", authenticateToken, requireRole('company_admin'), async (req, res) => {
     const { id } = req.params;
     const companyId = req.user.company_id;
+    const connection = await pool.getConnection();
     try {
-        const [result] = await pool.query(
-            "UPDATE student_packages SET payment_status = 'paid' WHERE id = ? AND company_id = ?",
+        await connection.beginTransaction();
+
+        // Lock the package row to prevent concurrent confirm
+        const [[newPkg]] = await connection.query(
+            `SELECT sp.id, sp.student_id, sp.sessions_remaining, tp.session_limit
+             FROM student_packages sp
+             JOIN tutorial_packages tp ON sp.package_id = tp.id
+             WHERE sp.id = ? AND sp.company_id = ? AND sp.payment_status != 'paid'
+             FOR UPDATE`,
             [id, companyId]
         );
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: "Enrollee not found" });
+        if (!newPkg) {
+            await connection.rollback();
+            return res.status(404).json({ message: "Enrollee not found or already confirmed" });
         }
-        const [rows] = await pool.query("SELECT * FROM student_packages WHERE id = ?", [id]);
+
+        // Check if the student already has an existing paid package (lock it too)
+        // Prefer the one with sessions remaining (the active one bookings are made against)
+        const [[existingPkg]] = await connection.query(
+            `SELECT id FROM student_packages
+             WHERE student_id = ? AND company_id = ? AND payment_status = 'paid' AND id != ?
+             ORDER BY CASE WHEN sessions_remaining > 0 THEN 0 ELSE 1 END, purchased_at DESC
+             LIMIT 1
+             FOR UPDATE`,
+            [newPkg.student_id, companyId, id]
+        );
+
+        if (existingPkg) {
+            // Append sessions to existing paid package
+            await connection.query(
+                `UPDATE student_packages SET sessions_remaining = sessions_remaining + ? WHERE id = ? AND company_id = ?`,
+                [newPkg.sessions_remaining, existingPkg.id, companyId]
+            );
+            // Mark new package as paid with 0 sessions (audit trail)
+            await connection.query(
+                `UPDATE student_packages SET payment_status = 'paid', sessions_remaining = 0 WHERE id = ? AND company_id = ?`,
+                [id, companyId]
+            );
+        } else {
+            // No existing paid package — confirm normally
+            await connection.query(
+                "UPDATE student_packages SET payment_status = 'paid' WHERE id = ? AND company_id = ?",
+                [id, companyId]
+            );
+        }
+
+        await connection.commit();
+
+        const [rows] = await pool.query("SELECT * FROM student_packages WHERE id = ? AND company_id = ?", [id, companyId]);
         res.json({ message: "Enrollee confirmed successfully", enrollee: rows[0] });
     } catch (err) {
+        await connection.rollback();
+        console.error("Error confirming package:", err);
         res.status(500).json({ message: "Server error" });
+    } finally {
+        connection.release();
     }
 });
 
@@ -199,6 +247,24 @@ router.post("/package/reject/:id", authenticateToken, requireRole('company_admin
         if (result.affectedRows === 0) {
             return res.status(404).json({ message: "Enrollee not found" });
         }
+
+        // Cancel any active bookings associated with this package and refund sessions
+        const [[{ activeCnt }]] = await pool.query(
+            "SELECT COUNT(*) AS activeCnt FROM bookings WHERE student_package_id = ? AND status NOT IN ('done', 'cancelled')",
+            [id]
+        );
+        if (activeCnt > 0) {
+            await pool.query(
+                "UPDATE bookings SET status = 'cancelled' WHERE student_package_id = ? AND status NOT IN ('done', 'cancelled')",
+                [id]
+            );
+            // Refund sessions for the cancelled bookings
+            await pool.query(
+                `UPDATE student_packages SET sessions_remaining = sessions_remaining + ? WHERE id = ? AND company_id = ?`,
+                [activeCnt, id, companyId]
+            );
+        }
+
         const [rows] = await pool.query("SELECT * FROM student_packages WHERE id = ?", [id]);
         res.json({ message: "Enrollee rejected successfully", enrollee: rows[0] });
     } catch (err) {

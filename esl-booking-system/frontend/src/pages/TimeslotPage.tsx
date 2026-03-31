@@ -49,6 +49,7 @@ const TimeslotPage = () => {
   const [bookedMap, setBookedMap] = useState<Record<string, string>>({});
   const [durationMinutes, setDurationMinutes] = useState<number>(25);
   const slotsNeeded = Math.max(1, Math.ceil(durationMinutes / 30));
+  const [contextLoaded, setContextLoaded] = useState(false);
 
   useEffect(() => {
     if (!localStorage.getItem("token")) navigate("/login");
@@ -62,7 +63,7 @@ const TimeslotPage = () => {
         const base = import.meta.env.VITE_API_URL;
 
         const [availRes, teachersRes, settingsRes] = await Promise.all([
-          axios.get(`${base}/api/student/avail`, { headers }),
+          axios.get(`${base}/api/student/avail`, { headers }).catch(() => ({ data: null })),
           axios.get(`${base}/api/student/teachers`, { headers }),
           axios.get(`${base}/api/admin/company-settings`, { headers }),
         ]);
@@ -82,6 +83,8 @@ const TimeslotPage = () => {
         setNeedsTeacherPicker(!effective && teachers.length > 1 && allowPick);
       } catch (error) {
         console.error("Error fetching student context:", error);
+      } finally {
+        setContextLoaded(true);
       }
     };
     fetchStudentContext();
@@ -90,7 +93,7 @@ const TimeslotPage = () => {
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchBookedSlots = useCallback(async () => {
-    if (!date || userPackageId === null) return;
+    if (!date || !contextLoaded) return;
     try {
       const token = localStorage.getItem("token");
       const response = await axios.get<Booking[]>(
@@ -109,10 +112,10 @@ const TimeslotPage = () => {
     } catch (error) {
       console.error("Error fetching booked slots:", error);
     }
-  }, [date, userPackageId]);
+  }, [date, contextLoaded]);
 
   const fetchTeacherSlots = useCallback(async () => {
-    if (!date) return;
+    if (!date || !contextLoaded) return;
     try {
       const token = localStorage.getItem("token");
       const teacherParam = effectiveTeacherId ? `&teacher_id=${effectiveTeacherId}` : "";
@@ -125,7 +128,7 @@ const TimeslotPage = () => {
     } catch (error) {
       console.error("Error fetching teacher slots:", error);
     }
-  }, [date, effectiveTeacherId]);
+  }, [date, effectiveTeacherId, contextLoaded]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -219,7 +222,8 @@ const TimeslotPage = () => {
     setSelectedSlot(slot);
 
     // Check if this is a slot booked by the current user
-    const bookedByUser = slot in bookedSlots && bookedSlots[slot].student_package_id === userPackageId;
+    // bookedSlots only contains the student's own bookings (API filters by student_id)
+    const bookedByUser = slot in bookedSlots;
     if (bookedByUser) {
       handleBookedSlotClick(bookedSlots[slot]);
     } else {
@@ -276,6 +280,8 @@ const TimeslotPage = () => {
 
       alert("Booking confirmed successfully!");
       setShowBookingModal(false);
+      // Refresh slots so the UI reflects the new booking immediately
+      await Promise.all([fetchBookedSlots(), fetchTeacherSlots()]);
     } catch (error: unknown) {
       console.error("Error confirming booking:", error);
       const msg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to confirm booking. Please try again.";
@@ -353,7 +359,7 @@ const TimeslotPage = () => {
 
           const isOpen = openSlots.has(time24);
           const bookedStatus = bookedMap[time24];
-          const isBookedByUser = slot in bookedSlots && bookedSlots[slot].student_package_id === userPackageId;
+          const isBookedByUser = slot in bookedSlots;
           const isBookedByOther = bookedStatus === "booked" && !isBookedByUser;
           const isYourClass = bookedStatus === "your_class" || isBookedByUser;
 

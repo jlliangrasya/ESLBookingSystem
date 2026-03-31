@@ -17,13 +17,13 @@ router.post('/', authenticateToken, requireRole('teacher'), async (req, res) => 
             return res.status(400).json({ message: 'booking_id and student_id are required' });
         }
 
-        // Verify booking belongs to this company and is confirmed/done
+        // Verify booking belongs to this company and is done
         const [[booking]] = await pool.query(
-            'SELECT * FROM bookings WHERE id = ? AND company_id = ? AND status IN (\'confirmed\', \'done\')',
+            "SELECT * FROM bookings WHERE id = ? AND company_id = ? AND status = 'done'",
             [booking_id, companyId]
         );
         if (!booking) {
-            return res.status(404).json({ message: 'Booking not found or not yet completed' });
+            return res.status(404).json({ message: 'Booking not found or class not yet completed. Reports can only be submitted after the class is marked as done.' });
         }
 
         // Upsert report (one per booking)
@@ -56,19 +56,31 @@ router.post('/', authenticateToken, requireRole('teacher'), async (req, res) => 
 });
 
 // GET /api/reports/booking/:booking_id — get report for a specific booking
+// Role-based: students can only see their own reports, teachers only their own
 router.get('/booking/:booking_id', authenticateToken, async (req, res) => {
     try {
         const companyId = req.user.company_id;
-        const [[report]] = await pool.query(
-            `SELECT cr.*, t.name AS teacher_name, u.name AS student_name,
+        const userId = req.user.id;
+        const role = req.user.role;
+
+        let query = `SELECT cr.*, t.name AS teacher_name, u.name AS student_name,
                     b.appointment_date
              FROM class_reports cr
              JOIN users t ON cr.teacher_id = t.id
              JOIN users u ON cr.student_id = u.id
              JOIN bookings b ON cr.booking_id = b.id
-             WHERE cr.booking_id = ? AND cr.company_id = ?`,
-            [req.params.booking_id, companyId]
-        );
+             WHERE cr.booking_id = ? AND cr.company_id = ?`;
+        const params = [req.params.booking_id, companyId];
+
+        if (role === 'student') {
+            query += ' AND cr.student_id = ?';
+            params.push(userId);
+        } else if (role === 'teacher') {
+            query += ' AND cr.teacher_id = ?';
+            params.push(userId);
+        }
+
+        const [[report]] = await pool.query(query, params);
         if (!report) return res.status(404).json({ message: 'Report not found' });
         res.json(report);
     } catch (err) {
