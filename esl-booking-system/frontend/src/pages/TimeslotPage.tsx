@@ -33,7 +33,7 @@ const TimeslotPage = () => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookedSlots, setBookedSlots] = useState<{ [key: string]: Booking }>({});
-  const [userPackageId, setUserPackageId] = useState<number | null>(null);
+  const [, setUserPackageId] = useState<number | null>(null);
   const [, setSubject] = useState<string | null>(null);
   const [showClassModal, setShowClassModal] = useState(false);
   const [selectedDateBookings, setSelectedDateBookings] = useState<Booking[]>([]);
