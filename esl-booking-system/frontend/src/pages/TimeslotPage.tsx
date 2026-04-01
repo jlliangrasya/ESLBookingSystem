@@ -339,6 +339,12 @@ const TimeslotPage = () => {
           <span className="w-3 h-3 rounded-full bg-gray-300 inline-block" />
           {t("timeslot.unavailable")}
         </span>
+        {slotsNeeded > 1 && (
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full bg-orange-300 inline-block" />
+            Can't fit {durationMinutes}min
+          </span>
+        )}
       </div>
 
       {contextLoaded && openSlots.size === 0 && (
@@ -400,12 +406,15 @@ const TimeslotPage = () => {
                   ? "bookedByUser-timeslot"
                   : isBookedByOther
                   ? "bg-amber-100 text-amber-700 border-amber-200 cursor-not-allowed"
-                  : !isOpen || !canStartHere
+                  : !isOpen
                   ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200"
+                  : !canStartHere
+                  ? "bg-orange-50 text-orange-400 cursor-not-allowed border-orange-200"
                   : "student-timeslots"
               )}
               onClick={() => !isDisabled && handleSlotClick(slot)}
               disabled={isDisabled}
+              title={isOpen && !canStartHere && slotsNeeded > 1 ? `Cannot fit ${durationMinutes}-min class — next slot is not available` : undefined}
             >
               {isPast
                 ? t("timeslot.unavailable")
@@ -413,8 +422,10 @@ const TimeslotPage = () => {
                 ? t("timeslot.yourClass")
                 : isBookedByOther
                 ? t("timeslot.booked")
-                : !isOpen || !canStartHere
+                : !isOpen
                 ? t("timeslot.unavailable")
+                : !canStartHere
+                ? slot
                 : slot}
             </button>
           );
