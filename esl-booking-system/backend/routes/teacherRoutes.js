@@ -266,15 +266,9 @@ router.post('/bookings/:id/cancel', authenticateToken, requireRole('teacher'), a
             });
         }
 
-        // Group-aware: cancel all bookings in the multi-slot group
-        let slotsToRefund = 1;
+        // Group-aware: cancel all slots in the multi-slot group
         const [[fullBooking]] = await pool.query("SELECT booking_group_id FROM bookings WHERE id = ?", [id]);
         if (fullBooking?.booking_group_id) {
-            const [[{ cnt }]] = await pool.query(
-                "SELECT COUNT(*) AS cnt FROM bookings WHERE booking_group_id = ? AND status NOT IN ('done', 'cancelled')",
-                [fullBooking.booking_group_id]
-            );
-            slotsToRefund = cnt || 1;
             await pool.query(
                 "UPDATE bookings SET status = 'cancelled' WHERE booking_group_id = ? AND company_id = ? AND status NOT IN ('done', 'cancelled')",
                 [fullBooking.booking_group_id, companyId]
@@ -283,11 +277,11 @@ router.post('/bookings/:id/cancel', authenticateToken, requireRole('teacher'), a
             await pool.query("UPDATE bookings SET status = 'cancelled' WHERE id = ? AND teacher_id = ? AND company_id = ?", [id, teacherId, companyId]);
         }
 
-        // Refund sessions back to the student package
+        // Refund 1 session — one class = one session regardless of slot count
         await pool.query(
-            `UPDATE student_packages SET sessions_remaining = sessions_remaining + ?
+            `UPDATE student_packages SET sessions_remaining = sessions_remaining + 1
              WHERE id = ? AND company_id = ?`,
-            [slotsToRefund, booking.student_package_id, companyId]
+            [booking.student_package_id, companyId]
         );
 
         const dateStr = new Date(booking.appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
@@ -690,6 +684,71 @@ router.post('/weekly-slots', authenticateToken, requireRole('teacher'), async (r
             return res.status(400).json({ message: 'action must be "open" or "close"' });
         }
         res.json({ message: `Slot ${action}d successfully` });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// POST /api/teacher/weekly-slots/recurring — bulk open recurring weekly slots
+router.post('/weekly-slots/recurring', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const teacherId = req.user.id;
+        const companyId = req.user.company_id;
+        const { days, start_time, end_time, weeks } = req.body;
+
+        const validDays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+        if (!Array.isArray(days) || days.length === 0 || !days.every(d => validDays.includes(d))) {
+            return res.status(400).json({ message: 'days must be a non-empty array of valid day names' });
+        }
+        if (!start_time || !end_time || start_time >= end_time) {
+            return res.status(400).json({ message: 'start_time and end_time are required and start_time must be before end_time' });
+        }
+        const weeksCount = Math.min(12, Math.max(1, parseInt(weeks) || 4));
+
+        // Compute start date = tomorrow (no backfill)
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() + 1);
+        startDate.setHours(0, 0, 0, 0);
+
+        const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+        // Build all slot values to insert — iterate day by day over the full range
+        const values = [];
+        const endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + weeksCount * 7);
+
+        const [sh, sm] = start_time.split(':').map(Number);
+        const [eh, em] = end_time.split(':').map(Number);
+        const endMins = eh * 60 + em;
+
+        for (const cur = new Date(startDate); cur < endDate; cur.setDate(cur.getDate() + 1)) {
+            const dayName = dayNames[cur.getDay()];
+            if (!days.includes(dayName)) continue;
+
+            const dateStr = cur.toISOString().split('T')[0];
+
+            // Generate 30-min slots from start_time to end_time (exclusive)
+            let slotMins = sh * 60 + sm;
+            while (slotMins < endMins) {
+                const h = Math.floor(slotMins / 60);
+                const m = slotMins % 60;
+                const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+                values.push([companyId, teacherId, dateStr, timeStr]);
+                slotMins += 30;
+            }
+        }
+
+        if (values.length === 0) {
+            return res.json({ message: 'No future slots to create', slotsCreated: 0 });
+        }
+
+        const [result] = await pool.query(
+            `INSERT IGNORE INTO teacher_available_slots (company_id, teacher_id, slot_date, slot_time) VALUES ?`,
+            [values]
+        );
+
+        res.json({ message: 'Recurring schedule set', slotsCreated: result.affectedRows });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });

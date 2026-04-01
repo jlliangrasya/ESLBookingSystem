@@ -22,6 +22,7 @@ import {
   GraduationCap,
   CalendarCheck,
   CalendarDays,
+  AlertCircle,
 } from "lucide-react";
 import {
   BarChart,
@@ -117,10 +118,20 @@ const AdminDashboard = () => {
       maxTeachers: number;
       maxAdmins: number;
       planName: string;
+      unassignedBookings: number;
     };
+    teacherWorkload: { id: number; name: string; today: number; next7days: number }[];
   }
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [teacherCount, setTeacherCount] = useState<number | null>(null);
+
+  // Teacher conflict dialog (Issue #5)
+  const [teacherConflict, setTeacherConflict] = useState<{
+    newTeacherId: number;
+    existingTeacherId: number;
+    existingPackageId: number;
+    studentId: number;
+  } | null>(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -184,14 +195,32 @@ const AdminDashboard = () => {
   const handleConfirm = async (id: number) => {
     try {
       const token = localStorage.getItem("token");
-      await axios.post(
+      const res = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/student/package/confirm/${id}`,
         {},
         { headers: { Authorization: `Bearer ${token}` } },
       );
       fetchDashboardData();
+      if (res.data.teacherConflict) {
+        setTeacherConflict(res.data.teacherConflict);
+      }
     } catch (error) {
       console.error("Error confirming package:", error);
+    }
+  };
+
+  const handleApplyConflictTeacher = async (newTeacherId: number, studentId: number) => {
+    try {
+      const token = localStorage.getItem("token");
+      await axios.put(
+        `${import.meta.env.VITE_API_URL}/api/admin/students/${studentId}/assign-teacher`,
+        { teacher_id: newTeacherId },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+    } catch (error) {
+      console.error("Error updating teacher:", error);
+    } finally {
+      setTeacherConflict(null);
     }
   };
 
@@ -364,6 +393,51 @@ const AdminDashboard = () => {
             </div>
           </button>
         </div>
+
+        {/* Unassigned Bookings Warning — Issue #6 */}
+        {(analytics?.totals.unassignedBookings ?? 0) > 0 && (
+          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
+            <p className="text-sm text-amber-800 font-medium">
+              {analytics!.totals.unassignedBookings} upcoming class{analytics!.totals.unassignedBookings !== 1 ? "es have" : " has"} no teacher assigned.
+              {" "}
+              <button className="underline" onClick={() => navigate("/students")}>View Students</button>
+            </p>
+          </div>
+        )}
+
+        {/* Teacher Workload — Issue #10 */}
+        {analytics?.teacherWorkload && analytics.teacherWorkload.length > 0 && (
+          <div className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
+            <div className="px-4 py-3 border-b brand-gradient-subtle">
+              <h2 className="font-semibold text-sm text-gray-800">Teacher Workload (Next 7 Days)</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Teacher</TableHead>
+                    <TableHead className="text-center">Today</TableHead>
+                    <TableHead className="text-center">Next 7 Days</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {analytics.teacherWorkload.map((t) => (
+                    <TableRow key={t.id} className={t.next7days === 0 ? "bg-amber-50/50" : ""}>
+                      <TableCell className="font-medium text-sm">{t.name}</TableCell>
+                      <TableCell className="text-center">{t.today}</TableCell>
+                      <TableCell className="text-center">
+                        {t.next7days === 0
+                          ? <span className="text-xs text-amber-600 font-medium">No upcoming classes</span>
+                          : <span className="font-semibold">{t.next7days}</span>}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
 
         {/* Pending Enrollees */}
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
@@ -740,6 +814,28 @@ const AdminDashboard = () => {
                 </div>
               </div>
             ))}
+        </DialogContent>
+      </Dialog>
+
+      {/* Teacher Conflict Dialog — Issue #5 */}
+      <Dialog open={!!teacherConflict} onOpenChange={(o) => { if (!o) setTeacherConflict(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-500" /> Teacher Preference Conflict
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This student requested a different teacher than their currently assigned one. Would you like to update their assigned teacher?
+          </p>
+          <div className="flex flex-col gap-2 pt-2">
+            <Button
+              onClick={() => teacherConflict && handleApplyConflictTeacher(teacherConflict.newTeacherId, teacherConflict.studentId)}
+            >
+              Update to Requested Teacher
+            </Button>
+            <Button variant="outline" onClick={() => setTeacherConflict(null)}>Keep Current Teacher</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </>

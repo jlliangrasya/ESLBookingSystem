@@ -299,23 +299,67 @@ router.delete("/teachers/:id", authenticateToken, requireRole('company_admin'), 
       }
     }
 
-    // Notify affected students
+    const [[teacherInfo]] = await pool.query('SELECT name FROM users WHERE id = ?', [id]);
+    const teacherDisplayName = teacherInfo?.name || 'your teacher';
+
+    // Clear teacher assignment from active student packages
+    const [assignedPackages] = await pool.query(
+      'SELECT id, student_id FROM student_packages WHERE teacher_id = ? AND company_id = ?',
+      [id, companyId]
+    );
+    if (assignedPackages.length > 0) {
+      await pool.query(
+        'UPDATE student_packages SET teacher_id = NULL WHERE teacher_id = ? AND company_id = ?',
+        [id, companyId]
+      );
+    }
+
+    // Notify affected students (from both cancelled bookings and cleared packages)
+    const notifiedStudents = new Set();
     const [affectedStudents] = await pool.query(
       `SELECT DISTINCT sp.student_id FROM student_packages sp
        WHERE sp.id IN (${futureBookings.length > 0 ? futureBookings.map(b => b.student_package_id).join(',') : '0'})`,
     );
-    const [[teacherInfo]] = await pool.query('SELECT name FROM users WHERE id = ?', [id]);
     for (const s of affectedStudents) {
+      notifiedStudents.add(s.student_id);
       await notify({
         userId: s.student_id, companyId,
         type: 'class_cancelled',
         title: 'Classes cancelled — teacher removed',
-        message: `Your upcoming classes with ${teacherInfo?.name || 'your teacher'} have been cancelled. Sessions have been refunded to your package.`,
+        message: `Your upcoming classes with ${teacherDisplayName} have been cancelled. Sessions have been refunded to your package.`,
+      });
+    }
+    // Notify students whose packages had the teacher cleared but had no future bookings
+    for (const pkg of assignedPackages) {
+      if (!notifiedStudents.has(pkg.student_id)) {
+        notifiedStudents.add(pkg.student_id);
+        await notify({
+          userId: pkg.student_id, companyId,
+          type: 'general',
+          title: 'Teacher assignment removed',
+          message: `Your assigned teacher (${teacherDisplayName}) has been deactivated. You will see the general class schedule until a new teacher is assigned by admin.`,
+        });
+      }
+    }
+
+    // Notify all admins
+    const [admins] = await pool.query(
+      "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin' AND is_active = TRUE",
+      [companyId]
+    );
+    const packageCount = assignedPackages.length;
+    for (const admin of admins) {
+      if (admin.id === adminId) continue;
+      await notify({
+        userId: admin.id, companyId,
+        type: 'general',
+        title: 'Teacher deactivated',
+        message: `${teacherDisplayName} was deactivated. ${futureBookings.length} future booking(s) cancelled and ${packageCount} student package(s) had their teacher assignment cleared.`,
       });
     }
 
-    await logAction(companyId, adminId, 'teacher_deactivated', 'user', Number(id), { bookings_cancelled: futureBookings.length });
-    res.json({ message: `Teacher removed. ${futureBookings.length} future booking(s) cancelled and sessions refunded.` });
+    await logAction(companyId, adminId, 'teacher_deactivated', 'user', Number(id), { bookings_cancelled: futureBookings.length, packages_cleared: packageCount });
+    res.json({ message: `Teacher removed. ${futureBookings.length} future booking(s) cancelled and sessions refunded. ${packageCount} student package(s) unassigned.` });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -611,15 +655,22 @@ router.post("/teacher-leaves/:id/approve", authenticateToken, requireRole('compa
   try {
     const companyId = req.user.company_id;
     const { id } = req.params;
+    const { cancel_bookings = false } = req.body;
+
     const [[leave]] = await pool.query('SELECT * FROM teacher_leaves WHERE id = ? AND company_id = ?', [id, companyId]);
     if (!leave) return res.status(404).json({ message: 'Leave request not found' });
+
+    const [[teacherInfo]] = await pool.query('SELECT name FROM users WHERE id = ?', [leave.teacher_id]);
+    const teacherName = teacherInfo?.name || 'your teacher';
+    const leaveDateStr = leave.leave_date instanceof Date
+      ? leave.leave_date.toISOString().split('T')[0]
+      : String(leave.leave_date).split('T')[0];
 
     await pool.query(
       "UPDATE teacher_leaves SET status = 'approved', processed_by = ?, processed_at = NOW() WHERE id = ?",
       [req.user.id, id]
     );
-    // Auto-close the slot for that teacher on that date (all times)
-    // We mark it as a closed slot so the teacher appears unavailable
+    // Auto-close all slots for that teacher on that date
     await pool.query(
       `INSERT IGNORE INTO closed_slots (company_id, teacher_id, date, time)
        SELECT ?, ?, ?, time FROM (
@@ -634,9 +685,62 @@ router.post("/teacher-leaves/:id/approve", authenticateToken, requireRole('compa
        ) AS times`,
       [companyId, leave.teacher_id, leave.leave_date]
     );
-    await logAction(companyId, req.user.id, 'leave_approved', 'teacher_leave', Number(id), { teacher_id: leave.teacher_id, leave_date: leave.leave_date });
-    res.json({ message: 'Leave approved and slots closed' });
+
+    // Find bookings on this date that conflict with the leave
+    const [conflictingBookings] = await pool.query(
+      `SELECT b.id, b.appointment_date, b.student_package_id, b.booking_group_id, u.name AS student_name, u.id AS student_id
+       FROM bookings b
+       JOIN student_packages sp ON b.student_package_id = sp.id
+       JOIN users u ON sp.student_id = u.id
+       WHERE b.teacher_id = ? AND DATE(b.appointment_date) = ? AND b.company_id = ?
+         AND b.status NOT IN ('done','cancelled')`,
+      [leave.teacher_id, leaveDateStr, companyId]
+    );
+
+    let cancelledCount = 0;
+    if (cancel_bookings && conflictingBookings.length > 0) {
+      // Cancel each conflicting booking and refund 1 session per class (group by group_id or booking id)
+      const seen = new Set();
+      for (const b of conflictingBookings) {
+        await pool.query("UPDATE bookings SET status = 'cancelled' WHERE id = ? AND company_id = ?", [b.id, companyId]);
+        const classKey = b.booking_group_id || `solo-${b.id}`;
+        if (!seen.has(classKey)) {
+          seen.add(classKey);
+          await pool.query(
+            'UPDATE student_packages SET sessions_remaining = sessions_remaining + 1 WHERE id = ? AND company_id = ?',
+            [b.student_package_id, companyId]
+          );
+          cancelledCount++;
+        }
+      }
+    }
+
+    // Notify each affected student (fire-and-forget)
+    ;(async () => {
+      const notifiedStudents = new Set();
+      for (const b of conflictingBookings) {
+        if (notifiedStudents.has(b.student_id)) continue;
+        notifiedStudents.add(b.student_id);
+        const msg = cancel_bookings
+          ? `Your class on ${leaveDateStr} with ${teacherName} has been cancelled due to a scheduled leave. 1 session has been refunded to your package.`
+          : `Your class on ${leaveDateStr} with ${teacherName} may be affected due to a scheduled leave. Please contact admin.`;
+        await notify({
+          userId: b.student_id, companyId,
+          type: 'class_cancelled',
+          title: cancel_bookings ? 'Class cancelled — teacher on leave' : 'Class may be affected — teacher on leave',
+          message: msg,
+        });
+      }
+    })();
+
+    await logAction(companyId, req.user.id, 'leave_approved', 'teacher_leave', Number(id), { teacher_id: leave.teacher_id, leave_date: leaveDateStr, cancel_bookings, cancelled: cancelledCount });
+    res.json({
+      message: 'Leave approved and slots closed',
+      conflictingBookings: conflictingBookings.map(b => ({ id: b.id, appointment_date: b.appointment_date, student_name: b.student_name })),
+      cancelled: cancelledCount,
+    });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -994,6 +1098,126 @@ router.post('/students/:id/bulk-assign-teacher', authenticateToken, requireRole(
   }
 });
 
+// Update the teacher assigned to a student at the package level, and cascade to all future bookings
+router.put('/students/:id/assign-teacher', authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const studentId = Number(req.params.id);
+    const { teacher_id } = req.body;
+
+    // Validate student belongs to this company
+    const [[student]] = await pool.query(
+      "SELECT id, name FROM users WHERE id = ? AND company_id = ? AND role = 'student'",
+      [studentId, companyId]
+    );
+    if (!student) return res.status(404).json({ message: 'Student not found' });
+
+    // Validate teacher belongs to this company and is active (if teacher_id provided)
+    if (teacher_id) {
+      const [[teacher]] = await pool.query(
+        "SELECT id FROM users WHERE id = ? AND company_id = ? AND role = 'teacher' AND is_active = TRUE",
+        [teacher_id, companyId]
+      );
+      if (!teacher) return res.status(400).json({ message: 'Teacher not found or inactive' });
+    }
+
+    // Find student's active paid package (prefer one with sessions remaining)
+    const [[activePkg]] = await pool.query(
+      `SELECT id FROM student_packages
+       WHERE student_id = ? AND company_id = ? AND payment_status = 'paid'
+       ORDER BY CASE WHEN sessions_remaining > 0 THEN 0 ELSE 1 END, purchased_at DESC LIMIT 1`,
+      [studentId, companyId]
+    );
+    if (!activePkg) return res.status(404).json({ message: 'No active paid package found for this student' });
+
+    // Update the package teacher assignment
+    await pool.query(
+      'UPDATE student_packages SET teacher_id = ? WHERE id = ? AND company_id = ?',
+      [teacher_id || null, activePkg.id, companyId]
+    );
+
+    // If removing teacher, just return success (existing bookings keep their current teachers)
+    if (!teacher_id) {
+      await logAction(companyId, req.user.id, 'student_teacher_removed', 'student_package', activePkg.id, { student_id: studentId });
+      return res.json({ message: 'Teacher assignment removed from student' });
+    }
+
+    // Clear all waitlist entries for this student — they now have an assigned teacher
+    await pool.query('DELETE FROM waitlist WHERE student_id = ? AND company_id = ?', [studentId, companyId]);
+
+    // Cascade: try to assign teacher to all future pending/confirmed bookings for this student
+    const [leaves] = await pool.query(
+      "SELECT leave_date FROM teacher_leaves WHERE teacher_id = ? AND company_id = ? AND status IN ('pending','approved')",
+      [teacher_id, companyId]
+    );
+    const leaveSet = new Set(leaves.map(l => {
+      const d = new Date(l.leave_date);
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+    }));
+
+    const [futureBookings] = await pool.query(
+      `SELECT b.id, b.appointment_date FROM bookings b
+       JOIN student_packages sp ON b.student_package_id = sp.id
+       WHERE sp.student_id = ? AND b.company_id = ?
+         AND b.status IN ('pending','confirmed') AND b.appointment_date >= NOW()
+       ORDER BY b.appointment_date ASC`,
+      [studentId, companyId]
+    );
+
+    let assigned = 0;
+    let skipped = 0;
+    for (const b of futureBookings) {
+      const dt = new Date(b.appointment_date);
+      const dateStr = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`;
+      const timeStr = `${String(dt.getUTCHours()).padStart(2,'0')}:${dt.getUTCMinutes() < 30 ? '00' : '30'}`;
+
+      // Skip if teacher is on leave that day
+      if (leaveSet.has(dateStr)) { skipped++; continue; }
+
+      // Skip if slot is not open in teacher_available_slots
+      const [[slotOpen]] = await pool.query(
+        `SELECT id FROM teacher_available_slots
+         WHERE company_id = ? AND teacher_id = ? AND slot_date = ? AND TIME_FORMAT(slot_time, '%H:%i') = ?`,
+        [companyId, teacher_id, dateStr, timeStr]
+      );
+      if (!slotOpen) { skipped++; continue; }
+
+      // Skip if teacher already has a conflicting booking within 30 min (not counting this booking itself)
+      const [[conflict]] = await pool.query(
+        `SELECT id FROM bookings
+         WHERE teacher_id = ? AND company_id = ? AND status IN ('pending','confirmed')
+           AND ABS(TIMESTAMPDIFF(MINUTE, appointment_date, ?)) < 30 AND id != ?`,
+        [teacher_id, companyId, b.appointment_date, b.id]
+      );
+      if (conflict) { skipped++; continue; }
+
+      await pool.query('UPDATE bookings SET teacher_id = ? WHERE id = ? AND company_id = ?', [teacher_id, b.id, companyId]);
+      assigned++;
+    }
+
+    const [[teacher]] = await pool.query('SELECT name FROM users WHERE id = ?', [teacher_id]);
+    await logAction(companyId, req.user.id, 'student_teacher_assigned', 'student_package', activePkg.id, {
+      student_id: studentId, teacher_id, teacher_name: teacher?.name, assigned, skipped
+    });
+
+    notify({
+      userId: studentId, companyId,
+      type: 'teacher_assigned',
+      title: 'Teacher assigned',
+      message: `${teacher?.name || 'A teacher'} has been assigned to your classes.`,
+    });
+
+    res.json({
+      message: `${teacher?.name || 'Teacher'} assigned to ${student.name}. ${assigned} class${assigned !== 1 ? 'es' : ''} updated.${skipped > 0 ? ` ${skipped} skipped (teacher unavailable).` : ''}`,
+      bookingsAssigned: assigned,
+      bookingsSkipped: skipped,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Admin assign a package to a student (bypasses student self-enrollment)
 router.post('/students/:id/assign-package', authenticateToken, requireRole('company_admin'), async (req, res) => {
   try {
@@ -1219,6 +1443,9 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
          (SELECT IFNULL(SUM(tp.price), 0) FROM student_packages sp
           JOIN tutorial_packages tp ON sp.package_id = tp.id
           WHERE sp.company_id = ? AND sp.payment_status = 'paid') AS totalRevenue,
+         (SELECT COUNT(*) FROM bookings
+          WHERE company_id = ? AND teacher_id IS NULL
+            AND status IN ('pending','confirmed') AND appointment_date >= NOW()) AS unassignedBookings,
          sp.max_students AS maxStudents,
          sp.max_teachers AS maxTeachers,
          sp.max_admins AS maxAdmins,
@@ -1226,10 +1453,23 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
        FROM companies c
        JOIN subscription_plans sp ON c.subscription_plan_id = sp.id
        WHERE c.id = ?`,
-      [companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId]
+      [companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId]
     );
 
-    res.json({ sessionsPerMonth, studentGrowth, packageStats, totals });
+    // Per-teacher workload (next 7 days)
+    const [teacherWorkload] = await pool.query(
+      `SELECT u.id, u.name,
+         SUM(CASE WHEN DATE(b.appointment_date) = CURDATE() AND b.status NOT IN ('cancelled') THEN 1 ELSE 0 END) AS today,
+         SUM(CASE WHEN b.appointment_date >= NOW() AND b.appointment_date < DATE_ADD(CURDATE(), INTERVAL 7 DAY) AND b.status NOT IN ('cancelled','done') THEN 1 ELSE 0 END) AS next7days
+       FROM users u
+       LEFT JOIN bookings b ON b.teacher_id = u.id AND b.company_id = u.company_id
+       WHERE u.company_id = ? AND u.role = 'teacher' AND u.is_active = TRUE
+       GROUP BY u.id, u.name
+       ORDER BY next7days DESC`,
+      [companyId]
+    );
+
+    res.json({ sessionsPerMonth, studentGrowth, packageStats, totals, teacherWorkload });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }

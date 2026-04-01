@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users,
+  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users, UserCheck, X,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly, localToMysql } from "@/utils/timezone";
 
@@ -163,7 +163,30 @@ const AdminStudentProfilePage = () => {
     }
   };
 
-  // Teacher assignment
+  // Assign teacher to student (package-level + cascade to future bookings)
+  const [showAssignTeacher, setShowAssignTeacher] = useState(false);
+  const [assignTeacherIdVal, setAssignTeacherIdVal] = useState("");
+  const [assignTeacherLoading, setAssignTeacherLoading] = useState(false);
+  const [assignTeacherMsg, setAssignTeacherMsg] = useState<string | null>(null);
+
+  const handleAssignStudentTeacher = async (teacherIdVal: string | null) => {
+    setAssignTeacherLoading(true);
+    setAssignTeacherMsg(null);
+    try {
+      const res = await axios.put(`${base}/api/admin/students/${id}/assign-teacher`, {
+        teacher_id: teacherIdVal ? Number(teacherIdVal) : null,
+      }, { headers });
+      setAssignTeacherMsg(res.data.message);
+      fetchData();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to assign teacher";
+      setAssignTeacherMsg(msg);
+    } finally {
+      setAssignTeacherLoading(false);
+    }
+  };
+
+  // Teacher assignment (booking-level)
   const [assigningBookingId, setAssigningBookingId] = useState<number | null>(null);
   const [showBulkAssign, setShowBulkAssign] = useState(false);
   const [bulkTeacherId, setBulkTeacherId] = useState("");
@@ -570,47 +593,87 @@ const AdminStudentProfilePage = () => {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-              <div>
-                <p className="text-xs text-muted-foreground">Package</p>
-                <p className="font-semibold">{activePackage.package_name}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Subject</p>
-                <p className="font-medium">{activePackage.subject || "—"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Sessions Remaining</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <Badge variant={activePackage.sessions_remaining > 0 ? "default" : "destructive"}>
-                    {activePackage.sessions_remaining}
+            <CardContent className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">Package</p>
+                  <p className="font-semibold">{activePackage.package_name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Subject</p>
+                  <p className="font-medium">{activePackage.subject || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Sessions Remaining</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <Badge variant={activePackage.sessions_remaining > 0 ? "default" : "destructive"}>
+                      {activePackage.sessions_remaining}
+                    </Badge>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50"
+                      title="Add sessions"
+                      onClick={() => { setShowAdjust("add"); setAdjustAmount("1"); setAdjustRemarks(""); setAdjustError(null); setAdjustSuccess(null); }}
+                    >
+                      <PlusCircle className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      title="Deduct sessions"
+                      onClick={() => { setShowAdjust("deduct"); setAdjustAmount("1"); setAdjustRemarks(""); setAdjustError(null); setAdjustSuccess(null); }}
+                    >
+                      <MinusCircle className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Payment</p>
+                  <Badge variant={activePackage.payment_status === "paid" ? "secondary" : "outline"}
+                    className={activePackage.payment_status === "paid" ? "bg-green-100 text-green-700" : ""}>
+                    {activePackage.payment_status}
                   </Badge>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50"
-                    title="Add sessions"
-                    onClick={() => { setShowAdjust("add"); setAdjustAmount("1"); setAdjustRemarks(""); setAdjustError(null); setAdjustSuccess(null); }}
-                  >
-                    <PlusCircle className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-50"
-                    title="Deduct sessions"
-                    onClick={() => { setShowAdjust("deduct"); setAdjustAmount("1"); setAdjustRemarks(""); setAdjustError(null); setAdjustSuccess(null); }}
-                  >
-                    <MinusCircle className="h-4 w-4" />
-                  </Button>
                 </div>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Payment</p>
-                <Badge variant={activePackage.payment_status === "paid" ? "secondary" : "outline"}
-                  className={activePackage.payment_status === "paid" ? "bg-green-100 text-green-700" : ""}>
-                  {activePackage.payment_status}
-                </Badge>
+
+              {/* Assigned Teacher row */}
+              <div className="flex items-center justify-between pt-1 border-t">
+                <div className="flex items-center gap-2">
+                  <UserCheck className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Assigned Teacher:</span>
+                  {activePackage.teacher_id ? (
+                    <span className="font-semibold text-sm">
+                      {teachers.find(t => t.id === activePackage.teacher_id)?.name || `Teacher #${activePackage.teacher_id}`}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground italic text-xs">None — student sees general schedule</span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1"
+                    onClick={() => { setAssignTeacherIdVal(activePackage.teacher_id ? String(activePackage.teacher_id) : ""); setAssignTeacherMsg(null); setShowAssignTeacher(true); }}
+                  >
+                    <UserCheck className="h-3.5 w-3.5" />
+                    {activePackage.teacher_id ? "Change" : "Assign Teacher"}
+                  </Button>
+                  {activePackage.teacher_id && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs text-muted-foreground gap-1 hover:text-destructive"
+                      disabled={assignTeacherLoading}
+                      onClick={() => handleAssignStudentTeacher(null)}
+                    >
+                      {assignTeacherLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                      Remove
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -635,9 +698,12 @@ const AdminStudentProfilePage = () => {
             </CardTitle>
             {activePackage && (
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="gap-1" onClick={() => { setBulkTeacherId(""); setBulkMsg(null); setShowBulkAssign(true); }}>
-                  <Users className="h-4 w-4" /> Assign Teacher
-                </Button>
+                {/* Bulk assign only shown when no package-level teacher is set */}
+                {!activePackage.teacher_id && (
+                  <Button size="sm" variant="outline" className="gap-1" onClick={() => { setBulkTeacherId(""); setBulkMsg(null); setShowBulkAssign(true); }}>
+                    <Users className="h-4 w-4" /> Bulk Assign Classes
+                  </Button>
+                )}
                 <Button size="sm" className="gap-1" onClick={() => { setSelectedSlots({}); setAddError(null); setAddSuccess(null); setShowAddClass(true); }}>
                   <Plus className="h-4 w-4" /> Add Class
                 </Button>
@@ -1056,18 +1122,61 @@ const AdminStudentProfilePage = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Assign Teacher to Student (package-level + cascade) */}
+      <Dialog open={showAssignTeacher} onOpenChange={(o) => { if (!o) { setShowAssignTeacher(false); setAssignTeacherMsg(null); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5" /> Assign Teacher to Student
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              This assigns a teacher permanently to this student. The student will only see that teacher's schedule, and all existing future classes will be reassigned to this teacher (classes where the teacher is unavailable will be skipped).
+            </p>
+            {assignTeacherMsg && (
+              <p className={`text-sm ${assignTeacherMsg.toLowerCase().includes("fail") || assignTeacherMsg.toLowerCase().includes("error") ? "text-destructive" : "text-green-600"}`}>
+                {assignTeacherMsg}
+              </p>
+            )}
+            <div className="space-y-1.5">
+              <Label>Teacher <span className="text-destructive">*</span></Label>
+              <Select value={assignTeacherIdVal} onValueChange={setAssignTeacherIdVal}>
+                <SelectTrigger><SelectValue placeholder="Select teacher" /></SelectTrigger>
+                <SelectContent>
+                  {teachers.map((t) => (
+                    <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowAssignTeacher(false); setAssignTeacherMsg(null); }}>
+              {assignTeacherMsg ? "Close" : "Cancel"}
+            </Button>
+            {!assignTeacherMsg && (
+              <Button onClick={() => handleAssignStudentTeacher(assignTeacherIdVal)} disabled={assignTeacherLoading || !assignTeacherIdVal}>
+                {assignTeacherLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Assign Teacher"}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Bulk Assign Teacher Dialog */}
       <Dialog open={showBulkAssign} onOpenChange={(o) => { if (!o) setShowBulkAssign(false); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" /> Assign Teacher to All Classes
+              <Users className="h-5 w-5" /> Bulk Assign Teacher to Unassigned Classes
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <p className="text-sm text-muted-foreground">
               Select a teacher to assign to all <strong>unassigned upcoming classes</strong> for this student.
               Classes where the teacher is unavailable (on leave, slot closed, or already booked) will be skipped.
+              To assign a teacher to the student permanently, use the <strong>Assign Teacher</strong> option in the package card above.
             </p>
             {bulkMsg && (
               <p className={`text-sm ${bulkMsg.includes("Failed") ? "text-destructive" : "text-green-600"}`}>{bulkMsg}</p>

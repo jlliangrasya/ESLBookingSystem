@@ -66,7 +66,7 @@ const BookingConfirmationModal: React.FC<Props> = ({
       try {
         const token = localStorage.getItem("token");
         const res = await axios.get(
-          `${import.meta.env.VITE_API_URL}/api/student/available-teachers?date=${selectedDate}&time=${encodeURIComponent(selectedTime)}`,
+          `${import.meta.env.VITE_API_URL}/api/student/available-teachers?date=${selectedDate}&time=${encodeURIComponent(selectedTime)}&duration_minutes=${durationMinutes}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         setAvailableTeachers(Array.isArray(res.data) ? res.data : []);
@@ -77,7 +77,7 @@ const BookingConfirmationModal: React.FC<Props> = ({
       }
     };
     fetchTeachers();
-  }, [show, showTeacherPicker, selectedDate, selectedTime]);
+  }, [show, showTeacherPicker, selectedDate, selectedTime, durationMinutes]);
 
   const canConfirm = !showTeacherPicker || !!selectedTeacherId;
 

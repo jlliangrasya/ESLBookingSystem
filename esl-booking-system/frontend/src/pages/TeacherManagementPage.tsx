@@ -120,6 +120,12 @@ const TeacherManagementPage = () => {
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [leaveLoading, setLeaveLoading] = useState(false);
 
+  // Leave conflict dialog
+  const [leaveConflicts, setLeaveConflicts] = useState<{ id: number; appointment_date: string; student_name: string }[]>([]);
+  const [showLeaveConflictDialog, setShowLeaveConflictDialog] = useState(false);
+  const [pendingLeaveId, setPendingLeaveId] = useState<number | null>(null);
+  const [cancellingConflicts, setCancellingConflicts] = useState(false);
+
   const fetchTeachers = async (month = pickerMonth, year = pickerYear) => {
     try {
       const res = await axios.get(
@@ -217,8 +223,26 @@ const TeacherManagementPage = () => {
   };
 
   const handleLeaveAction = async (leaveId: number, action: "approve" | "reject") => {
-    await axios.post(`${import.meta.env.VITE_API_URL}/api/admin/teacher-leaves/${leaveId}/${action}`, {}, { headers });
+    const res = await axios.post(`${import.meta.env.VITE_API_URL}/api/admin/teacher-leaves/${leaveId}/${action}`, {}, { headers });
+    if (action === "approve" && res.data.conflictingBookings?.length > 0) {
+      setLeaveConflicts(res.data.conflictingBookings);
+      setPendingLeaveId(leaveId);
+      setShowLeaveConflictDialog(true);
+    }
     if (leaveTeacher) openLeaves(leaveTeacher);
+  };
+
+  const handleCancelConflicts = async () => {
+    if (!pendingLeaveId) return;
+    setCancellingConflicts(true);
+    try {
+      await axios.post(`${import.meta.env.VITE_API_URL}/api/admin/teacher-leaves/${pendingLeaveId}/approve`, { cancel_bookings: true }, { headers });
+    } finally {
+      setCancellingConflicts(false);
+      setShowLeaveConflictDialog(false);
+      setLeaveConflicts([]);
+      setPendingLeaveId(null);
+    }
   };
 
   if (loading) {
@@ -511,6 +535,37 @@ const TeacherManagementPage = () => {
               ))}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Leave Conflict Dialog */}
+      <Dialog open={showLeaveConflictDialog} onOpenChange={(o) => { if (!o) { setShowLeaveConflictDialog(false); setLeaveConflicts([]); setPendingLeaveId(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertCircle className="h-5 w-5" /> Conflicting Classes Found
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            The following classes are scheduled on the approved leave date. What would you like to do?
+          </p>
+          <div className="space-y-1 max-h-48 overflow-y-auto border rounded-lg p-2 bg-muted/30">
+            {leaveConflicts.map((b) => (
+              <div key={b.id} className="flex justify-between text-sm py-1 border-b last:border-0">
+                <span className="font-medium">{b.student_name}</span>
+                <span className="text-muted-foreground text-xs">{new Date(b.appointment_date).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => { setShowLeaveConflictDialog(false); setLeaveConflicts([]); setPendingLeaveId(null); }}>
+              Leave As-Is
+            </Button>
+            <Button variant="destructive" className="flex-1" disabled={cancellingConflicts} onClick={handleCancelConflicts}>
+              {cancellingConflicts ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Cancel & Refund These Classes
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

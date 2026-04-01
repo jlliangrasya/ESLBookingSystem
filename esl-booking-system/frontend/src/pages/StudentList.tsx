@@ -60,6 +60,9 @@ interface Student {
   sessions_remaining: number;
   nationality: string;
   password: string;
+  teacher_id: number | null;
+  teacher_name: string | null;
+  enrolled: boolean;
 }
 
 const emptyForm = {
@@ -82,6 +85,7 @@ const StudentListPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [search, setSearch] = useState("");
   const [sessionFilter, setSessionFilter] = useState("all");
+  const [teacherFilter, setTeacherFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
@@ -109,9 +113,13 @@ Please use the email and password to login to https://esl-booking-system.vercel.
         sessionFilter === "all" ||
         (sessionFilter === "active" && s.sessions_remaining > 0) ||
         (sessionFilter === "empty" && s.sessions_remaining === 0);
-      return matchSearch && matchSession;
+      const matchTeacher =
+        teacherFilter === "all" ||
+        (teacherFilter === "assigned" && !!s.teacher_id) ||
+        (teacherFilter === "unassigned" && !s.teacher_id && s.enrolled);
+      return matchSearch && matchSession && matchTeacher;
     });
-  }, [students, search, sessionFilter]);
+  }, [students, search, sessionFilter, teacherFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -214,6 +222,22 @@ Please use the email and password to login to https://esl-booking-system.vercel.
               <SelectItem value="empty">No Sessions</SelectItem>
             </SelectContent>
           </Select>
+          <Select
+            value={teacherFilter}
+            onValueChange={(v) => {
+              setTeacherFilter(v);
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-52">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Teachers</SelectItem>
+              <SelectItem value="assigned">Has Teacher</SelectItem>
+              <SelectItem value="unassigned">No Teacher Assigned</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
@@ -230,6 +254,7 @@ Please use the email and password to login to https://esl-booking-system.vercel.
                     <TableHead>Package</TableHead>
                     <TableHead>Subject</TableHead>
                     <TableHead>Sessions Remaining</TableHead>
+                    <TableHead>Assigned Teacher</TableHead>
                     <TableHead>Nationality</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
@@ -238,7 +263,7 @@ Please use the email and password to login to https://esl-booking-system.vercel.
                   {paginated.length === 0 ? (
                     <TableRow>
                       <TableCell
-                        colSpan={6}
+                        colSpan={7}
                         className="text-center text-muted-foreground py-10"
                       >
                         No students found.
@@ -271,6 +296,15 @@ Please use the email and password to login to https://esl-booking-system.vercel.
                           >
                             {student.sessions_remaining ?? "—"}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {student.teacher_name ? (
+                            <span className="text-sm">{student.teacher_name}</span>
+                          ) : student.enrolled ? (
+                            <span className="text-xs text-amber-600 font-medium">Not assigned</span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                         <TableCell>{student.nationality || "—"}</TableCell>
                         <TableCell className="text-right flex items-center justify-end gap-1">

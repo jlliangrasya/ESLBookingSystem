@@ -341,6 +341,14 @@ const TimeslotPage = () => {
         </span>
       </div>
 
+      {contextLoaded && openSlots.size === 0 && (
+        <div className="text-center py-8 text-muted-foreground text-sm bg-muted/30 rounded-xl border mb-4">
+          {effectiveTeacherId
+            ? "Your teacher has not opened any slots for this date. Please select a different date or contact your admin."
+            : "No teachers have available slots for this date. Please select a different date."}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
         {generateTimeSlots().map((slot, index) => {
           const now = new Date();

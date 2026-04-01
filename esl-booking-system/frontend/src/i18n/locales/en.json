@@ -179,7 +179,7 @@
   "timeslot": {
     "title": "Available Time Slots",
     "timezoneNote": "All times shown in Philippine / China / Singapore / Hong Kong time (UTC+8)",
-    "durationNote": "Your {{duration}}-minute class will automatically book {{slots}} consecutive timeslots ({{slots}} sessions deducted).",
+    "durationNote": "Your {{duration}}-minute class will automatically book {{slots}} consecutive timeslots (1 session deducted).",
     "available": "Available",
     "yourClass": "YOUR CLASS",
     "booked": "BOOKED",
@@ -188,7 +188,7 @@
     "refreshing": "Refreshing...",
     "confirmBooking": "Confirm Booking",
     "confirmSingle": "Are you sure you want to book this schedule? This will use one session from your package.",
-    "confirmMulti": "Are you sure you want to book this {{duration}}-minute class? This will book {{slots}} consecutive timeslots and use {{slots}} sessions from your package.",
+    "confirmMulti": "Are you sure you want to book this {{duration}}-minute class? This will book {{slots}} consecutive timeslots and use 1 session from your package.",
     "yesBookIt": "Yes, Book It",
     "booking": "Booking...",
     "selectTeacher": "Select a teacher",

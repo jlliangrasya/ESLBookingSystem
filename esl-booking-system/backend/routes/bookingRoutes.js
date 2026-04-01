@@ -82,14 +82,11 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
         const durationMinutes = spRows[0].duration_minutes || 25;
         const slotsNeeded = Math.max(1, Math.ceil(durationMinutes / 30));
 
-        // Block booking if not enough sessions remaining
-        if (spRows[0].sessions_remaining < slotsNeeded) {
+        // Block booking if no sessions remaining (each class = 1 session regardless of duration)
+        if (spRows[0].sessions_remaining <= 0) {
             await connection.rollback();
             connection.release();
-            if (spRows[0].sessions_remaining <= 0) {
-                return res.status(403).json({ message: "No sessions remaining in your package. Please enroll in a new package." });
-            }
-            return res.status(403).json({ message: `Your ${durationMinutes}-minute class requires ${slotsNeeded} sessions but you only have ${spRows[0].sessions_remaining} remaining.` });
+            return res.status(403).json({ message: "No sessions remaining in your package. Please enroll in a new package." });
         }
 
         let teacherId = spRows[0].teacher_id;
@@ -210,11 +207,11 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
             insertedIds.push(result.insertId);
         }
 
-        // Deduct sessions immediately at booking time (prevents overbooking)
+        // Deduct 1 session at booking time — one class = one session regardless of how many 30-min slots it spans
         await connection.query(
-            `UPDATE student_packages SET sessions_remaining = GREATEST(0, sessions_remaining - ?)
+            `UPDATE student_packages SET sessions_remaining = GREATEST(0, sessions_remaining - 1)
              WHERE id = ? AND company_id = ?`,
-            [slotsNeeded, student_package_id, companyId]
+            [student_package_id, companyId]
         );
 
         await connection.commit();
@@ -434,14 +431,8 @@ router.delete("/api/bookings/:id", authenticateToken, async (req, res) => {
             return res.status(400).json({ message: "This booking is already completed or cancelled." });
         }
 
-        // Group-aware cancellation: if booking is part of a multi-slot group, cancel all
-        let slotsToRefund = 1;
+        // Group-aware cancellation: if booking is part of a multi-slot group, cancel all slots
         if (booking.booking_group_id) {
-            const [[{ cnt }]] = await pool.query(
-                "SELECT COUNT(*) AS cnt FROM bookings WHERE booking_group_id = ? AND status NOT IN ('done', 'cancelled')",
-                [booking.booking_group_id]
-            );
-            slotsToRefund = cnt || 1;
             await pool.query(
                 "DELETE FROM bookings WHERE booking_group_id = ? AND company_id = ?",
                 [booking.booking_group_id, companyId]
@@ -453,11 +444,11 @@ router.delete("/api/bookings/:id", authenticateToken, async (req, res) => {
             if (result.affectedRows === 0) return res.status(404).json({ message: "Booking not found" });
         }
 
-        // Refund sessions back to the student package
+        // Refund 1 session — one class = one session regardless of slot count
         await pool.query(
-            `UPDATE student_packages SET sessions_remaining = sessions_remaining + ?
+            `UPDATE student_packages SET sessions_remaining = sessions_remaining + 1
              WHERE id = ? AND company_id = ?`,
-            [slotsToRefund, booking.student_package_id, companyId]
+            [booking.student_package_id, companyId]
         );
 
         const [[student]] = await pool.query('SELECT name FROM users WHERE id = ?', [studentId]);
@@ -608,14 +599,8 @@ router.post("/api/bookings/cancel/:id", authenticateToken, requireRole('company_
 
         // Only refund if booking is still active
         if (booking && booking.status !== 'done' && booking.status !== 'cancelled') {
-            // Group-aware: cancel all bookings in the group
-            let slotsToRefund = 1;
+            // Group-aware: cancel all slots in the group
             if (booking.booking_group_id) {
-                const [[{ cnt }]] = await pool.query(
-                    "SELECT COUNT(*) AS cnt FROM bookings WHERE booking_group_id = ? AND status NOT IN ('done', 'cancelled')",
-                    [booking.booking_group_id]
-                );
-                slotsToRefund = cnt || 1;
                 await pool.query(
                     "UPDATE bookings SET status = 'cancelled' WHERE booking_group_id = ? AND company_id = ? AND status NOT IN ('done', 'cancelled')",
                     [booking.booking_group_id, companyId]
@@ -626,11 +611,11 @@ router.post("/api/bookings/cancel/:id", authenticateToken, requireRole('company_
                     [id, companyId]
                 );
             }
-            // Refund sessions back to the student package
+            // Refund 1 session — one class = one session regardless of slot count
             await pool.query(
-                `UPDATE student_packages SET sessions_remaining = sessions_remaining + ?
+                `UPDATE student_packages SET sessions_remaining = sessions_remaining + 1
                  WHERE id = ? AND company_id = ?`,
-                [slotsToRefund, booking.student_package_id, companyId]
+                [booking.student_package_id, companyId]
             );
         } else {
             await pool.query(

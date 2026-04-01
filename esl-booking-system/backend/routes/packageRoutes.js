@@ -180,7 +180,7 @@ router.post("/package/confirm/:id", authenticateToken, requireRole('company_admi
 
         // Lock the package row to prevent concurrent confirm
         const [[newPkg]] = await connection.query(
-            `SELECT sp.id, sp.student_id, sp.sessions_remaining, tp.session_limit
+            `SELECT sp.id, sp.student_id, sp.sessions_remaining, sp.teacher_id AS new_teacher_id, tp.session_limit
              FROM student_packages sp
              JOIN tutorial_packages tp ON sp.package_id = tp.id
              WHERE sp.id = ? AND sp.company_id = ? AND sp.payment_status != 'paid'
@@ -195,13 +195,16 @@ router.post("/package/confirm/:id", authenticateToken, requireRole('company_admi
         // Check if the student already has an existing paid package (lock it too)
         // Prefer the one with sessions remaining (the active one bookings are made against)
         const [[existingPkg]] = await connection.query(
-            `SELECT id FROM student_packages
+            `SELECT id, teacher_id AS existing_teacher_id FROM student_packages
              WHERE student_id = ? AND company_id = ? AND payment_status = 'paid' AND id != ?
              ORDER BY CASE WHEN sessions_remaining > 0 THEN 0 ELSE 1 END, purchased_at DESC
              LIMIT 1
              FOR UPDATE`,
             [newPkg.student_id, companyId, id]
         );
+
+        let teacherConflict = null;
+        let teacherApplied = null;
 
         if (existingPkg) {
             // Append sessions to existing paid package
@@ -214,6 +217,26 @@ router.post("/package/confirm/:id", authenticateToken, requireRole('company_admi
                 `UPDATE student_packages SET payment_status = 'paid', sessions_remaining = 0 WHERE id = ? AND company_id = ?`,
                 [id, companyId]
             );
+
+            // Handle teacher preference from new package
+            if (newPkg.new_teacher_id) {
+                if (!existingPkg.existing_teacher_id) {
+                    // No current teacher — auto-apply the new preference
+                    await connection.query(
+                        'UPDATE student_packages SET teacher_id = ? WHERE id = ? AND company_id = ?',
+                        [newPkg.new_teacher_id, existingPkg.id, companyId]
+                    );
+                    teacherApplied = newPkg.new_teacher_id;
+                } else if (existingPkg.existing_teacher_id !== newPkg.new_teacher_id) {
+                    // Different teacher requested — flag for admin to decide
+                    teacherConflict = {
+                        newTeacherId: newPkg.new_teacher_id,
+                        existingTeacherId: existingPkg.existing_teacher_id,
+                        existingPackageId: existingPkg.id,
+                        studentId: newPkg.student_id,
+                    };
+                }
+            }
         } else {
             // No existing paid package — confirm normally
             await connection.query(
@@ -225,7 +248,7 @@ router.post("/package/confirm/:id", authenticateToken, requireRole('company_admi
         await connection.commit();
 
         const [rows] = await pool.query("SELECT * FROM student_packages WHERE id = ? AND company_id = ?", [id, companyId]);
-        res.json({ message: "Enrollee confirmed successfully", enrollee: rows[0] });
+        res.json({ message: "Enrollee confirmed successfully", enrollee: rows[0], teacherConflict, teacherApplied });
     } catch (err) {
         await connection.rollback();
         console.error("Error confirming package:", err);
@@ -249,19 +272,21 @@ router.post("/package/reject/:id", authenticateToken, requireRole('company_admin
         }
 
         // Cancel any active bookings associated with this package and refund sessions
-        const [[{ activeCnt }]] = await pool.query(
-            "SELECT COUNT(*) AS activeCnt FROM bookings WHERE student_package_id = ? AND status NOT IN ('done', 'cancelled')",
+        // Count distinct classes (not raw slots) — one class = one session regardless of slot count
+        const [[{ classCount }]] = await pool.query(
+            `SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS classCount
+             FROM bookings WHERE student_package_id = ? AND status NOT IN ('done', 'cancelled')`,
             [id]
         );
-        if (activeCnt > 0) {
+        if (classCount > 0) {
             await pool.query(
                 "UPDATE bookings SET status = 'cancelled' WHERE student_package_id = ? AND status NOT IN ('done', 'cancelled')",
                 [id]
             );
-            // Refund sessions for the cancelled bookings
+            // Refund 1 session per class
             await pool.query(
                 `UPDATE student_packages SET sessions_remaining = sessions_remaining + ? WHERE id = ? AND company_id = ?`,
-                [activeCnt, id, companyId]
+                [classCount, id, companyId]
             );
         }
 

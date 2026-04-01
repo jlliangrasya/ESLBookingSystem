@@ -17,13 +17,13 @@ router.post('/', authenticateToken, requireRole('teacher'), async (req, res) => 
             return res.status(400).json({ message: 'booking_id and student_id are required' });
         }
 
-        // Verify booking belongs to this company and is done
+        // Verify booking belongs to this company, is done, and assigned to this teacher
         const [[booking]] = await pool.query(
-            "SELECT * FROM bookings WHERE id = ? AND company_id = ? AND status = 'done'",
-            [booking_id, companyId]
+            "SELECT * FROM bookings WHERE id = ? AND company_id = ? AND status = 'done' AND teacher_id = ?",
+            [booking_id, companyId, teacherId]
         );
         if (!booking) {
-            return res.status(404).json({ message: 'Booking not found or class not yet completed. Reports can only be submitted after the class is marked as done.' });
+            return res.status(403).json({ message: 'You are not authorized to submit a report for this booking. Only the assigned teacher can submit.' });
         }
 
         // Upsert report (one per booking)

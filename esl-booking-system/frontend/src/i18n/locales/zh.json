@@ -179,7 +179,7 @@
   "timeslot": {
     "title": "可预约时间段",
     "timezoneNote": "所有时间均为菲律宾/中国/新加坡/香港时间 (UTC+8)",
-    "durationNote": "您的 {{duration}} 分钟课程将自动预约 {{slots}} 个连续时间段（扣除 {{slots}} 节课时）。",
+    "durationNote": "您的 {{duration}} 分钟课程将自动预约 {{slots}} 个连续时间段（扣除 1 节课时）。",
     "available": "可预约",
     "yourClass": "我的课程",
     "booked": "已被预约",
@@ -188,7 +188,7 @@
     "refreshing": "刷新中...",
     "confirmBooking": "确认预约",
     "confirmSingle": "确定要预约此课程吗？将从您的课程包中扣除1节课时。",
-    "confirmMulti": "确定要预约此 {{duration}} 分钟课程吗？将预约 {{slots}} 个连续时间段并扣除 {{slots}} 节课时。",
+    "confirmMulti": "确定要预约此 {{duration}} 分钟课程吗？将预约 {{slots}} 个连续时间段并扣除 1 节课时。",
     "yesBookIt": "是的，预约",
     "booking": "预约中...",
     "selectTeacher": "选择教师",

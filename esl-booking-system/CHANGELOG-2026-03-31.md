@@ -380,3 +380,36 @@ PACKAGE REJECTED → active bookings cancelled + sessions refunded
 - Changed `notify()` from `async function` to a synchronous function that spawns the async work in a detached IIFE.
 - Callers no longer need to (or can) await it — it's fire-and-forget.
 - Failures are still logged but never propagate to the caller.
+
+---
+
+## Part 4: Session Count — One Class = One Session (2026-04-01)
+
+**Problem reported by student:** A 50-minute class deducted 2 sessions from the package instead of 1. The system was treating each 30-minute timeslot as one session, so a 50-minute class (2 consecutive slots) deducted 2 sessions.
+
+**Business rule clarified:** One booking = one class = one session, regardless of how many consecutive 30-minute timeslots the class spans. `slotsNeeded` should only control teacher availability blocking, not session accounting.
+
+### Files modified: 5 backend files + 3 i18n files
+
+### Fix 1 — Student booking creation (`bookingRoutes.js`)
+- Session check changed from `sessions_remaining < slotsNeeded` to `sessions_remaining <= 0`. A student only needs 1 session to book any class duration.
+- Session deduction changed from `sessions_remaining - slotsNeeded` to `sessions_remaining - 1`.
+- `slotsNeeded` is still used to book consecutive timeslots in `teacher_available_slots` (teacher scheduling remains unchanged).
+
+### Fix 2 — Student cancel refund (`bookingRoutes.js`)
+- Refund changed from "count of active group slots" to always `+1 session`.
+- All slots in the group are still cancelled (teacher availability correctly freed).
+
+### Fix 3 — Admin cancel refund (`bookingRoutes.js`)
+- Same fix: refund is always `+1 session` per class cancelled, regardless of slot count.
+
+### Fix 4 — Teacher cancel refund (`teacherRoutes.js`)
+- Same fix: refund is always `+1 session` per class cancelled.
+
+### Fix 5 — Package rejection refund (`packageRoutes.js`)
+- The reject flow counts raw booking rows to refund. For a 50-min class this would count 2 rows and refund 2 sessions, but only 1 was deducted.
+- Fixed to count distinct classes using `COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR)))` — each unique class (group or individual slot) = 1 session refunded.
+
+### Fix 6 — Frontend messages (`en.json`, `zh.json`, `ko.json`)
+- `timeslot.durationNote`: Changed "{{slots}} sessions deducted" → "1 session deducted".
+- `timeslot.confirmMulti`: Changed "use {{slots}} sessions" → "use 1 session".
