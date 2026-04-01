@@ -243,6 +243,20 @@ router.post("/package/confirm/:id", authenticateToken, requireRole('company_admi
                 "UPDATE student_packages SET payment_status = 'paid' WHERE id = ? AND company_id = ?",
                 [id, companyId]
             );
+            // Auto-assign teacher if company has exactly one and package has no teacher
+            if (!newPkg.new_teacher_id) {
+                const [companyTeachers] = await connection.query(
+                    "SELECT id FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE",
+                    [companyId]
+                );
+                if (companyTeachers.length === 1) {
+                    await connection.query(
+                        'UPDATE student_packages SET teacher_id = ? WHERE id = ? AND company_id = ?',
+                        [companyTeachers[0].id, id, companyId]
+                    );
+                    teacherApplied = companyTeachers[0].id;
+                }
+            }
         }
 
         await connection.commit();

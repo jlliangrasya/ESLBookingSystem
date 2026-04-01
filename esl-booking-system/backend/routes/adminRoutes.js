@@ -909,12 +909,23 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
   const connection = await pool.getConnection();
   try {
     const companyId = req.user.company_id;
-    const { student_package_id, appointment_date, teacher_id } = req.body;
+    let { student_package_id, appointment_date, teacher_id } = req.body;
     if (!student_package_id || !appointment_date) {
       return res.status(400).json({ message: 'student_package_id and appointment_date are required' });
     }
 
     await connection.beginTransaction();
+
+    // Auto-assign the only teacher if none specified and company has exactly one
+    if (!teacher_id) {
+      const [companyTeachers] = await connection.query(
+        "SELECT id FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE",
+        [companyId]
+      );
+      if (companyTeachers.length === 1) {
+        teacher_id = companyTeachers[0].id;
+      }
+    }
 
     // Lock package row to prevent concurrent session deductions
     const [[sp]] = await connection.query(

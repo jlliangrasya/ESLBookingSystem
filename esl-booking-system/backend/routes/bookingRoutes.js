@@ -91,6 +91,17 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
 
         let teacherId = spRows[0].teacher_id;
 
+        // Auto-assign the only teacher if there's exactly one in the company
+        if (!teacherId) {
+            const [companyTeachers] = await connection.query(
+                "SELECT id FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE",
+                [companyId]
+            );
+            if (companyTeachers.length === 1) {
+                teacherId = companyTeachers[0].id;
+            }
+        }
+
         // Allow student to pick a teacher if package has no assigned teacher and setting is ON
         if (!teacherId && req.body.teacher_id) {
             const [[company]] = await connection.query(
