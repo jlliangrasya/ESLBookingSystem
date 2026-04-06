@@ -85,7 +85,7 @@ const NavBar: React.FC = () => {
   );
 
   return (
-    <header className="w-full brand-gradient shadow-lg sticky top-0 z-50">
+    <header className="w-full brand-gradient shadow-lg sticky top-0 z-50 overflow-x-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link to={logoLink} className="flex items-center">
@@ -93,7 +93,7 @@ const NavBar: React.FC = () => {
         </Link>
 
         {/* Desktop nav links — hidden on mobile */}
-        <nav className="hidden md:flex items-center gap-5">
+        <nav className="hidden lg:flex items-center gap-5">
           {navLinks}
 
           {(role === "super_admin" || (role === "company_admin" && isOwner)) && (
@@ -148,7 +148,7 @@ const NavBar: React.FC = () => {
         </nav>
 
         {/* Mobile: action buttons + hamburger */}
-        <div className="flex md:hidden items-center gap-2">
+        <div className="flex lg:hidden items-center gap-2">
           <InstallAppButton variant="white" />
           <NotificationBell variant="white" />
           <Button
@@ -164,7 +164,7 @@ const NavBar: React.FC = () => {
 
       {/* Mobile menu */}
       {mobileOpen && (
-        <div className="md:hidden brand-gradient border-t border-white/10 pb-3">
+        <div className="lg:hidden brand-gradient border-t border-white/10 pb-3">
           {mobileNavLinks}
 
           {(role === "super_admin" || (role === "company_admin" && isOwner)) && (
