@@ -12,6 +12,7 @@ import HeroIllustration from "@/components/HeroIllustration";
 import WaveDivider from "@/components/WaveDivider";
 import ScrollReveal from "@/components/ScrollReveal";
 import { Building2, ArrowRight } from "lucide-react";
+import InstallAppButton from "@/components/InstallAppButton";
 
 const Home = () => {
   const navigate = useNavigate();
@@ -25,6 +26,7 @@ const Home = () => {
           <BrandLogo variant="white" />
           <div className="flex items-center gap-3">
             <LanguageToggle variant="white" />
+            <InstallAppButton variant="white" />
             <Button
               size="sm"
               className="bg-white/15 text-white border border-white/40 hover:bg-white/25 transition-colors backdrop-blur-sm"

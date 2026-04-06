@@ -32,17 +32,17 @@ interface AssignedStudent {
 interface Booking {
   id: number; appointment_date: string; status: string; student_name: string;
   package_name: string; subject: string; class_mode: string | null; meeting_link: string | null;
-  student_absent: boolean;
+  student_absent: boolean; slot_count?: number;
 }
 interface CompletedBooking {
   id: number; appointment_date: string; status: string; student_name: string;
   student_id: number; package_name: string; subject: string; has_report: boolean;
-  student_absent: boolean; teacher_absent: boolean;
+  student_absent: boolean; teacher_absent: boolean; slot_count?: number;
 }
 interface PendingItem {
   id: number; appointment_date: string; status: string; student_name: string;
   student_id: number; package_name: string; subject: string;
-  student_package_id: number; student_absent: boolean;
+  student_package_id: number; student_absent: boolean; slot_count?: number;
 }
 interface TeacherLeave {
   id: number; leave_date: string; reason_type: string; notes: string | null;
@@ -824,7 +824,10 @@ const TeacherDashboard = () => {
                     ) : (
                       pendingConfirmation.map((b) => (
                         <TableRow key={b.id}>
-                          <TableCell className="text-sm">{fmtDate(b.appointment_date, "MMM d, h:mm a")}</TableCell>
+                          <TableCell className="text-sm">
+                            {fmtDate(b.appointment_date, "MMM d, h:mm a")}
+                            {(b.slot_count ?? 1) > 1 && <span className="ml-1 text-xs text-muted-foreground">({(b.slot_count ?? 1) * 30}min)</span>}
+                          </TableCell>
                           <TableCell className="font-medium">{b.student_name}</TableCell>
                           <TableCell className="text-xs">{b.package_name}</TableCell>
                           <TableCell className="text-xs">{b.subject}</TableCell>
@@ -895,7 +898,10 @@ const TeacherDashboard = () => {
                         const canMarkAbsent = Date.now() >= classTime + 15 * 60 * 1000;
                         return (
                           <TableRow key={b.id}>
-                            <TableCell className="text-sm">{fmtDate(b.appointment_date, "MMM d, h:mm a")}</TableCell>
+                            <TableCell className="text-sm">
+                              {fmtDate(b.appointment_date, "MMM d, h:mm a")}
+                              {(b.slot_count ?? 1) > 1 && <span className="ml-1 text-xs text-muted-foreground">({(b.slot_count ?? 1) * 30}min)</span>}
+                            </TableCell>
                             <TableCell className="font-medium">{b.student_name}</TableCell>
                             <TableCell className="text-xs">{b.package_name}</TableCell>
                             <TableCell className="text-xs">{b.subject}</TableCell>
@@ -1000,7 +1006,10 @@ const TeacherDashboard = () => {
                       ) : (
                         filteredCompleted.filter(b => b.status === "done").map(b => (
                           <TableRow key={b.id}>
-                            <TableCell className="text-sm">{fmtDate(b.appointment_date, "MMM d, h:mm a")}</TableCell>
+                            <TableCell className="text-sm">
+                              {fmtDate(b.appointment_date, "MMM d, h:mm a")}
+                              {(b.slot_count ?? 1) > 1 && <span className="ml-1 text-xs text-muted-foreground">({(b.slot_count ?? 1) * 30}min)</span>}
+                            </TableCell>
                             <TableCell className="font-medium">{b.student_name}</TableCell>
                             <TableCell className="text-xs">{b.package_name}</TableCell>
                             <TableCell className="text-xs">{b.subject}</TableCell>

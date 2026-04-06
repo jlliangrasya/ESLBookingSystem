@@ -201,6 +201,13 @@
     "markAllRead": "全部标为已读",
     "empty": "暂无通知"
   },
+  "pwa": {
+    "installApp": "安装应用",
+    "pushNotifications": "推送通知",
+    "pushDescription": "即使应用关闭也能收到通知",
+    "updateAvailable": "有新版本可用",
+    "updateNow": "立即更新"
+  },
   "profile": {
     "title": "我的资料",
     "backToDashboard": "返回仪表盘",

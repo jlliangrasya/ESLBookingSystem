@@ -201,6 +201,13 @@
     "markAllRead": "Mark all read",
     "empty": "No notifications yet"
   },
+  "pwa": {
+    "installApp": "Install App",
+    "pushNotifications": "Push Notifications",
+    "pushDescription": "Receive notifications even when the app is closed",
+    "updateAvailable": "A new version is available",
+    "updateNow": "Update Now"
+  },
   "profile": {
     "title": "My Profile",
     "backToDashboard": "Back to Dashboard",

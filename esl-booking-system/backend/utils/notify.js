@@ -1,6 +1,7 @@
 const pool = require('../db');
 const { getIO } = require('../socket');
 const logger = require('./logger');
+const { sendPushToUser } = require('./pushService');
 
 /**
  * Create a notification in DB and emit it via socket.io to the recipient.
@@ -29,6 +30,8 @@ function notify({ userId, companyId = null, type, title, message = '' }) {
             if (io) {
                 io.to(`user:${userId}`).emit('notification', row);
             }
+
+            sendPushToUser(userId, { title, message, type });
         } catch (err) {
             logger.error('Notify error:', { error: err.message, userId, type });
         }

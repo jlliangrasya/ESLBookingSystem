@@ -42,6 +42,7 @@ const notificationRoutes = require('./routes/notificationRoutes.js');
 const reportRoutes = require('./routes/reportRoutes.js');
 const waitlistRoutes = require('./routes/waitlistRoutes.js');
 const exportRoutes = require('./routes/exportRoutes.js');
+const pushRoutes = require('./routes/pushRoutes.js');
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -119,6 +120,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/waitlist', waitlistRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/push', pushRoutes);
 
 const { startScheduler } = require('./scheduler');
 startScheduler();

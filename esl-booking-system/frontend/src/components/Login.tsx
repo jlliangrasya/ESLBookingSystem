@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { isPushSupported, subscribeToPush } from "@/utils/pushNotifications";
 
 const ROLE_ROUTES: Record<UserRole, string> = {
   super_admin: "/super-admin",
@@ -62,6 +63,12 @@ const Login = () => {
 
       const trialExpired = res.data.trial_expired ?? false;
       login(res.data.token, res.data.user, trialExpired);
+
+      // Fire-and-forget push notification subscription
+      if (isPushSupported()) {
+        subscribeToPush(res.data.token).catch(() => {});
+      }
+
       if (trialExpired) return navigate("/upgrade");
       navigate(ROLE_ROUTES[res.data.user.role as UserRole] ?? "/");
     } catch (err: unknown) {

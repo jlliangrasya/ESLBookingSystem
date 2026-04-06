@@ -130,18 +130,18 @@ router.get("/teachers", authenticateToken, requireRole('company_admin'), async (
 
     const [rows] = await pool.query(`
       SELECT u.id, u.name, u.email, u.created_at,
-             COUNT(DISTINCT CASE WHEN b.appointment_date >= NOW() AND b.status NOT IN ('cancelled','done') THEN b.id END) AS upcoming_classes,
-             COUNT(DISTINCT CASE WHEN DATE(b.appointment_date) = CURDATE() AND b.status NOT IN ('cancelled','done') THEN b.id END) AS classes_today,
+             COUNT(DISTINCT CASE WHEN b.appointment_date >= NOW() AND b.status NOT IN ('cancelled','done') THEN COALESCE(b.booking_group_id, CAST(b.id AS CHAR)) END) AS upcoming_classes,
+             COUNT(DISTINCT CASE WHEN DATE(b.appointment_date) = CURDATE() AND b.status NOT IN ('cancelled','done') THEN COALESCE(b.booking_group_id, CAST(b.id AS CHAR)) END) AS classes_today,
              COUNT(DISTINCT CASE WHEN b.status IN ('confirmed','done')
                                    AND YEARWEEK(b.appointment_date, 1) = YEARWEEK(CURDATE(), 1)
-                              THEN b.id END) AS classes_this_week,
+                              THEN COALESCE(b.booking_group_id, CAST(b.id AS CHAR)) END) AS classes_this_week,
              COUNT(DISTINCT CASE WHEN b.status IN ('confirmed','done')
                                    AND YEAR(b.appointment_date) = ?
                                    AND MONTH(b.appointment_date) = ?
-                              THEN b.id END) AS classes_this_month,
-             COUNT(DISTINCT CASE WHEN b.status = 'done' AND (b.teacher_absent = FALSE OR b.teacher_absent IS NULL) THEN b.id END) AS attended_count,
-             COUNT(DISTINCT CASE WHEN b.status = 'done' AND b.teacher_absent = TRUE THEN b.id END) AS absent_count,
-             COUNT(DISTINCT CASE WHEN b.status = 'done' THEN b.id END) AS total_done
+                              THEN COALESCE(b.booking_group_id, CAST(b.id AS CHAR)) END) AS classes_this_month,
+             COUNT(DISTINCT CASE WHEN b.status = 'done' AND (b.teacher_absent = FALSE OR b.teacher_absent IS NULL) THEN COALESCE(b.booking_group_id, CAST(b.id AS CHAR)) END) AS attended_count,
+             COUNT(DISTINCT CASE WHEN b.status = 'done' AND b.teacher_absent = TRUE THEN COALESCE(b.booking_group_id, CAST(b.id AS CHAR)) END) AS absent_count,
+             COUNT(DISTINCT CASE WHEN b.status = 'done' THEN COALESCE(b.booking_group_id, CAST(b.id AS CHAR)) END) AS total_done
       FROM users u
       LEFT JOIN bookings b ON b.teacher_id = u.id AND b.company_id = u.company_id
       WHERE u.company_id = ? AND u.role = 'teacher' AND u.is_active = TRUE
@@ -1446,11 +1446,11 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
          (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'student') AS totalStudents,
          (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE) AS teachersCount,
          (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'company_admin' AND is_active = TRUE) AS adminsCount,
-         (SELECT COUNT(*) FROM bookings WHERE company_id = ? AND status = 'done') AS totalSessions,
-         (SELECT COUNT(*) FROM bookings WHERE company_id = ? AND status = 'cancelled') AS totalCancelled,
-         (SELECT COUNT(*) FROM bookings WHERE company_id = ? AND DATE(appointment_date) = CURDATE() AND status != 'cancelled') AS classesToday,
-         (SELECT COUNT(*) FROM bookings WHERE company_id = ? AND YEARWEEK(appointment_date, 1) = YEARWEEK(CURDATE(), 1) AND status != 'cancelled') AS classesThisWeek,
-         (SELECT COUNT(*) FROM bookings WHERE company_id = ? AND YEAR(appointment_date) = YEAR(CURDATE()) AND MONTH(appointment_date) = MONTH(CURDATE()) AND status != 'cancelled') AS classesThisMonth,
+         (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND status = 'done') AS totalSessions,
+         (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND status = 'cancelled') AS totalCancelled,
+         (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND DATE(appointment_date) = CURDATE() AND status != 'cancelled') AS classesToday,
+         (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND YEARWEEK(appointment_date, 1) = YEARWEEK(CURDATE(), 1) AND status != 'cancelled') AS classesThisWeek,
+         (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND YEAR(appointment_date) = YEAR(CURDATE()) AND MONTH(appointment_date) = MONTH(CURDATE()) AND status != 'cancelled') AS classesThisMonth,
          (SELECT IFNULL(SUM(tp.price), 0) FROM student_packages sp
           JOIN tutorial_packages tp ON sp.package_id = tp.id
           WHERE sp.company_id = ? AND sp.payment_status = 'paid') AS totalRevenue,

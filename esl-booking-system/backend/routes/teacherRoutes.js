@@ -18,6 +18,24 @@ function todayDate() {
     return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * Group multi-slot bookings by booking_group_id.
+ * Keeps only the first slot per group, adds slot_count.
+ * Solo bookings (no group) pass through with slot_count = 1.
+ */
+function groupMultiSlotBookings(rows) {
+    const groups = new Map();
+    for (const row of rows) {
+        const key = row.booking_group_id || `solo_${row.id}`;
+        if (!groups.has(key)) {
+            groups.set(key, { ...row, slot_count: 1 });
+        } else {
+            groups.get(key).slot_count++;
+        }
+    }
+    return Array.from(groups.values());
+}
+
 // Teacher dashboard — assigned students and upcoming bookings
 router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, res) => {
     try {
@@ -46,7 +64,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
         `, [teacherId, companyId]);
 
         // Upcoming bookings for this teacher (includes today's past classes so teacher can mark absences)
-        const [bookings] = await pool.query(`
+        const [bookingRows] = await pool.query(`
             SELECT
                 b.id,
                 b.appointment_date,
@@ -54,6 +72,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
                 b.class_mode,
                 b.meeting_link,
                 b.student_absent,
+                b.booking_group_id,
                 u.name AS student_name,
                 tp.package_name,
                 sp.subject
@@ -66,15 +85,17 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
               AND b.status NOT IN ('done', 'cancelled')
             ORDER BY b.appointment_date ASC
         `, [teacherId, companyId, todayDate()]);
+        const bookings = groupMultiSlotBookings(bookingRows);
 
         // Completed bookings for this teacher (with has_report flag + absence tracking)
-        const [completedBookings] = await pool.query(`
+        const [completedRows] = await pool.query(`
             SELECT
                 b.id,
                 b.appointment_date,
                 b.status,
                 b.student_absent,
                 b.teacher_absent,
+                b.booking_group_id,
                 u.name AS student_name,
                 sp.student_id,
                 tp.package_name,
@@ -87,12 +108,13 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
             LEFT JOIN class_reports cr ON cr.booking_id = b.id
             WHERE b.teacher_id = ? AND b.company_id = ? AND b.status = 'done'
             ORDER BY b.appointment_date DESC
-            LIMIT 20
+            LIMIT 50
         `, [teacherId, companyId]);
+        const completedBookings = groupMultiSlotBookings(completedRows).slice(0, 20);
 
-        // Classes this week and this month (confirmed + done)
+        // Classes this week and this month — count distinct classes (not slots)
         const [[weekRow]] = await pool.query(`
-            SELECT COUNT(*) AS classes_this_week
+            SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS classes_this_week
             FROM bookings
             WHERE teacher_id = ? AND company_id = ?
               AND status IN ('confirmed', 'done')
@@ -100,7 +122,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
         `, [teacherId, companyId, todayDate()]);
 
         const [[monthRow]] = await pool.query(`
-            SELECT COUNT(*) AS classes_this_month
+            SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS classes_this_month
             FROM bookings
             WHERE teacher_id = ? AND company_id = ?
               AND status IN ('confirmed', 'done')
@@ -108,12 +130,12 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
               AND MONTH(appointment_date) = MONTH(?)
         `, [teacherId, companyId, todayDate(), todayDate()]);
 
-        // Health summary (all-time)
+        // Health summary (all-time) — count distinct classes
         const [[healthRow]] = await pool.query(`
-            SELECT COUNT(*) AS total_done,
-                   SUM(CASE WHEN teacher_absent = TRUE THEN 1 ELSE 0 END) AS total_absent
-            FROM bookings
-            WHERE teacher_id = ? AND company_id = ? AND status = 'done'
+            SELECT COUNT(DISTINCT grp) AS total_done,
+                   COUNT(DISTINCT CASE WHEN teacher_absent = TRUE THEN grp END) AS total_absent
+            FROM (SELECT COALESCE(booking_group_id, CAST(id AS CHAR)) AS grp, teacher_absent
+                  FROM bookings WHERE teacher_id = ? AND company_id = ? AND status = 'done') t
         `, [teacherId, companyId]);
 
         res.json({
@@ -200,7 +222,7 @@ router.post('/bookings/:id/mark-student-absent', authenticateToken, requireRole(
         const { id } = req.params;
 
         const [[booking]] = await pool.query(
-            `SELECT id, student_absent FROM bookings
+            `SELECT id, student_absent, booking_group_id FROM bookings
              WHERE id = ? AND teacher_id = ?
                AND TIMESTAMPADD(MINUTE, 15, appointment_date) <= ?
                AND status NOT IN ('done', 'cancelled')`,
@@ -213,7 +235,12 @@ router.post('/bookings/:id/mark-student-absent', authenticateToken, requireRole(
             return res.status(400).json({ message: 'Student already marked as absent for this class.' });
         }
 
-        await pool.query('UPDATE bookings SET student_absent = TRUE WHERE id = ? AND teacher_id = ?', [id, teacherId]);
+        // Mark all slots in the group as student absent
+        if (booking.booking_group_id) {
+            await pool.query('UPDATE bookings SET student_absent = TRUE WHERE booking_group_id = ? AND teacher_id = ?', [booking.booking_group_id, teacherId]);
+        } else {
+            await pool.query('UPDATE bookings SET student_absent = TRUE WHERE id = ? AND teacher_id = ?', [id, teacherId]);
+        }
         res.json({ message: 'Student marked as absent' });
     } catch (err) {
         console.error(err);
@@ -363,6 +390,7 @@ router.get('/completed-classes', authenticateToken, requireRole('teacher'), asyn
 
         const [rows] = await pool.query(`
             SELECT b.id, b.appointment_date, b.status, b.student_absent, b.teacher_absent,
+                   b.booking_group_id,
                    u.name AS student_name, sp.student_id, tp.package_name, sp.subject,
                    CASE WHEN cr.id IS NOT NULL THEN TRUE ELSE FALSE END AS has_report
             FROM bookings b
@@ -375,7 +403,7 @@ router.get('/completed-classes', authenticateToken, requireRole('teacher'), asyn
             ORDER BY b.appointment_date DESC
         `, [teacherId, companyId, year, month]);
 
-        res.json(rows);
+        res.json(groupMultiSlotBookings(rows));
     } catch (err) {
         res.status(500).json({ message: 'Server error' });
     }
@@ -390,7 +418,7 @@ router.get('/class-stats', authenticateToken, requireRole('teacher'), async (req
         const year = parseInt(req.query.year) || new Date().getFullYear();
 
         const [[row]] = await pool.query(`
-            SELECT COUNT(*) AS class_count
+            SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS class_count
             FROM bookings
             WHERE teacher_id = ? AND company_id = ?
               AND status IN ('confirmed', 'done')
@@ -412,7 +440,7 @@ router.get('/pending-confirmation', authenticateToken, requireRole('teacher'), a
         const [rows] = await pool.query(`
             SELECT
                 b.id, b.appointment_date, b.status, b.student_absent,
-                b.student_package_id,
+                b.student_package_id, b.booking_group_id,
                 u.name AS student_name,
                 sp.student_id,
                 tp.package_name,
@@ -426,7 +454,7 @@ router.get('/pending-confirmation', authenticateToken, requireRole('teacher'), a
               AND b.status IN ('pending', 'confirmed')
             ORDER BY b.appointment_date DESC
         `, [teacherId, companyId, nowDatetime()]);
-        res.json(rows);
+        res.json(groupMultiSlotBookings(rows));
     } catch (err) {
         res.status(500).json({ message: 'Server error' });
     }
@@ -442,7 +470,7 @@ router.post('/bookings/:id/done', authenticateToken, requireRole('teacher'), asy
     try {
         const [[booking]] = await pool.query(
             `SELECT b.id, b.student_package_id, b.appointment_date, b.student_absent,
-                    sp.student_id, u.name AS student_name
+                    b.booking_group_id, sp.student_id, u.name AS student_name
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
              JOIN users u ON sp.student_id = u.id
@@ -456,10 +484,18 @@ router.post('/bookings/:id/done', authenticateToken, requireRole('teacher'), asy
         await connection.beginTransaction();
 
         // Mark as done — sessions were already deducted at booking time
-        await connection.query(
-            "UPDATE bookings SET status = 'done' WHERE id = ? AND teacher_id = ? AND company_id = ?",
-            [id, teacherId, companyId]
-        );
+        // If part of a multi-slot group, mark ALL slots in the group as done
+        if (booking.booking_group_id) {
+            await connection.query(
+                "UPDATE bookings SET status = 'done' WHERE booking_group_id = ? AND teacher_id = ? AND company_id = ? AND status IN ('pending', 'confirmed')",
+                [booking.booking_group_id, teacherId, companyId]
+            );
+        } else {
+            await connection.query(
+                "UPDATE bookings SET status = 'done' WHERE id = ? AND teacher_id = ? AND company_id = ?",
+                [id, teacherId, companyId]
+            );
+        }
 
         await connection.commit();
 

@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import AuthContext from "@/context/AuthContext";
 import NotificationBell from "@/components/NotificationBell";
 import LanguageToggle from "@/components/LanguageToggle";
+import InstallAppButton from "@/components/InstallAppButton";
 
 const NavBar: React.FC = () => {
   const navigate = useNavigate();
@@ -118,6 +119,7 @@ const NavBar: React.FC = () => {
             </Link>
           )}
 
+          <InstallAppButton variant="white" />
           <LanguageToggle variant="white" />
           <NotificationBell variant="white" />
 

@@ -1,6 +1,7 @@
 import { createContext, useState, useEffect } from "react";
 import axios from "axios";
 import { setUserTimezone } from "@/utils/timezone";
+import { unsubscribeFromPush } from "@/utils/pushNotifications";
 
 export type UserRole = 'super_admin' | 'company_admin' | 'teacher' | 'student';
 
@@ -52,6 +53,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const logout = () => {
+    const currentToken = token;
     setToken(null);
     setUser(null);
     setTrialExpired(false);
@@ -59,6 +61,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     localStorage.removeItem("user");
     localStorage.removeItem("trial_expired");
     localStorage.removeItem("userTimezone");
+
+    if (currentToken) {
+      unsubscribeFromPush(currentToken).catch(() => {});
+    }
   };
 
   // Auto-logout on expired/invalid token (401 response)
