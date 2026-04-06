@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import {
   CalendarDays, Users, LogOut, Loader2, FileText, CalendarOff,
   Plus, X, Video, LayoutList, UserCircle, Activity, CheckSquare,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Menu,
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 import NotificationBell from "@/components/NotificationBell";
@@ -382,6 +382,7 @@ const TeacherDashboard = () => {
   );
 
   // Handlers
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const handleLogout = () => { authContext?.logout(); navigate("/"); };
 
   const handleMarkDone = async (item: PendingItem) => {
@@ -502,16 +503,18 @@ const TeacherDashboard = () => {
   return (
     <div className="min-h-screen brand-gradient-subtle pattern-dots-light">
       {/* Header */}
-      <div className="brand-gradient shadow-lg sticky top-0 z-50">
+      <div className="brand-gradient shadow-lg sticky top-0 z-50 overflow-x-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <BrandLogo variant="white" />
-            <div>
+            <div className="hidden sm:block">
               <p className="text-xs text-white/60 leading-none">Welcome back,</p>
               <p className="font-semibold text-sm leading-tight text-white">{teacher?.name || "Teacher"}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          {/* Desktop actions */}
+          <div className="hidden sm:flex items-center gap-2">
             <Badge className="bg-white/15 text-white border-0 text-xs">Teacher</Badge>
             <InstallAppButton variant="white" />
             <NotificationBell variant="white" />
@@ -520,7 +523,31 @@ const TeacherDashboard = () => {
               <LogOut className="h-4 w-4" /> Logout
             </Button>
           </div>
+
+          {/* Mobile: bell + hamburger */}
+          <div className="flex sm:hidden items-center gap-2">
+            <NotificationBell variant="white" />
+            <Button variant="ghost" size="icon"
+              className="text-white/80 hover:text-white hover:bg-white/10"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </Button>
+          </div>
         </div>
+
+        {/* Mobile menu */}
+        {mobileMenuOpen && (
+          <div className="sm:hidden border-t border-white/10 pb-2">
+            <div className="px-4 py-2 text-sm text-white/80">{teacher?.name || "Teacher"}</div>
+            <div className="flex items-center gap-3 px-4 py-2">
+              <InstallAppButton variant="white" />
+            </div>
+            <button onClick={() => { setMobileMenuOpen(false); handleLogout(); }}
+              className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-red-200 hover:bg-white/10 w-full">
+              <LogOut className="h-5 w-5" /> <span className="text-sm">Logout</span>
+            </button>
+          </div>
+        )}
         {/* Nav tabs */}
         <div className="max-w-7xl mx-auto px-4 flex gap-0">
           {navItems.map(item => (
