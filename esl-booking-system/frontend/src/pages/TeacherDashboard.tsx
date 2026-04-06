@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 import NotificationBell from "@/components/NotificationBell";
+import InstallAppButton from "@/components/InstallAppButton";
 import ReportModal from "@/components/ReportModal";
 import { fmtDate, fmtDateOnly, parseUTC, TIMEZONES } from "@/utils/timezone";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -512,6 +513,7 @@ const TeacherDashboard = () => {
           </div>
           <div className="flex items-center gap-2">
             <Badge className="bg-white/15 text-white border-0 text-xs">Teacher</Badge>
+            <InstallAppButton variant="white" />
             <NotificationBell variant="white" />
             <Button variant="ghost" size="sm" onClick={handleLogout}
               className="text-white/70 hover:text-white hover:bg-white/10 text-xs gap-1">

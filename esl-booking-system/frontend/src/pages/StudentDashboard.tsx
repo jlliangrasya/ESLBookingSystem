@@ -20,6 +20,7 @@ import BookingConfirmationModal from "../components/BookingConfirmationModal";
 import AuthContext from "@/context/AuthContext";
 import NotificationBell from "@/components/NotificationBell";
 import LanguageToggle from "@/components/LanguageToggle";
+import InstallAppButton from "@/components/InstallAppButton";
 import { fmtDate, fmtDateOnly, fmtTime, parseUTC } from "@/utils/timezone";
 
 interface Student {
@@ -439,6 +440,7 @@ const StudentDashboard = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <InstallAppButton variant="white" />
             <LanguageToggle variant="white" />
             <NotificationBell variant="white" />
             <Button
