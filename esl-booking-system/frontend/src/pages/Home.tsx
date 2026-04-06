@@ -1,5 +1,7 @@
 import { useNavigate } from "react-router-dom";
+import { useContext, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import AuthContext from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Login from "../components/Login";
@@ -14,9 +16,24 @@ import ScrollReveal from "@/components/ScrollReveal";
 import { Building2, ArrowRight } from "lucide-react";
 import InstallAppButton from "@/components/InstallAppButton";
 
+const roleHome: Record<string, string> = {
+  super_admin: '/super-admin',
+  company_admin: '/admin-dashboard',
+  teacher: '/teacher-dashboard',
+  student: '/studentdashboard',
+};
+
 const Home = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const authContext = useContext(AuthContext);
+
+  // Auto-redirect logged-in users to their dashboard (critical for PWA start_url = "/")
+  useEffect(() => {
+    if (authContext?.token && authContext?.user?.role) {
+      navigate(roleHome[authContext.user.role] || '/', { replace: true });
+    }
+  }, [authContext, navigate]);
 
   return (
     <div className="min-h-screen bg-white">
