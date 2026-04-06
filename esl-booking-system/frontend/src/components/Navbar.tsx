@@ -1,8 +1,8 @@
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import BrandLogo from "@/components/BrandLogo";
-import { CalendarDays, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus, BookOpen } from "lucide-react";
+import { CalendarDays, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus, BookOpen, Menu, X } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,6 +22,7 @@ const NavBar: React.FC = () => {
   const authContext = useContext(AuthContext);
   const role = authContext?.user?.role;
   const isOwner = authContext?.user?.is_owner ?? false;
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleLogout = () => {
     authContext?.logout();
@@ -29,6 +30,59 @@ const NavBar: React.FC = () => {
   };
 
   const logoLink = role === "super_admin" ? "/super-admin" : "/admin-dashboard";
+
+  const NavLink = ({ to, icon: Icon, label }: { to: string; icon: React.ElementType; label: string }) => (
+    <Link
+      to={to}
+      onClick={() => setMobileOpen(false)}
+      className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
+      title={label}
+    >
+      <Icon className="h-5 w-5" />
+      <span className="text-[10px] font-medium">{label}</span>
+    </Link>
+  );
+
+  const MobileNavLink = ({ to, icon: Icon, label }: { to: string; icon: React.ElementType; label: string }) => (
+    <Link
+      to={to}
+      onClick={() => setMobileOpen(false)}
+      className="flex items-center gap-3 px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+    >
+      <Icon className="h-5 w-5" />
+      <span className="text-sm font-medium">{label}</span>
+    </Link>
+  );
+
+  const navLinks = role === "super_admin" ? (
+    <>
+      <NavLink to="/super-admin" icon={LayoutDashboard} label={t("nav.dashboard")} />
+      <NavLink to="/super-admin/plans" icon={PackagePlus} label={t("nav.plans")} />
+    </>
+  ) : (
+    <>
+      <NavLink to="/admin-dashboard" icon={CalendarDays} label={t("nav.schedule")} />
+      <NavLink to="/packages" icon={Package} label={t("nav.packages")} />
+      <NavLink to="/students" icon={Users} label={t("nav.students")} />
+      <NavLink to="/teachers" icon={GraduationCap} label={t("nav.teachers")} />
+      <NavLink to="/admin-users" icon={UserCog} label={t("nav.admins")} />
+    </>
+  );
+
+  const mobileNavLinks = role === "super_admin" ? (
+    <>
+      <MobileNavLink to="/super-admin" icon={LayoutDashboard} label={t("nav.dashboard")} />
+      <MobileNavLink to="/super-admin/plans" icon={PackagePlus} label={t("nav.plans")} />
+    </>
+  ) : (
+    <>
+      <MobileNavLink to="/admin-dashboard" icon={CalendarDays} label={t("nav.schedule")} />
+      <MobileNavLink to="/packages" icon={Package} label={t("nav.packages")} />
+      <MobileNavLink to="/students" icon={Users} label={t("nav.students")} />
+      <MobileNavLink to="/teachers" icon={GraduationCap} label={t("nav.teachers")} />
+      <MobileNavLink to="/admin-users" icon={UserCog} label={t("nav.admins")} />
+    </>
+  );
 
   return (
     <header className="w-full brand-gradient shadow-lg sticky top-0 z-50">
@@ -38,85 +92,12 @@ const NavBar: React.FC = () => {
           <BrandLogo variant="white" />
         </Link>
 
-        {/* Nav links */}
-        <nav className="flex items-center gap-5">
-          {role === "super_admin" ? (
-            <>
-              <Link
-                to="/super-admin"
-                className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
-                title={t("nav.dashboard")}
-              >
-                <LayoutDashboard className="h-5 w-5" />
-                <span className="text-[10px] font-medium">{t("nav.dashboard")}</span>
-              </Link>
-              <Link
-                to="/super-admin/plans"
-                className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
-                title={t("nav.plans")}
-              >
-                <PackagePlus className="h-5 w-5" />
-                <span className="text-[10px] font-medium">{t("nav.plans")}</span>
-              </Link>
-            </>
-          ) : (
-            <>
-              <Link
-                to="/admin-dashboard"
-                className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
-                title={t("nav.schedule")}
-              >
-                <CalendarDays className="h-5 w-5" />
-                <span className="text-[10px] font-medium">{t("nav.schedule")}</span>
-              </Link>
-
-              <Link
-                to="/packages"
-                className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
-                title={t("nav.packages")}
-              >
-                <Package className="h-5 w-5" />
-                <span className="text-[10px] font-medium">{t("nav.packages")}</span>
-              </Link>
-
-              <Link
-                to="/students"
-                className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
-                title={t("nav.students")}
-              >
-                <Users className="h-5 w-5" />
-                <span className="text-[10px] font-medium">{t("nav.students")}</span>
-              </Link>
-
-              <Link
-                to="/teachers"
-                className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
-                title={t("nav.teachers")}
-              >
-                <GraduationCap className="h-5 w-5" />
-                <span className="text-[10px] font-medium">{t("nav.teachers")}</span>
-              </Link>
-
-              <Link
-                to="/admin-users"
-                className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
-                title={t("nav.admins")}
-              >
-                <UserCog className="h-5 w-5" />
-                <span className="text-[10px] font-medium">{t("nav.admins")}</span>
-              </Link>
-            </>
-          )}
+        {/* Desktop nav links — hidden on mobile */}
+        <nav className="hidden md:flex items-center gap-5">
+          {navLinks}
 
           {(role === "super_admin" || (role === "company_admin" && isOwner)) && (
-            <Link
-              to="/documentation"
-              className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
-              title={t("nav.documentation")}
-            >
-              <BookOpen className="h-5 w-5" />
-              <span className="text-[10px] font-medium">{t("nav.documentation")}</span>
-            </Link>
+            <NavLink to="/documentation" icon={BookOpen} label={t("nav.documentation")} />
           )}
 
           <InstallAppButton variant="white" />
@@ -165,7 +146,56 @@ const NavBar: React.FC = () => {
             </DropdownMenuContent>
           </DropdownMenu>
         </nav>
+
+        {/* Mobile: action buttons + hamburger */}
+        <div className="flex md:hidden items-center gap-2">
+          <InstallAppButton variant="white" />
+          <NotificationBell variant="white" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-white/80 hover:text-white hover:bg-white/10"
+            onClick={() => setMobileOpen(!mobileOpen)}
+          >
+            {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </Button>
+        </div>
       </div>
+
+      {/* Mobile menu */}
+      {mobileOpen && (
+        <div className="md:hidden brand-gradient border-t border-white/10 pb-3">
+          {mobileNavLinks}
+
+          {(role === "super_admin" || (role === "company_admin" && isOwner)) && (
+            <MobileNavLink to="/documentation" icon={BookOpen} label={t("nav.documentation")} />
+          )}
+
+          {(role === "company_admin" || role === "teacher") && (
+            <MobileNavLink
+              to={role === "teacher" ? "/teacher-profile" : "/profile"}
+              icon={User}
+              label={t("nav.profile")}
+            />
+          )}
+
+          {(role === "company_admin" || role === "super_admin") && (
+            <MobileNavLink to="/activity-log" icon={ClipboardList} label={t("nav.activityLog")} />
+          )}
+
+          <div className="flex items-center gap-3 px-4 py-2">
+            <LanguageToggle variant="white" />
+          </div>
+
+          <button
+            onClick={() => { setMobileOpen(false); handleLogout(); }}
+            className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-red-200 hover:bg-white/10 w-full transition-colors"
+          >
+            <LogOut className="h-5 w-5" />
+            <span className="text-sm font-medium">{t("nav.logout")}</span>
+          </button>
+        </div>
+      )}
     </header>
   );
 };
