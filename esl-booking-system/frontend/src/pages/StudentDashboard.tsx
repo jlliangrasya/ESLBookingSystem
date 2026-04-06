@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { LogOut, Package, CalendarDays, User, FileText, Video, UserX, Send, Copy, Check, UserCircle, Clock, Trash2, Plus, Menu, X } from "lucide-react";
+import { LogOut, Package, CalendarDays, User, FileText, Video, UserX, Send, Copy, Check, UserCircle, Clock, Trash2, Plus } from "lucide-react";
 import PackageSelectionModal from "../components/PackageSelectionModal";
 import BookingConfirmationModal from "../components/BookingConfirmationModal";
 import AuthContext from "@/context/AuthContext";
@@ -418,8 +418,6 @@ const StudentDashboard = () => {
     }
   };
 
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
   const handleLogout = () => {
     authContext?.logout();
     navigate("/");
@@ -429,52 +427,22 @@ const StudentDashboard = () => {
     <div className="min-h-screen brand-gradient-subtle pattern-dots-light">
       {/* Header */}
       <div className="brand-gradient shadow-lg sticky top-0 z-50 overflow-x-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between">
           <BrandLogo variant="white" />
-
-          {/* Desktop actions */}
-          <div className="hidden sm:flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             <InstallAppButton variant="white" />
             <LanguageToggle variant="white" />
             <NotificationBell variant="white" />
-            <Button variant="ghost" size="sm" onClick={() => navigate("/student-profile")}
-              className="text-white/70 hover:text-white hover:bg-white/10">
-              <UserCircle className="h-5 w-5" />
+            <Button variant="ghost" size="icon" onClick={() => navigate("/student-profile")}
+              className="h-8 w-8 sm:h-9 sm:w-9 text-white/70 hover:text-white hover:bg-white/10">
+              <UserCircle className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={handleLogout}
-              className="text-white/70 hover:text-white hover:bg-white/10">
-              <LogOut className="h-4 w-4 mr-1" /> {t("student.logout")}
-            </Button>
-          </div>
-
-          {/* Mobile: bell + hamburger */}
-          <div className="flex sm:hidden items-center gap-2">
-            <NotificationBell variant="white" />
-            <Button variant="ghost" size="icon"
-              className="text-white/80 hover:text-white hover:bg-white/10"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            <Button variant="ghost" size="icon" onClick={handleLogout}
+              className="h-8 w-8 sm:h-9 sm:w-9 text-white/70 hover:text-white hover:bg-white/10">
+              <LogOut className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
           </div>
         </div>
-
-        {/* Mobile menu */}
-        {mobileMenuOpen && (
-          <div className="sm:hidden border-t border-white/10 pb-2">
-            <button onClick={() => { setMobileMenuOpen(false); navigate("/student-profile"); }}
-              className="flex items-center gap-3 px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 w-full">
-              <UserCircle className="h-5 w-5" /> <span className="text-sm">{t("nav.profile")}</span>
-            </button>
-            <div className="flex items-center gap-3 px-4 py-2">
-              <InstallAppButton variant="white" />
-              <LanguageToggle variant="white" />
-            </div>
-            <button onClick={() => { setMobileMenuOpen(false); handleLogout(); }}
-              className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-red-200 hover:bg-white/10 w-full">
-              <LogOut className="h-5 w-5" /> <span className="text-sm">{t("student.logout")}</span>
-            </button>
-          </div>
-        )}
 
         <div className="max-w-7xl mx-auto px-4 pb-5">
           <p className="text-sm text-white/60">{t("student.hiIAm")}</p>
