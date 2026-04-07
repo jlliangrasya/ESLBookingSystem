@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 const authenticateToken = require("../middleware/authMiddleware");
+const { invalidateAuthCache } = authenticateToken;
 const requireRole = require("../middleware/requireRole");
 const notify = require("../utils/notify");
 const { logAction } = require("../utils/audit");
@@ -358,6 +359,7 @@ router.delete("/teachers/:id", authenticateToken, requireRole('company_admin'), 
       });
     }
 
+    invalidateAuthCache(Number(id), null);
     await logAction(companyId, adminId, 'teacher_deactivated', 'user', Number(id), { bookings_cancelled: futureBookings.length, packages_cleared: packageCount });
     res.json({ message: `Teacher removed. ${futureBookings.length} future booking(s) cancelled and sessions refunded. ${packageCount} student package(s) unassigned.` });
   } catch (err) {
@@ -1412,6 +1414,7 @@ router.post('/students/:id/deactivate', authenticateToken, requireRole('company_
       }
     }
 
+    invalidateAuthCache(Number(id), null);
     await logAction(companyId, req.user.id, 'student_deactivated', 'user', Number(id), { bookings_cancelled: futureBookings.length });
     res.json({ message: `Student deactivated. ${futureBookings.length} future booking(s) cancelled and sessions refunded.` });
   } catch (err) {
@@ -1429,6 +1432,7 @@ router.post('/students/:id/reactivate', authenticateToken, requireRole('company_
       [id, companyId]
     );
     if (result.affectedRows === 0) return res.status(404).json({ message: 'Student not found' });
+    invalidateAuthCache(Number(id), null);
     await logAction(companyId, req.user.id, 'student_reactivated', 'user', Number(id), {});
     res.json({ message: 'Student reactivated' });
   } catch (err) {
