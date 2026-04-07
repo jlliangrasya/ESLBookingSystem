@@ -8,6 +8,9 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
         process.env.VAPID_PUBLIC_KEY,
         process.env.VAPID_PRIVATE_KEY
     );
+    logger.info('Web Push VAPID configured');
+} else {
+    logger.warn('Web Push VAPID NOT configured — missing VAPID_PUBLIC_KEY or VAPID_PRIVATE_KEY');
 }
 
 function isConfigured() {
@@ -15,22 +18,30 @@ function isConfigured() {
 }
 
 async function sendPushToUser(userId, { title, message, type }) {
-    if (!isConfigured()) return;
+    if (!isConfigured()) {
+        logger.warn('Push not configured — VAPID keys missing');
+        return;
+    }
     try {
         const [subscriptions] = await pool.query(
             'SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?',
             [userId]
         );
-        if (subscriptions.length === 0) return;
+        if (subscriptions.length === 0) {
+            logger.info('No push subscriptions for user', { userId });
+            return;
+        }
+        logger.info('Sending push to user', { userId, subscriptionCount: subscriptions.length });
 
         const payload = JSON.stringify({ title, body: message, type });
 
         await Promise.allSettled(subscriptions.map(async (sub) => {
             try {
-                await webpush.sendNotification(
+                const result = await webpush.sendNotification(
                     { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
                     payload
                 );
+                logger.info('Push sent successfully', { userId, statusCode: result.statusCode, endpoint: sub.endpoint.slice(0, 60) });
             } catch (err) {
                 if (err.statusCode === 410 || err.statusCode === 404) {
                     await pool.query('DELETE FROM push_subscriptions WHERE id = ?', [sub.id]);

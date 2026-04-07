@@ -31,7 +31,7 @@ function notify({ userId, companyId = null, type, title, message = '' }) {
                 io.to(`user:${userId}`).emit('notification', row);
             }
 
-            sendPushToUser(userId, { title, message, type });
+            await sendPushToUser(userId, { title, message, type });
         } catch (err) {
             logger.error('Notify error:', { error: err.message, userId, type });
         }

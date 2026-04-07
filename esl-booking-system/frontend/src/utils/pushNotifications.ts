@@ -29,22 +29,33 @@ export function isPushSupported(): boolean {
 }
 
 export async function subscribeToPush(token: string): Promise<boolean> {
-  if (!isPushSupported()) return false;
+  if (!isPushSupported()) {
+    console.warn('[Push] browser does not support push');
+    return false;
+  }
 
   const vapidKey = await getVapidPublicKey();
-  if (!vapidKey) return false;
+  if (!vapidKey) {
+    console.warn('[Push] no VAPID public key available');
+    return false;
+  }
 
   const permission = await Notification.requestPermission();
-  if (permission !== 'granted') return false;
+  if (permission !== 'granted') {
+    console.warn('[Push] notification permission denied:', permission);
+    return false;
+  }
 
   const registration = await navigator.serviceWorker.ready;
+  console.log('[Push] service worker ready, subscribing…');
+
   const subscription = await registration.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(vapidKey),
   });
 
   const subJson = subscription.toJSON();
-  await fetch(`${API_URL}/api/push/subscribe`, {
+  const res = await fetch(`${API_URL}/api/push/subscribe`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -56,6 +67,12 @@ export async function subscribeToPush(token: string): Promise<boolean> {
     }),
   });
 
+  if (!res.ok) {
+    console.error('[Push] backend subscribe failed:', res.status, await res.text());
+    return false;
+  }
+
+  console.log('[Push] subscription saved to backend');
   return true;
 }
 

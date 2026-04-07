@@ -64,9 +64,13 @@ const Login = () => {
       const trialExpired = res.data.trial_expired ?? false;
       login(res.data.token, res.data.user, trialExpired);
 
-      // Fire-and-forget push notification subscription
+      // Subscribe to push notifications (best-effort)
       if (isPushSupported()) {
-        subscribeToPush(res.data.token).catch(() => {});
+        subscribeToPush(res.data.token)
+          .then((ok) => console.log('[Push] subscribe result:', ok))
+          .catch((err) => console.warn('[Push] subscribe failed:', err));
+      } else {
+        console.warn('[Push] not supported in this browser');
       }
 
       if (trialExpired) return navigate("/upgrade");

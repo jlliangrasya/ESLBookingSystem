@@ -51,4 +51,23 @@ router.delete('/unsubscribe', authenticateToken, async (req, res) => {
     }
 });
 
+// POST /api/push/test — send a test push to the authenticated user
+router.post('/test', authenticateToken, async (req, res) => {
+    try {
+        const { sendPushToUser, isConfigured } = require('../utils/pushService');
+        if (!isConfigured()) {
+            return res.status(500).json({ message: 'VAPID not configured on server' });
+        }
+        await sendPushToUser(req.user.id, {
+            title: 'Test Notification',
+            message: 'If you see this, push notifications are working!',
+            type: 'test',
+        });
+        res.json({ message: 'Push sent (check device)' });
+    } catch (err) {
+        logger.error('Push test error:', { error: err.message });
+        res.status(500).json({ message: 'Push test failed', error: err.message });
+    }
+});
+
 module.exports = router;
