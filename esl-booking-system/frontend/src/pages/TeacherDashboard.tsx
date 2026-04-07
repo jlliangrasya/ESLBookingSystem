@@ -152,6 +152,14 @@ const TeacherDashboard = () => {
   const [classForm, setClassForm] = useState({ class_mode: "", meeting_link: "" });
   const [classInfoLoading, setClassInfoLoading] = useState(false);
   const [classInfoError, setClassInfoError] = useState<string | null>(null);
+  const classModeOptions = ["Voov/Tencent","Classin","Google Meet","Zoom","Others"];
+  const knownModes = ["Voov/Tencent","Classin","Google Meet","Zoom"];
+  const [otherModeActive, setOtherModeActive] = useState(false);
+  const selectValue = otherModeActive || (classForm.class_mode !== "" && !knownModes.includes(classForm.class_mode)) ? "Others" : classForm.class_mode;
+
+  // Bulk selection for class info
+  const [selectedBookingIds, setSelectedBookingIds] = useState<Set<number>>(new Set());
+  const [bulkClassInfoOpen, setBulkClassInfoOpen] = useState(false);
 
   // Cancel booking
   const [cancelConfirm, setCancelConfirm] = useState<Booking | null>(null);
@@ -200,6 +208,7 @@ const TeacherDashboard = () => {
       setTeacher(dash.teacher);
       setStudents(dash.students);
       setBookings(dash.bookings);
+      setSelectedBookingIds(new Set());
       setCompletedBookings(dash.completedBookings || []);
       setClassesThisWeek(dash.classes_this_week ?? 0);
       setClassesThisMonth(dash.classes_this_month ?? 0);
@@ -419,6 +428,43 @@ const TeacherDashboard = () => {
     try {
       await axios.put(`${import.meta.env.VITE_API_URL}/api/teacher/bookings/${editingBooking.id}/class-info`, classForm, { headers });
       setEditingBooking(null);
+      fetchData();
+    } catch (err: unknown) {
+      setClassInfoError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to update");
+    } finally {
+      setClassInfoLoading(false);
+    }
+  };
+
+  const toggleBookingSelection = (id: number) => {
+    setSelectedBookingIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedBookingIds.size === bookings.length) {
+      setSelectedBookingIds(new Set());
+    } else {
+      setSelectedBookingIds(new Set(bookings.map(b => b.id)));
+    }
+  };
+
+  const handleBulkSaveClassInfo = async () => {
+    if (selectedBookingIds.size === 0) return;
+    setClassInfoLoading(true);
+    setClassInfoError(null);
+    try {
+      await axios.put(
+        `${import.meta.env.VITE_API_URL}/api/teacher/bookings/bulk-class-info`,
+        { booking_ids: Array.from(selectedBookingIds), ...classForm },
+        { headers }
+      );
+      setBulkClassInfoOpen(false);
+      setSelectedBookingIds(new Set());
       fetchData();
     } catch (err: unknown) {
       setClassInfoError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to update");
@@ -895,15 +941,23 @@ const TeacherDashboard = () => {
           <>
             {/* Upcoming Classes */}
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-3">
                 <CardTitle className="text-base flex items-center gap-2">
                   <CalendarDays className="h-4 w-4 text-primary" /> Upcoming Classes
                 </CardTitle>
+                {selectedBookingIds.size > 0 && (
+                  <Button size="sm" className="gap-1" onClick={() => { setClassForm({ class_mode: "", meeting_link: "" }); setOtherModeActive(false); setClassInfoError(null); setBulkClassInfoOpen(true); }}>
+                    <Video className="h-3 w-3" /> Set Info for {selectedBookingIds.size} Selected
+                  </Button>
+                )}
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-10">
+                        <input type="checkbox" checked={bookings.length > 0 && selectedBookingIds.size === bookings.length} onChange={toggleSelectAll} className="accent-primary h-4 w-4 cursor-pointer" />
+                      </TableHead>
                       <TableHead>Date & Time</TableHead>
                       <TableHead>Student</TableHead>
                       <TableHead>Package</TableHead>
@@ -917,7 +971,7 @@ const TeacherDashboard = () => {
                   <TableBody>
                     {bookings.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center text-muted-foreground text-sm py-8">
+                        <TableCell colSpan={9} className="text-center text-muted-foreground text-sm py-8">
                           No upcoming classes
                         </TableCell>
                       </TableRow>
@@ -927,6 +981,9 @@ const TeacherDashboard = () => {
                         const canMarkAbsent = Date.now() >= classTime + 15 * 60 * 1000;
                         return (
                           <TableRow key={b.id}>
+                            <TableCell>
+                              <input type="checkbox" checked={selectedBookingIds.has(b.id)} onChange={() => toggleBookingSelection(b.id)} className="accent-primary h-4 w-4 cursor-pointer" />
+                            </TableCell>
                             <TableCell className="text-sm">
                               {fmtDate(b.appointment_date, "MMM d, h:mm a")}
                               {(b.slot_count ?? 1) > 1 && <span className="ml-1 text-xs text-muted-foreground">({(b.slot_count ?? 1) * 30}min)</span>}
@@ -941,7 +998,7 @@ const TeacherDashboard = () => {
                             </TableCell>
                             <TableCell>
                               <Button size="sm" variant="outline" className="text-xs h-7 gap-1"
-                                onClick={() => { setEditingBooking(b); setClassForm({ class_mode: b.class_mode || "", meeting_link: b.meeting_link || "" }); setClassInfoError(null); }}>
+                                onClick={() => { setEditingBooking(b); setClassForm({ class_mode: b.class_mode || "", meeting_link: b.meeting_link || "" }); setOtherModeActive(!!b.class_mode && !knownModes.includes(b.class_mode)); setClassInfoError(null); }}>
                                 <Video className="h-3 w-3" /> {b.class_mode ? "Edit Info" : "Set Info"}
                               </Button>
                             </TableCell>
@@ -1288,12 +1345,16 @@ const TeacherDashboard = () => {
             {classInfoError && <p className="text-sm text-destructive">{classInfoError}</p>}
             <div className="space-y-1.5">
               <Label>Mode of Class</Label>
-              <Select value={classForm.class_mode} onValueChange={v => setClassForm(p => ({ ...p, class_mode: v }))}>
+              <Select value={selectValue} onValueChange={v => { if (v === "Others") { setOtherModeActive(true); setClassForm(p => ({ ...p, class_mode: "" })); } else { setOtherModeActive(false); setClassForm(p => ({ ...p, class_mode: v })); } }}>
                 <SelectTrigger><SelectValue placeholder="Select platform" /></SelectTrigger>
                 <SelectContent>
-                  {["Voov","Classin","Google Meet","Zoom","Others"].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                  {classModeOptions.map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
                 </SelectContent>
               </Select>
+              {selectValue === "Others" && (
+                <Input placeholder="Enter platform name..." value={classForm.class_mode}
+                  onChange={e => setClassForm(p => ({ ...p, class_mode: e.target.value }))} className="mt-1.5" />
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Meeting Link</Label>
@@ -1304,6 +1365,40 @@ const TeacherDashboard = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingBooking(null)}>Cancel</Button>
             <Button onClick={handleSaveClassInfo} disabled={classInfoLoading}>
+              {classInfoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Class Info dialog */}
+      <Dialog open={bulkClassInfoOpen} onOpenChange={o => { if (!o) setBulkClassInfoOpen(false); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Set Class Info for {selectedBookingIds.size} Booking(s)</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            {classInfoError && <p className="text-sm text-destructive">{classInfoError}</p>}
+            <div className="space-y-1.5">
+              <Label>Mode of Class</Label>
+              <Select value={selectValue} onValueChange={v => { if (v === "Others") { setOtherModeActive(true); setClassForm(p => ({ ...p, class_mode: "" })); } else { setOtherModeActive(false); setClassForm(p => ({ ...p, class_mode: v })); } }}>
+                <SelectTrigger><SelectValue placeholder="Select platform" /></SelectTrigger>
+                <SelectContent>
+                  {classModeOptions.map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {selectValue === "Others" && (
+                <Input placeholder="Enter platform name..." value={classForm.class_mode}
+                  onChange={e => setClassForm(p => ({ ...p, class_mode: e.target.value }))} className="mt-1.5" />
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Meeting Link</Label>
+              <Input placeholder="https://..." value={classForm.meeting_link}
+                onChange={e => setClassForm(p => ({ ...p, meeting_link: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkClassInfoOpen(false)}>Cancel</Button>
+            <Button onClick={handleBulkSaveClassInfo} disabled={classInfoLoading}>
               {classInfoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
             </Button>
           </DialogFooter>

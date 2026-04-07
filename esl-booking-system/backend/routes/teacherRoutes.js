@@ -196,6 +196,43 @@ router.post('/leaves', authenticateToken, requireRole('teacher'), async (req, re
     }
 });
 
+// Bulk update class mode and meeting link for multiple upcoming bookings
+router.put('/bookings/bulk-class-info', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const { booking_ids, class_mode, meeting_link } = req.body;
+        const teacherId = req.user.id;
+
+        if (!Array.isArray(booking_ids) || booking_ids.length === 0) {
+            return res.status(400).json({ message: 'booking_ids must be a non-empty array' });
+        }
+        if (booking_ids.length > 100) {
+            return res.status(400).json({ message: 'Cannot update more than 100 bookings at once' });
+        }
+
+        const placeholders = booking_ids.map(() => '?').join(',');
+        const [rows] = await pool.query(
+            `SELECT id FROM bookings WHERE id IN (${placeholders}) AND teacher_id = ? AND appointment_date >= ?`,
+            [...booking_ids, teacherId, nowDatetime()]
+        );
+
+        if (rows.length !== booking_ids.length) {
+            return res.status(400).json({
+                message: `Only ${rows.length} of ${booking_ids.length} bookings are valid (must belong to you and be upcoming)`
+            });
+        }
+
+        await pool.query(
+            `UPDATE bookings SET class_mode = ?, meeting_link = ? WHERE id IN (${placeholders}) AND teacher_id = ?`,
+            [class_mode || null, meeting_link || null, ...booking_ids, teacherId]
+        );
+
+        res.json({ message: `Class info updated for ${booking_ids.length} booking(s)` });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // Update class mode and meeting link for an upcoming booking
 router.put('/bookings/:id/class-info', authenticateToken, requireRole('teacher'), async (req, res) => {
     try {
