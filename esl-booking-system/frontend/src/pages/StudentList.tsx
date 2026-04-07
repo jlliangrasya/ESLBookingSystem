@@ -58,6 +58,7 @@ interface Student {
   package_name: string;
   subject: string;
   sessions_remaining: number;
+  unused_sessions: number;
   nationality: string;
   password: string;
   teacher_id: number | null;
@@ -253,7 +254,7 @@ Please use the email and password to login to https://esl-booking-system.vercel.
                     <TableHead>Student Name</TableHead>
                     <TableHead>Package</TableHead>
                     <TableHead>Subject</TableHead>
-                    <TableHead>Sessions Remaining</TableHead>
+                    <TableHead>Sessions</TableHead>
                     <TableHead>Assigned Teacher</TableHead>
                     <TableHead>Nationality</TableHead>
                     <TableHead></TableHead>
@@ -287,15 +288,22 @@ Please use the email and password to login to https://esl-booking-system.vercel.
                           )}
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            variant={
-                              student.sessions_remaining > 0
-                                ? "default"
-                                : "destructive"
-                            }
-                          >
-                            {student.sessions_remaining ?? "—"}
-                          </Badge>
+                          <div className="flex gap-1 flex-wrap">
+                            <Badge
+                              variant={
+                                (student.unused_sessions ?? student.sessions_remaining) > 0
+                                  ? "default"
+                                  : "destructive"
+                              }
+                            >
+                              {student.unused_sessions ?? student.sessions_remaining ?? 0} remaining
+                            </Badge>
+                            {student.sessions_remaining !== student.unused_sessions && (
+                              <Badge variant="outline" className="text-muted-foreground text-[10px]">
+                                {student.sessions_remaining ?? 0} available to book
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           {student.teacher_name ? (

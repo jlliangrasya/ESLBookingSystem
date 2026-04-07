@@ -54,6 +54,10 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
                 u.id, u.name, u.nationality, u.age,
                 tp.package_name,
                 sp.sessions_remaining,
+                sp.sessions_remaining + (
+                  SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR)))
+                  FROM bookings b WHERE b.student_package_id = sp.id AND b.status NOT IN ('done','cancelled')
+                ) AS unused_sessions,
                 sp.subject,
                 sp.payment_status
             FROM student_packages sp

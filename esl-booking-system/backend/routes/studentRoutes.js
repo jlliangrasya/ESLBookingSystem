@@ -22,7 +22,11 @@ router.get('/dashboard', authenticateToken, requireRole('student'), async (req, 
 
         const [packageRows] = await pool.query(
             `SELECT tp.id, tp.package_name, tp.price,
-                    sp.sessions_remaining, tp.session_limit
+                    sp.sessions_remaining, tp.session_limit,
+                    sp.sessions_remaining + (
+                      SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR)))
+                      FROM bookings b WHERE b.student_package_id = sp.id AND b.status NOT IN ('done','cancelled')
+                    ) AS unused_sessions
              FROM student_packages sp
              JOIN tutorial_packages tp ON sp.package_id = tp.id
              WHERE sp.student_id = ? AND sp.company_id = ? AND sp.payment_status = 'paid' AND sp.sessions_remaining > 0
@@ -485,6 +489,7 @@ router.get("/students", authenticateToken, requireRole('company_admin'), async (
                 sp.payment_status, sp.subject, sp.package_id,
                 tp.package_name,
                 sp.sessions_remaining,
+                IFNULL(sp.sessions_remaining, 0) + IFNULL(active_bk.active_classes, 0) AS unused_sessions,
                 sp.teacher_id,
                 t.name AS teacher_name,
                 CASE WHEN sp.payment_status = 'paid' AND sp.sessions_remaining > 0 THEN TRUE ELSE FALSE END AS enrolled
@@ -497,6 +502,11 @@ router.get("/students", authenticateToken, requireRole('company_admin'), async (
             ) sp ON u.id = sp.student_id AND sp.rn = 1
             LEFT JOIN tutorial_packages tp ON sp.package_id = tp.id
             LEFT JOIN users t ON t.id = sp.teacher_id
+            LEFT JOIN (
+                SELECT student_package_id, COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS active_classes
+                FROM bookings WHERE status NOT IN ('done','cancelled')
+                GROUP BY student_package_id
+            ) active_bk ON active_bk.student_package_id = sp.id
             WHERE u.role = 'student' AND u.company_id = ?
             ${searchClause}
             ORDER BY u.id

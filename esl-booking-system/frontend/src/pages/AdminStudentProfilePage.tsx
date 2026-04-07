@@ -47,6 +47,7 @@ interface ActivePackage {
   id: number;
   package_name: string;
   sessions_remaining: number;
+  unused_sessions: number;
   payment_status: string;
   subject: string | null;
   teacher_id: number | null;
@@ -604,11 +605,16 @@ const AdminStudentProfilePage = () => {
                   <p className="font-medium">{activePackage.subject || "—"}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Sessions Remaining</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <Badge variant={activePackage.sessions_remaining > 0 ? "default" : "destructive"}>
-                      {activePackage.sessions_remaining}
+                  <p className="text-xs text-muted-foreground">Sessions</p>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <Badge variant={activePackage.unused_sessions > 0 ? "default" : "destructive"}>
+                      {activePackage.unused_sessions} remaining
                     </Badge>
+                    {activePackage.sessions_remaining !== activePackage.unused_sessions && (
+                      <Badge variant="outline" className="text-muted-foreground">
+                        {activePackage.sessions_remaining} available to book
+                      </Badge>
+                    )}
                     <Button
                       size="icon"
                       variant="ghost"
@@ -1094,9 +1100,10 @@ const AdminStudentProfilePage = () => {
 
             {activePackage && (
               <div className="bg-muted/50 rounded-lg p-3 text-sm">
-                <p className="text-muted-foreground">Current sessions: <strong>{activePackage.sessions_remaining}</strong></p>
+                <p className="text-muted-foreground">Remaining sessions: <strong>{activePackage.unused_sessions}</strong></p>
+                <p className="text-muted-foreground">Available to book: <strong>{activePackage.sessions_remaining}</strong></p>
                 <p className="text-muted-foreground">
-                  After adjustment: <strong>
+                  After adjustment (available to book): <strong>
                     {showAdjust === "add"
                       ? activePackage.sessions_remaining + Math.abs(Number(adjustAmount) || 0)
                       : Math.max(0, activePackage.sessions_remaining - Math.abs(Number(adjustAmount) || 0))}

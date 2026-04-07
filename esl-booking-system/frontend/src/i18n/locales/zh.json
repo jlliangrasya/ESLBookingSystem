@@ -88,6 +88,7 @@
     "guardian": "监护人：",
     "dateEnrolled": "注册日期：",
     "sessionsRemaining": "剩余 {{count}} 节课",
+    "sessionsAvailableToBook": "可预约 {{count}} 节课",
     "noPackage": "尚未购买课程包。",
     "feedback": "反馈",
     "feedbackPlaceholder": "请在此留下您的反馈...",

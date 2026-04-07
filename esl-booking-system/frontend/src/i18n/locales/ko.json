@@ -88,6 +88,7 @@
     "guardian": "보호자:",
     "dateEnrolled": "등록일:",
     "sessionsRemaining": "남은 수업 {{count}}회",
+    "sessionsAvailableToBook": "예약 가능 {{count}}회",
     "noPackage": "아직 수강 패키지가 없습니다.",
     "feedback": "피드백",
     "feedbackPlaceholder": "피드백을 입력하세요...",

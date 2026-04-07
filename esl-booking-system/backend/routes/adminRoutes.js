@@ -840,7 +840,11 @@ router.get('/students/:id', authenticateToken, requireRole('company_admin'), asy
     const [[activePackage]] = await pool.query(
       `SELECT sp.id, sp.payment_status, sp.subject, sp.teacher_id,
               tp.package_name, tp.price,
-              sp.sessions_remaining
+              sp.sessions_remaining,
+              sp.sessions_remaining + (
+                SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR)))
+                FROM bookings b WHERE b.student_package_id = sp.id AND b.status NOT IN ('done','cancelled')
+              ) AS unused_sessions
        FROM student_packages sp
        JOIN tutorial_packages tp ON sp.package_id = tp.id
        WHERE sp.student_id = ? AND sp.company_id = ? AND sp.payment_status = 'paid' AND sp.sessions_remaining > 0

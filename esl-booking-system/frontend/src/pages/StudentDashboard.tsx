@@ -35,6 +35,7 @@ interface PackageDetails {
   id: number;
   package_name: string;
   sessions_remaining: number;
+  unused_sessions: number;
   session_limit: number;
   price: number;
 }
@@ -497,10 +498,15 @@ const StudentDashboard = () => {
                   {packageDetails.package_name}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Badge className="bg-[#D0E8F0] text-[#2E6B9E] border-0">
-                  {t("student.sessionsRemaining", { count: packageDetails.sessions_remaining })}
+                  {t("student.sessionsRemaining", { count: packageDetails.unused_sessions })}
                 </Badge>
+                {packageDetails.sessions_remaining !== packageDetails.unused_sessions && (
+                  <Badge variant="outline" className="text-muted-foreground">
+                    {t("student.sessionsAvailableToBook", { count: packageDetails.sessions_remaining })}
+                  </Badge>
+                )}
               </div>
             </div>
           ) : (

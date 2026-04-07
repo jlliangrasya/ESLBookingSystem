@@ -27,7 +27,7 @@ type Page = "dashboard" | "classes" | "profile";
 interface Teacher { id: number; name: string; email: string; }
 interface AssignedStudent {
   id: number; name: string; nationality: string; age: number;
-  package_name: string; sessions_remaining: number; subject: string; payment_status: string;
+  package_name: string; sessions_remaining: number; unused_sessions: number; subject: string; payment_status: string;
 }
 interface Booking {
   id: number; appointment_date: string; status: string; student_name: string;
@@ -1136,7 +1136,7 @@ const TeacherDashboard = () => {
                       <TableHead>Age</TableHead>
                       <TableHead>Package</TableHead>
                       <TableHead>Subject</TableHead>
-                      <TableHead>Sessions Left</TableHead>
+                      <TableHead>Sessions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1153,7 +1153,14 @@ const TeacherDashboard = () => {
                         <TableCell>{s.age || "—"}</TableCell>
                         <TableCell className="text-xs">{s.package_name}</TableCell>
                         <TableCell className="text-xs">{s.subject}</TableCell>
-                        <TableCell><Badge variant="secondary">{s.sessions_remaining}</Badge></TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Badge variant="secondary">{s.unused_sessions ?? s.sessions_remaining} remaining</Badge>
+                            {s.sessions_remaining !== (s.unused_sessions ?? s.sessions_remaining) && (
+                              <Badge variant="outline" className="text-muted-foreground text-[10px]">{s.sessions_remaining} available to book</Badge>
+                            )}
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
