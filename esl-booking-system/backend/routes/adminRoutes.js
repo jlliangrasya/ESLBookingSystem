@@ -999,7 +999,7 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
     for (const slotDt of slotList) {
       const [result] = await connection.query(
         `INSERT INTO bookings (company_id, student_package_id, teacher_id, appointment_date, status, rescheduled_by_admin, booking_group_id, created_at)
-         VALUES (?, ?, ?, ?, 'pending', 1, ?, NOW())`,
+         VALUES (?, ?, ?, ?, 'confirmed', 1, ?, NOW())`,
         [companyId, student_package_id, teacher_id || null, slotDt, groupId]
       );
       insertedIds.push(result.insertId);
