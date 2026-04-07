@@ -67,7 +67,16 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
             ORDER BY u.name ASC
         `, [teacherId, companyId]);
 
-        // Upcoming bookings for this teacher (includes today's past classes so teacher can mark absences)
+        // Auto-mark past confirmed/pending bookings as 'done'
+        // Safe because sessions are already deducted at booking time (no double-deduction)
+        await pool.query(`
+            UPDATE bookings SET status = 'done'
+            WHERE teacher_id = ? AND company_id = ?
+              AND status IN ('confirmed', 'pending')
+              AND appointment_date < CONVERT_TZ(NOW(), '+00:00', '+08:00')
+        `, [teacherId, companyId]);
+
+        // Upcoming bookings for this teacher
         const [bookingRows] = await pool.query(`
             SELECT
                 b.id,
