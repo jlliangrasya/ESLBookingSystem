@@ -100,6 +100,8 @@ async function runBillingChecks() {
 }
 
 // ── 5-Hour Class Reminder (runs every 15 minutes) ────────────────────────────
+// NOTE: appointment_date stores local Philippine time (UTC+8) but TiDB NOW()
+// returns UTC, so we convert NOW() to Asia/Manila before comparing.
 async function run5HourReminders() {
     try {
         const [upcoming] = await pool.query(`
@@ -112,7 +114,8 @@ async function run5HourReminders() {
             LEFT JOIN users u_teacher ON b.teacher_id = u_teacher.id
             WHERE b.status IN ('confirmed', 'pending')
               AND b.reminded_5h = FALSE
-              AND b.appointment_date BETWEEN DATE_ADD(NOW(), INTERVAL 4 HOUR) AND DATE_ADD(NOW(), INTERVAL 5.5 HOUR)
+              AND b.appointment_date BETWEEN DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 4 HOUR)
+                                          AND DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 5.5 HOUR)
         `);
 
         for (const booking of upcoming) {
@@ -148,6 +151,7 @@ async function run5HourReminders() {
 }
 
 // ── 30-Minute Class Reminder (runs every 10 minutes) ─────────────────────────
+// NOTE: appointment_date stores local Philippine time (UTC+8) — see 5-hour note.
 async function run30MinReminders() {
     try {
         const [upcoming] = await pool.query(`
@@ -160,7 +164,8 @@ async function run30MinReminders() {
             LEFT JOIN users u_teacher ON b.teacher_id = u_teacher.id
             WHERE b.status IN ('confirmed', 'pending')
               AND b.reminded = FALSE
-              AND b.appointment_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 40 MINUTE)
+              AND b.appointment_date BETWEEN CONVERT_TZ(NOW(), '+00:00', '+08:00')
+                                          AND DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 40 MINUTE)
         `);
 
         for (const booking of upcoming) {
