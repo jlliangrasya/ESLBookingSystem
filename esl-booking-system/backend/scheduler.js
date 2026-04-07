@@ -4,6 +4,20 @@ const notify = require('./utils/notify');
 const { sendMail } = require('./utils/mailer');
 const logger = require('./utils/logger');
 
+// appointment_date is stored in Philippine time (UTC+8).
+// Format it for display in notifications, labelled as PHT.
+function formatPHT(appointmentDate) {
+    const raw = new Date(appointmentDate);
+    // mysql2 on a UTC server interprets the naive datetime as UTC,
+    // but the value is actually PHT — shift to real UTC then format in Manila tz
+    const realUtc = new Date(raw.getTime() - (8 * 60 * 60 * 1000));
+    return realUtc.toLocaleString('en-US', {
+        timeZone: 'Asia/Manila',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+    }) + ' (PHT)';
+}
+
 // ── Billing Checks (daily at 2:00 AM) ─────────────────────────────────────────
 async function runBillingChecks() {
     logger.info('[Scheduler] Running billing checks...');
@@ -119,7 +133,7 @@ async function run5HourReminders() {
         `);
 
         for (const booking of upcoming) {
-            const dateStr = new Date(booking.appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+            const dateStr = formatPHT(booking.appointment_date);
 
             notify({
                 userId: booking.student_id,
@@ -169,7 +183,7 @@ async function run30MinReminders() {
         `);
 
         for (const booking of upcoming) {
-            const dateStr = new Date(booking.appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+            const dateStr = formatPHT(booking.appointment_date);
             const meetingInfo = booking.meeting_link ? ` Meeting link: ${booking.meeting_link}` : '';
 
             notify({
