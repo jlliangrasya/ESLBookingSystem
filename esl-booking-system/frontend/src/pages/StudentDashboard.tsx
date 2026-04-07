@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/table";
 import { LogOut, Package, CalendarDays, User, FileText, Video, UserX, Send, Copy, Check, UserCircle, Clock, Trash2, Plus, Menu, X } from "lucide-react";
 import PackageSelectionModal from "../components/PackageSelectionModal";
+import TablePagination from "@/components/TablePagination";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import BookingConfirmationModal from "../components/BookingConfirmationModal";
 import AuthContext from "@/context/AuthContext";
 import NotificationBell from "@/components/NotificationBell";
@@ -107,6 +109,9 @@ const StudentDashboard = () => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [reports, setReports] = useState<Report[]>([]);
   const [expandedReport, setExpandedReport] = useState<number | null>(null);
+  const [reportMonth, setReportMonth] = useState<string>("all");
+  const [reportPage, setReportPage] = useState(1);
+  const [reportPageSize, setReportPageSize] = useState(20);
   const [absentLoadingId, setAbsentLoadingId] = useState<number | null>(null);
   const [absences, setAbsences] = useState<Absence[]>([]);
 
@@ -586,68 +591,71 @@ const StudentDashboard = () => {
       </div>
 
       {/* My Reports */}
-      {reports.length > 0 && (
-        <div className="max-w-7xl mx-auto px-4 pb-10">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="h-4 w-4 text-primary" />
-                {t("student.myReports")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {reports.map((r) => (
-                <div key={r.id} className="border rounded-lg overflow-hidden">
-                  <button
-                    className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
-                    onClick={() => setExpandedReport(expandedReport === r.id ? null : r.id)}
-                  >
-                    <div>
-                      <span className="font-medium text-sm">
-                        {fmtDateOnly(r.appointment_date)}
-                      </span>
-                      <span className="text-xs text-muted-foreground ml-2">
-                        {t("student.by")} {r.teacher_name}
-                      </span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {expandedReport === r.id ? "▲" : "▼"}
-                    </span>
-                  </button>
-                  {expandedReport === r.id && (
-                    <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 border-t">
-                      {r.new_words && (
-                        <div className="pt-3">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">{t("student.newWords")}</p>
-                          <p className="text-sm whitespace-pre-wrap">{r.new_words}</p>
-                        </div>
-                      )}
-                      {r.sentences && (
-                        <div className="pt-3">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">{t("student.sentences")}</p>
-                          <p className="text-sm whitespace-pre-wrap">{r.sentences}</p>
-                        </div>
-                      )}
-                      {r.notes && (
-                        <div className="pt-3">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">{t("student.notes")}</p>
-                          <p className="text-sm whitespace-pre-wrap">{r.notes}</p>
-                        </div>
-                      )}
-                      {r.remarks && (
-                        <div className="pt-3">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">{t("student.remarks")}</p>
-                          <p className="text-sm whitespace-pre-wrap">{r.remarks}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      {reports.length > 0 && (() => {
+        const monthOptions = [...new Set(reports.map(r => {
+          const d = new Date(r.appointment_date + (r.appointment_date.includes('T') ? '' : 'T00:00:00'));
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        }))].sort().reverse();
+
+        const filtered = reportMonth === "all" ? reports : reports.filter(r => {
+          const d = new Date(r.appointment_date + (r.appointment_date.includes('T') ? '' : 'T00:00:00'));
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === reportMonth;
+        });
+        const totalPages = Math.max(1, Math.ceil(filtered.length / reportPageSize));
+        const paginated = filtered.slice((reportPage - 1) * reportPageSize, reportPage * reportPageSize);
+
+        return (
+          <div className="max-w-7xl mx-auto px-4 pb-10">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-primary" />
+                  {t("student.myReports")}
+                </CardTitle>
+                <Select value={reportMonth} onValueChange={(v) => { setReportMonth(v); setReportPage(1); }}>
+                  <SelectTrigger className="w-40 h-8 text-xs"><SelectValue placeholder="All months" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All months</SelectItem>
+                    {monthOptions.map(m => {
+                      const [y, mo] = m.split('-');
+                      const label = new Date(Number(y), Number(mo) - 1).toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+                      return <SelectItem key={m} value={m}>{label}</SelectItem>;
+                    })}
+                  </SelectContent>
+                </Select>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {paginated.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-6">No reports for this period.</p>
+                ) : paginated.map((r) => (
+                  <div key={r.id} className="border rounded-lg overflow-hidden">
+                    <button
+                      className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
+                      onClick={() => setExpandedReport(expandedReport === r.id ? null : r.id)}
+                    >
+                      <div>
+                        <span className="font-medium text-sm">{fmtDateOnly(r.appointment_date)}</span>
+                        <span className="text-xs text-muted-foreground ml-2">{t("student.by")} {r.teacher_name}</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{expandedReport === r.id ? "▲" : "▼"}</span>
+                    </button>
+                    {expandedReport === r.id && (
+                      <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 border-t">
+                        {r.new_words && <div className="pt-3"><p className="text-xs font-semibold text-muted-foreground uppercase mb-1">{t("student.newWords")}</p><p className="text-sm whitespace-pre-wrap">{r.new_words}</p></div>}
+                        {r.sentences && <div className="pt-3"><p className="text-xs font-semibold text-muted-foreground uppercase mb-1">{t("student.sentences")}</p><p className="text-sm whitespace-pre-wrap">{r.sentences}</p></div>}
+                        {r.notes && <div className="pt-3"><p className="text-xs font-semibold text-muted-foreground uppercase mb-1">{t("student.notes")}</p><p className="text-sm whitespace-pre-wrap">{r.notes}</p></div>}
+                        {r.remarks && <div className="pt-3"><p className="text-xs font-semibold text-muted-foreground uppercase mb-1">{t("student.remarks")}</p><p className="text-sm whitespace-pre-wrap">{r.remarks}</p></div>}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <TablePagination page={reportPage} totalPages={totalPages} pageSize={reportPageSize}
+                  totalItems={filtered.length} onPageChange={setReportPage} onPageSizeChange={setReportPageSize} />
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
 
       {/* Absence History */}
       {absences.length > 0 && (

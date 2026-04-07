@@ -18,6 +18,7 @@ import NotificationBell from "@/components/NotificationBell";
 import InstallAppButton from "@/components/InstallAppButton";
 import ReportModal from "@/components/ReportModal";
 import { fmtDate, fmtDateOnly, parseUTC, TIMEZONES } from "@/utils/timezone";
+import TablePagination from "@/components/TablePagination";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Calendar from "react-calendar";
@@ -124,6 +125,10 @@ const TeacherDashboard = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [completedBookings, setCompletedBookings] = useState<CompletedBooking[]>([]);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingItem[]>([]);
+  const [upcomingPage, setUpcomingPage] = useState(1);
+  const [upcomingPageSize, setUpcomingPageSize] = useState(20);
+  const [completedPage, setCompletedPage] = useState(1);
+  const [completedPageSize, setCompletedPageSize] = useState(20);
   const [classesThisWeek, setClassesThisWeek] = useState(0);
   const [classesThisMonth, setClassesThisMonth] = useState(0);
   const [health, setHealth] = useState<Health>({ total_done: 0, total_absent: 0, attended: 0 });
@@ -976,7 +981,7 @@ const TeacherDashboard = () => {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      bookings.map((b) => {
+                      bookings.slice((upcomingPage - 1) * upcomingPageSize, upcomingPage * upcomingPageSize).map((b) => {
                         const classTime = parseUTC(b.appointment_date)?.getTime() ?? 0;
                         const canMarkAbsent = Date.now() >= classTime + 15 * 60 * 1000;
                         return (
@@ -1037,6 +1042,11 @@ const TeacherDashboard = () => {
                     )}
                   </TableBody>
                 </Table>
+                {bookings.length > 0 && (
+                  <TablePagination page={upcomingPage} totalPages={Math.max(1, Math.ceil(bookings.length / upcomingPageSize))}
+                    pageSize={upcomingPageSize} totalItems={bookings.length}
+                    onPageChange={setUpcomingPage} onPageSizeChange={setUpcomingPageSize} />
+                )}
               </CardContent>
             </Card>
 
@@ -1083,14 +1093,14 @@ const TeacherDashboard = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredCompleted.filter(b => b.status === "done").length === 0 ? (
+                      {(() => { const doneList = filteredCompleted.filter(b => b.status === "done"); const paged = doneList.slice((completedPage - 1) * completedPageSize, completedPage * completedPageSize); return doneList.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={6} className="text-center text-muted-foreground text-sm py-8">
                             No completed classes in {MONTHS[classesMonth - 1]} {classesYear}
                           </TableCell>
                         </TableRow>
                       ) : (
-                        filteredCompleted.filter(b => b.status === "done").map(b => (
+                        paged.map(b => (
                           <TableRow key={b.id}>
                             <TableCell className="text-sm">
                               {fmtDate(b.appointment_date, "MMM d, h:mm a")}
@@ -1117,9 +1127,14 @@ const TeacherDashboard = () => {
                             </TableCell>
                           </TableRow>
                         ))
-                      )}
+                      )})()}
                     </TableBody>
                   </Table>
+                )}
+                {filteredCompleted.filter(b => b.status === "done").length > 0 && (
+                  <TablePagination page={completedPage} totalPages={Math.max(1, Math.ceil(filteredCompleted.filter(b => b.status === "done").length / completedPageSize))}
+                    pageSize={completedPageSize} totalItems={filteredCompleted.filter(b => b.status === "done").length}
+                    onPageChange={setCompletedPage} onPageSizeChange={setCompletedPageSize} />
                 )}
               </CardContent>
             </Card>

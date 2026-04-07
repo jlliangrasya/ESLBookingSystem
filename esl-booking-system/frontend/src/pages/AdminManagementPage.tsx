@@ -13,6 +13,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, UserCog, Plus, Pencil, Trash2, AlertCircle, ShieldCheck } from "lucide-react";
 import AuthContext from "@/context/AuthContext";
+import TablePagination from "@/components/TablePagination";
 
 interface AdminUser {
   id: number;
@@ -30,6 +31,8 @@ const AdminManagementPage = () => {
   const headers = { Authorization: `Bearer ${token}` };
 
   const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const [adminPage, setAdminPage] = useState(1);
+  const [adminPageSize, setAdminPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [isOwner, setIsOwner] = useState(false);
 
@@ -147,7 +150,7 @@ const AdminManagementPage = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {admins.map((admin) => (
+                {admins.slice((adminPage - 1) * adminPageSize, adminPage * adminPageSize).map((admin) => (
                   <TableRow key={admin.id}>
                     <TableCell className="font-medium">{admin.name}</TableCell>
                     <TableCell className="text-sm">{admin.email}</TableCell>
@@ -192,6 +195,11 @@ const AdminManagementPage = () => {
                 ))}
               </TableBody>
             </Table>
+            {admins.length > 0 && (
+              <TablePagination page={adminPage} totalPages={Math.max(1, Math.ceil(admins.length / adminPageSize))}
+                pageSize={adminPageSize} totalItems={admins.length}
+                onPageChange={setAdminPage} onPageSizeChange={setAdminPageSize} />
+            )}
           </CardContent>
         </Card>
       </div>
