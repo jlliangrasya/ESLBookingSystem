@@ -437,5 +437,21 @@
   }
   body {
     @apply bg-background text-foreground;
+    overflow-x: hidden;
+  }
+  html, #root {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+}
+
+/* Prevent any child from overflowing the viewport */
+.max-w-7xl, .max-w-5xl, .max-w-4xl, .max-w-lg {
+  max-width: 100%;
+}
+@media (max-width: 1024px) {
+  .glow-card, .weekly-calendar {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }

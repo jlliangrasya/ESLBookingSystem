@@ -99,10 +99,57 @@ async function runBillingChecks() {
     }
 }
 
-// ── Issue #8: Class Reminders (runs every 15 minutes) ──────────────────────────
-async function runClassReminders() {
+// ── 5-Hour Class Reminder (runs every 15 minutes) ────────────────────────────
+async function run5HourReminders() {
     try {
-        // Find bookings starting in the next 30-60 minutes that haven't been reminded
+        const [upcoming] = await pool.query(`
+            SELECT b.id, b.appointment_date, b.teacher_id,
+                   sp.student_id, u_student.name AS student_name,
+                   u_teacher.name AS teacher_name
+            FROM bookings b
+            JOIN student_packages sp ON b.student_package_id = sp.id
+            JOIN users u_student ON sp.student_id = u_student.id
+            LEFT JOIN users u_teacher ON b.teacher_id = u_teacher.id
+            WHERE b.status IN ('confirmed', 'pending')
+              AND b.reminded_5h = FALSE
+              AND b.appointment_date BETWEEN DATE_ADD(NOW(), INTERVAL 4 HOUR) AND DATE_ADD(NOW(), INTERVAL 5.5 HOUR)
+        `);
+
+        for (const booking of upcoming) {
+            const dateStr = new Date(booking.appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+
+            notify({
+                userId: booking.student_id,
+                companyId: null,
+                type: 'class_reminder',
+                title: 'Class in ~5 hours',
+                message: `Reminder: Your class with ${booking.teacher_name || 'your teacher'} is at ${dateStr}. Get ready!`,
+            });
+
+            if (booking.teacher_id) {
+                notify({
+                    userId: booking.teacher_id,
+                    companyId: null,
+                    type: 'class_reminder',
+                    title: 'Class in ~5 hours',
+                    message: `Reminder: Your class with ${booking.student_name} is at ${dateStr}.`,
+                });
+            }
+
+            await pool.query('UPDATE bookings SET reminded_5h = TRUE WHERE id = ?', [booking.id]);
+        }
+
+        if (upcoming.length > 0) {
+            logger.info(`[Scheduler] Sent ${upcoming.length} 5-hour reminder(s)`);
+        }
+    } catch (err) {
+        logger.error('[Scheduler] Error during 5-hour reminders:', err);
+    }
+}
+
+// ── 30-Minute Class Reminder (runs every 10 minutes) ─────────────────────────
+async function run30MinReminders() {
+    try {
         const [upcoming] = await pool.query(`
             SELECT b.id, b.appointment_date, b.teacher_id, b.class_mode, b.meeting_link,
                    sp.student_id, u_student.name AS student_name, u_student.email AS student_email,
@@ -113,38 +160,35 @@ async function runClassReminders() {
             LEFT JOIN users u_teacher ON b.teacher_id = u_teacher.id
             WHERE b.status IN ('confirmed', 'pending')
               AND b.reminded = FALSE
-              AND b.appointment_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 60 MINUTE)
+              AND b.appointment_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 40 MINUTE)
         `);
 
         for (const booking of upcoming) {
             const dateStr = new Date(booking.appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
             const meetingInfo = booking.meeting_link ? ` Meeting link: ${booking.meeting_link}` : '';
 
-            // Notify student
-            await notify({
+            notify({
                 userId: booking.student_id,
                 companyId: null,
                 type: 'class_reminder',
-                title: 'Class starting soon!',
+                title: 'Class starting in 30 minutes!',
                 message: `Your class with ${booking.teacher_name || 'your teacher'} starts at ${dateStr}.${meetingInfo}`,
             });
 
-            // Notify teacher
             if (booking.teacher_id) {
-                await notify({
+                notify({
                     userId: booking.teacher_id,
                     companyId: null,
                     type: 'class_reminder',
-                    title: 'Class starting soon!',
+                    title: 'Class starting in 30 minutes!',
                     message: `Your class with ${booking.student_name} starts at ${dateStr}.${meetingInfo}`,
                 });
             }
 
-            // Send email reminders if SMTP is configured
             if (booking.student_email) {
                 sendMail({
                     to: booking.student_email,
-                    subject: 'Class Reminder - Starting Soon!',
+                    subject: 'Class Starting in 30 Minutes!',
                     html: `<p>Hi ${booking.student_name},</p>
                            <p>Your class with <strong>${booking.teacher_name || 'your teacher'}</strong> starts at <strong>${dateStr}</strong>.</p>
                            ${booking.meeting_link ? `<p>Meeting link: <a href="${booking.meeting_link}">${booking.meeting_link}</a></p>` : ''}
@@ -155,22 +199,21 @@ async function runClassReminders() {
             if (booking.teacher_email && booking.teacher_id) {
                 sendMail({
                     to: booking.teacher_email,
-                    subject: 'Class Reminder - Starting Soon!',
+                    subject: 'Class Starting in 30 Minutes!',
                     html: `<p>Hi ${booking.teacher_name},</p>
                            <p>Your class with <strong>${booking.student_name}</strong> starts at <strong>${dateStr}</strong>.</p>
                            ${booking.meeting_link ? `<p>Meeting link: <a href="${booking.meeting_link}">${booking.meeting_link}</a></p>` : ''}`,
                 }).catch(() => {});
             }
 
-            // Mark as reminded
             await pool.query('UPDATE bookings SET reminded = TRUE WHERE id = ?', [booking.id]);
         }
 
         if (upcoming.length > 0) {
-            logger.info(`[Scheduler] Sent ${upcoming.length} class reminder(s)`);
+            logger.info(`[Scheduler] Sent ${upcoming.length} 30-min reminder(s)`);
         }
     } catch (err) {
-        logger.error('[Scheduler] Error during class reminders:', err);
+        logger.error('[Scheduler] Error during 30-min reminders:', err);
     }
 }
 
@@ -296,9 +339,13 @@ function startScheduler() {
     cron.schedule('0 2 * * *', runBillingChecks);
     logger.info('[Scheduler] Billing scheduler started (runs daily at 2:00 AM)');
 
-    // Class reminders — every 15 minutes
-    cron.schedule('*/15 * * * *', runClassReminders);
-    logger.info('[Scheduler] Class reminder scheduler started (runs every 15 minutes)');
+    // 5-hour reminders — every 15 minutes
+    cron.schedule('*/15 * * * *', run5HourReminders);
+    logger.info('[Scheduler] 5-hour reminder scheduler started (runs every 15 minutes)');
+
+    // 30-minute reminders — every 10 minutes
+    cron.schedule('*/10 * * * *', run30MinReminders);
+    logger.info('[Scheduler] 30-min reminder scheduler started (runs every 10 minutes)');
 
     // Onboarding follow-up — daily at 9:00 AM UTC
     cron.schedule('0 9 * * *', runOnboardingFollowUp);
@@ -313,4 +360,4 @@ function startScheduler() {
     logger.info('[Scheduler] Keep-alive ping started (every 14 minutes)');
 }
 
-module.exports = { startScheduler, runBillingChecks, runClassReminders, runOnboardingFollowUp, runDatabaseBackup };
+module.exports = { startScheduler, runBillingChecks, run5HourReminders, run30MinReminders, runOnboardingFollowUp, runDatabaseBackup };
