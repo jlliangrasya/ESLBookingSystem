@@ -12,10 +12,11 @@ const router = express.Router();
  *  For queries that need a JS-side datetime string, use the server's current time.
  *  Appointments are stored as absolute datetime values. */
 function nowDatetime() {
-    return new Date().toISOString().slice(0, 19).replace('T', ' ');
+    // appointment_date is stored in PHT (UTC+8) — use Manila time for comparison
+    return new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Manila' }).replace('T', ' ');
 }
 function todayDate() {
-    return new Date().toISOString().slice(0, 10);
+    return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Manila' });
 }
 
 /**
@@ -69,12 +70,9 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
 
         // Auto-mark past confirmed/pending bookings as 'done'
         // Safe because sessions are already deducted at booking time (no double-deduction)
-        await pool.query(`
-            UPDATE bookings SET status = 'done'
-            WHERE teacher_id = ? AND company_id = ?
-              AND status IN ('confirmed', 'pending')
-              AND appointment_date < CONVERT_TZ(NOW(), '+00:00', '+08:00')
-        `, [teacherId, companyId]);
+        // NOTE: Do NOT auto-mark past bookings as 'done' here.
+        // The teacher should explicitly confirm each class via "Confirm Classes" section.
+        // Auto-mark-done is only on the admin's completed-bookings endpoint.
 
         // Upcoming bookings for this teacher
         const [bookingRows] = await pool.query(`

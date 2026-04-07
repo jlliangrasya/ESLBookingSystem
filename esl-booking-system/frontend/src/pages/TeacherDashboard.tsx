@@ -985,7 +985,7 @@ const TeacherDashboard = () => {
                         const classTime = parseUTC(b.appointment_date)?.getTime() ?? 0;
                         const canMarkAbsent = Date.now() >= classTime + 15 * 60 * 1000;
                         return (
-                          <TableRow key={b.id}>
+                          <TableRow key={b.id} className={selectedBookingIds.has(b.id) ? "bg-primary/10 border-l-2 border-l-primary" : ""}>
                             <TableCell>
                               <input type="checkbox" checked={selectedBookingIds.has(b.id)} onChange={() => toggleBookingSelection(b.id)} className="accent-primary h-4 w-4 cursor-pointer" />
                             </TableCell>
