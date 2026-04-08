@@ -17,6 +17,7 @@ interface Plan {
   name: string;
   max_students: number;
   max_teachers: number;
+  max_admins: number;
   price_monthly: number;
   description: string | null;
 }
@@ -84,10 +85,13 @@ const CompanyLockedPage = () => {
                   ₱{Number(plan.price_monthly).toLocaleString()}
                   <span className="text-sm text-muted-foreground font-normal">/month</span>
                 </p>
-                <p className="text-xs text-muted-foreground">{plan.description}</p>
+                <p className="text-xs text-muted-foreground">
+                  Up to {plan.max_students} students, {plan.max_teachers} teachers, and {plan.max_admins} admins.
+                </p>
                 <div className="flex gap-2 flex-wrap">
                   <Badge variant="secondary" className="text-xs">{plan.max_students} students</Badge>
                   <Badge variant="secondary" className="text-xs">{plan.max_teachers} teachers</Badge>
+                  <Badge variant="secondary" className="text-xs">{plan.max_admins} admins</Badge>
                 </div>
               </CardContent>
             </Card>
