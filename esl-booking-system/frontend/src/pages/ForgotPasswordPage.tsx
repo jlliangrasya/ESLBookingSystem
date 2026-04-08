@@ -25,12 +25,16 @@ const ForgotPasswordPage = () => {
               href="mailto:brightfolks@gmail.com"
               className="text-primary font-semibold hover:underline text-base"
             >
-              brightfolks@gmail.com
+              brightfolkscenter@gmail.com
             </a>
             <p className="text-xs text-muted-foreground">
-              Include your registered email address and we'll help you reset your password.
+              Include your registered email address and we'll help you reset
+              your password.
             </p>
-            <Link to="/" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1">
+            <Link
+              to="/"
+              className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1"
+            >
               <ArrowLeft className="h-3 w-3" /> Back to Login
             </Link>
           </div>

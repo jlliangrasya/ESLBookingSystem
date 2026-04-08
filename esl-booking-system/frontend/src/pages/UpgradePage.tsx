@@ -14,7 +14,15 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Loader2, AlertCircle, BookOpen, Users, Star, LogOut, Clock } from "lucide-react";
+import {
+  Loader2,
+  AlertCircle,
+  BookOpen,
+  Users,
+  Star,
+  LogOut,
+  Clock,
+} from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 
 interface Plan {
@@ -34,7 +42,9 @@ const UpgradePage = () => {
 
   const [plans, setPlans] = useState<Plan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
-  const [step, setStep] = useState<"plans" | "agreement" | "form" | "pending">("plans");
+  const [step, setStep] = useState<"plans" | "agreement" | "form" | "pending">(
+    "plans",
+  );
 
   const [contactName, setContactName] = useState(authContext?.user?.name ?? "");
   const [contactEmail, setContactEmail] = useState("");
@@ -43,22 +53,30 @@ const UpgradePage = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Check if already has pending request
-  const [existingRequest, setExistingRequest] = useState<{ status: string; plan_name: string } | null>(null);
+  const [existingRequest, setExistingRequest] = useState<{
+    status: string;
+    plan_name: string;
+  } | null>(null);
 
   useEffect(() => {
     // Fetch paid plans only
     axios
       .get(`${import.meta.env.VITE_API_URL}/api/companies/subscription-plans`)
-      .then((res) => setPlans(res.data.filter((p: Plan) => p.price_monthly > 0)))
+      .then((res) =>
+        setPlans(res.data.filter((p: Plan) => p.price_monthly > 0)),
+      )
       .catch(() => {});
 
     // Check existing upgrade request
     const token = localStorage.getItem("token");
     if (token) {
       axios
-        .get(`${import.meta.env.VITE_API_URL}/api/companies/upgrade-request/status`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        .get(
+          `${import.meta.env.VITE_API_URL}/api/companies/upgrade-request/status`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        )
         .then((res) => {
           if (res.data) setExistingRequest(res.data);
           if (res.data?.status === "pending") setStep("pending");
@@ -88,7 +106,7 @@ const UpgradePage = () => {
           contact_name: contactName,
           contact_email: contactEmail,
         },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       setStep("pending");
     } catch (err) {
@@ -114,15 +132,22 @@ const UpgradePage = () => {
         <Card className="max-w-md w-full text-center shadow-lg">
           <CardContent className="pt-8 pb-8 space-y-4">
             <Clock className="h-16 w-16 text-yellow-500 mx-auto" />
-            <h2 className="text-2xl font-bold text-gray-800">Awaiting Approval</h2>
+            <h2 className="text-2xl font-bold text-gray-800">
+              Awaiting Approval
+            </h2>
             <p className="text-muted-foreground">
               Your upgrade request for the{" "}
-              <span className="font-medium">{selectedPlan?.name || existingRequest?.plan_name}</span>{" "}
-              plan has been submitted. Our team will review your payment and activate your account shortly.
+              <span className="font-medium">
+                {selectedPlan?.name || existingRequest?.plan_name}
+              </span>{" "}
+              plan has been submitted. Our team will review your payment and
+              activate your account shortly.
             </p>
             <p className="text-sm text-muted-foreground">
               Don't forget to send your payment receipt to{" "}
-              <span className="font-medium text-primary">jlliangracia.snaps@gmail.com</span>
+              <span className="font-medium text-primary">
+                brightfolkscenter@gmail.com
+              </span>
             </p>
             <Button variant="outline" onClick={handleLogout} className="gap-2">
               <LogOut className="h-4 w-4" />
@@ -140,10 +165,19 @@ const UpgradePage = () => {
       <div className="bg-white border-b px-4 py-3 flex items-center justify-between max-w-7xl mx-auto">
         <BrandLogo />
         <div className="text-center">
-          <p className="text-sm font-semibold text-red-600">Your free trial has expired</p>
-          <p className="text-xs text-muted-foreground">Choose a plan to continue</p>
+          <p className="text-sm font-semibold text-red-600">
+            Your free trial has expired
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Choose a plan to continue
+          </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-1 text-muted-foreground hover:text-destructive">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleLogout}
+          className="gap-1 text-muted-foreground hover:text-destructive"
+        >
           <LogOut className="h-4 w-4" /> Logout
         </Button>
       </div>
@@ -151,9 +185,12 @@ const UpgradePage = () => {
       <div className="max-w-4xl mx-auto px-4 py-10 space-y-8">
         {/* Hero */}
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold text-gray-800">Upgrade Your Plan</h1>
+          <h1 className="text-3xl font-bold text-gray-800">
+            Upgrade Your Plan
+          </h1>
           <p className="text-muted-foreground">
-            Select a subscription plan to restore full access to your Brightfolks dashboard.
+            Select a subscription plan to restore full access to your
+            Brightfolks dashboard.
           </p>
         </div>
 
@@ -162,13 +199,30 @@ const UpgradePage = () => {
           {["Select Plan", "Agreement", "Payment"].map((label, i) => {
             const stepKeys = ["plans", "agreement", "form"] as const;
             const active = step === stepKeys[i];
-            const done = (step === "form" && i < 2) || (step === "agreement" && i < 1);
+            const done =
+              (step === "form" && i < 2) || (step === "agreement" && i < 1);
             return (
               <span key={label} className="flex items-center gap-1">
-                <span className={`w-6 h-6 rounded-full text-xs flex items-center justify-center font-bold ${
-                  done ? "bg-green-500 text-white" : active ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
-                }`}>{done ? "✓" : i + 1}</span>
-                <span className={active ? "font-semibold text-primary" : "text-muted-foreground"}>{label}</span>
+                <span
+                  className={`w-6 h-6 rounded-full text-xs flex items-center justify-center font-bold ${
+                    done
+                      ? "bg-green-500 text-white"
+                      : active
+                        ? "bg-primary text-white"
+                        : "bg-gray-200 text-gray-500"
+                  }`}
+                >
+                  {done ? "✓" : i + 1}
+                </span>
+                <span
+                  className={
+                    active
+                      ? "font-semibold text-primary"
+                      : "text-muted-foreground"
+                  }
+                >
+                  {label}
+                </span>
                 {i < 2 && <span className="text-gray-300 mx-1">›</span>}
               </span>
             );
@@ -195,14 +249,20 @@ const UpgradePage = () => {
                   <CardContent className="space-y-2">
                     <p className="text-2xl font-bold text-primary">
                       ₱{plan.price_monthly.toLocaleString()}
-                      <span className="text-sm font-normal text-muted-foreground">/mo</span>
+                      <span className="text-sm font-normal text-muted-foreground">
+                        /mo
+                      </span>
                     </p>
                     <ul className="text-sm text-muted-foreground space-y-1">
                       <li>✓ Up to {plan.max_students} students</li>
                       <li>✓ Up to {plan.max_teachers} teachers</li>
                     </ul>
-                    <p className="text-xs text-muted-foreground">{plan.description}</p>
-                    <Button size="sm" className="w-full mt-2">Select</Button>
+                    <p className="text-xs text-muted-foreground">
+                      {plan.description}
+                    </p>
+                    <Button size="sm" className="w-full mt-2">
+                      Select
+                    </Button>
                   </CardContent>
                 </Card>
               );
@@ -214,9 +274,14 @@ const UpgradePage = () => {
         {step === "form" && selectedPlan && (
           <Card className="shadow-md max-w-lg mx-auto">
             <CardHeader>
-              <CardTitle className="text-lg">Payment Details — {selectedPlan.name}</CardTitle>
+              <CardTitle className="text-lg">
+                Payment Details — {selectedPlan.name}
+              </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Amount: <span className="font-semibold text-primary">₱{selectedPlan.price_monthly.toLocaleString()}/mo</span>
+                Amount:{" "}
+                <span className="font-semibold text-primary">
+                  ₱{selectedPlan.price_monthly.toLocaleString()}/mo
+                </span>
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -257,23 +322,42 @@ const UpgradePage = () => {
 
               {/* QR Code Placeholder */}
               <div className="border rounded-lg p-4 text-center space-y-2 bg-gray-50">
-                <p className="text-sm font-semibold text-gray-700">Scan to Pay</p>
+                <p className="text-sm font-semibold text-gray-700">
+                  Scan to Pay
+                </p>
                 <div className="w-40 h-40 mx-auto bg-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-xs border-2 border-dashed border-gray-300">
-                  QR Code<br />(Coming Soon)
+                  QR Code
+                  <br />
+                  (Coming Soon)
                 </div>
                 <p className="text-xs text-muted-foreground">
                   After payment, send your receipt screenshot to{" "}
-                  <span className="font-medium text-primary">jlliangracia.snaps@gmail.com</span>
+                  <span className="font-medium text-primary">
+                    brightfolkscenter@gmail.com
+                  </span>
                 </p>
               </div>
 
               <div className="flex gap-2 pt-2">
-                <Button variant="outline" onClick={() => setStep("plans")} className="flex-1">
+                <Button
+                  variant="outline"
+                  onClick={() => setStep("plans")}
+                  className="flex-1"
+                >
                   Back
                 </Button>
-                <Button onClick={handleSubmit} disabled={isLoading || !referenceNumber.trim() || !contactEmail.trim()} className="flex-1">
+                <Button
+                  onClick={handleSubmit}
+                  disabled={
+                    isLoading || !referenceNumber.trim() || !contactEmail.trim()
+                  }
+                  className="flex-1"
+                >
                   {isLoading ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Submitting…</>
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />{" "}
+                      Submitting…
+                    </>
                   ) : (
                     "Submit Request"
                   )}
@@ -285,26 +369,63 @@ const UpgradePage = () => {
       </div>
 
       {/* User Agreement Modal */}
-      <Dialog open={step === "agreement"} onOpenChange={(open) => !open && setStep("plans")}>
+      <Dialog
+        open={step === "agreement"}
+        onOpenChange={(open) => !open && setStep("plans")}
+      >
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>User Agreement — {selectedPlan?.name} Plan</DialogTitle>
+            <DialogTitle>
+              User Agreement — {selectedPlan?.name} Plan
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 text-sm text-muted-foreground max-h-64 overflow-y-auto py-2">
-            <p>By proceeding with the <strong>{selectedPlan?.name}</strong> plan at <strong>₱{selectedPlan?.price_monthly.toLocaleString()}/month</strong>, you agree to the following terms:</p>
+            <p>
+              By proceeding with the <strong>{selectedPlan?.name}</strong> plan
+              at{" "}
+              <strong>
+                ₱{selectedPlan?.price_monthly.toLocaleString()}/month
+              </strong>
+              , you agree to the following terms:
+            </p>
             <ul className="space-y-2 list-disc pl-4">
-              <li>Your subscription will be activated upon manual verification of your payment by Brightfolks support.</li>
-              <li>Monthly payments are required to maintain active access to the platform.</li>
-              <li>Failure to renew may result in account suspension after your current period ends.</li>
-              <li>Subscription fees are non-refundable once the plan is activated.</li>
-              <li>Brightfolks reserves the right to modify plan features or pricing with 30 days' notice.</li>
-              <li>Your data will be retained for 30 days after account suspension before deletion.</li>
-              <li>You are responsible for ensuring that your usage complies with Brightfolks's terms of service.</li>
+              <li>
+                Your subscription will be activated upon manual verification of
+                your payment by Brightfolks support.
+              </li>
+              <li>
+                Monthly payments are required to maintain active access to the
+                platform.
+              </li>
+              <li>
+                Failure to renew may result in account suspension after your
+                current period ends.
+              </li>
+              <li>
+                Subscription fees are non-refundable once the plan is activated.
+              </li>
+              <li>
+                Brightfolks reserves the right to modify plan features or
+                pricing with 30 days' notice.
+              </li>
+              <li>
+                Your data will be retained for 30 days after account suspension
+                before deletion.
+              </li>
+              <li>
+                You are responsible for ensuring that your usage complies with
+                Brightfolks's terms of service.
+              </li>
             </ul>
-            <p>By clicking "I Agree", you confirm that you have read and accepted these terms.</p>
+            <p>
+              By clicking "I Agree", you confirm that you have read and accepted
+              these terms.
+            </p>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setStep("plans")}>Go Back</Button>
+            <Button variant="outline" onClick={() => setStep("plans")}>
+              Go Back
+            </Button>
             <Button onClick={handleAgree}>I Agree &amp; Continue</Button>
           </DialogFooter>
         </DialogContent>
