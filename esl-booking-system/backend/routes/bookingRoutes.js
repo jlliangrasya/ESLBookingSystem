@@ -335,8 +335,13 @@ router.get("/api/completed-bookings", authenticateToken, requireRole('company_ad
         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
         const offset = (page - 1) * limit;
 
-        // Auto mark-done removed: classes should be explicitly confirmed by teacher or admin
-        // Sessions are deducted at booking time, so no session impact here
+        // Auto-mark past confirmed/pending bookings as 'done'
+        // Safe: sessions are already deducted at booking time
+        await pool.query(`
+            UPDATE bookings SET status = 'done'
+            WHERE company_id = ? AND status IN ('confirmed', 'pending')
+              AND appointment_date < CONVERT_TZ(NOW(), '+00:00', '+08:00')
+        `, [companyId]);
 
         const [rows] = await pool.query(`
             SELECT

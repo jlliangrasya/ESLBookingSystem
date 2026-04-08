@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const authenticateToken = require('../middleware/authMiddleware');
+const { invalidateAuthCache } = authenticateToken;
 const requireRole = require('../middleware/requireRole');
 const notify = require('../utils/notify');
 
