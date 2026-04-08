@@ -150,6 +150,14 @@ router.post('/upgrade-requests/:id/approve', authenticateToken, requireRole('sup
             [superAdminId, id]
         );
 
+        // Auto-create company_payments record from the upgrade request
+        const refNotes = request.notes ? (() => { try { const p = JSON.parse(request.notes); return `Ref: ${p.reference_number || ''} | ${p.contact_name || ''}`; } catch { return request.notes; } })() : null;
+        await pool.query(
+            `INSERT INTO company_payments (company_id, amount, payment_date, period_start, period_end, notes, recorded_by)
+             VALUES (?, ?, CURDATE(), CURDATE(), DATE_ADD(CURDATE(), INTERVAL 1 MONTH), ?, ?)`,
+            [request.company_id, plan.price_monthly, refNotes, superAdminId]
+        );
+
         // Notify company admin
         const [[admin]] = await pool.query(
             "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin' LIMIT 1",
@@ -160,8 +168,8 @@ router.post('/upgrade-requests/:id/approve', authenticateToken, requireRole('sup
                 userId: admin.id,
                 companyId: request.company_id,
                 type: 'upgrade_approved',
-                title: 'Plan upgrade approved!',
-                message: `Your account has been upgraded to the ${plan.name} plan. You can now access your dashboard.`,
+                title: 'Company approved!',
+                message: `Your subscription to the ${plan.name} plan has been approved. You can now access your dashboard.`,
             });
         }
 
