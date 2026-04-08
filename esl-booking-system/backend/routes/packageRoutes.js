@@ -193,11 +193,13 @@ router.post("/package/confirm/:id", authenticateToken, requireRole('company_admi
         }
 
         // Check if the student already has an existing paid package (lock it too)
-        // Prefer the one with sessions remaining (the active one bookings are made against)
+        // Prefer the one with sessions remaining or active bookings
         const [[existingPkg]] = await connection.query(
             `SELECT id, teacher_id AS existing_teacher_id FROM student_packages
              WHERE student_id = ? AND company_id = ? AND payment_status = 'paid' AND id != ?
-             ORDER BY CASE WHEN sessions_remaining > 0 THEN 0 ELSE 1 END, purchased_at DESC
+             ORDER BY CASE WHEN sessions_remaining > 0
+                           OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = student_packages.id AND b2.status NOT IN ('done','cancelled'))
+                           THEN 0 ELSE 1 END, purchased_at DESC
              LIMIT 1
              FOR UPDATE`,
             [newPkg.student_id, companyId, id]

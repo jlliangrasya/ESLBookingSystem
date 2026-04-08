@@ -112,8 +112,8 @@ Please use the email and password to login to https://esl-booking-system.vercel.
         (s.nationality || "").toLowerCase().includes(q);
       const matchSession =
         sessionFilter === "all" ||
-        (sessionFilter === "active" && s.sessions_remaining > 0) ||
-        (sessionFilter === "empty" && s.sessions_remaining === 0);
+        (sessionFilter === "active" && ((s.unused_sessions ?? s.sessions_remaining) > 0)) ||
+        (sessionFilter === "empty" && (s.unused_sessions ?? s.sessions_remaining) === 0);
       const matchTeacher =
         teacherFilter === "all" ||
         (teacherFilter === "assigned" && !!s.teacher_id) ||

@@ -169,4 +169,9 @@ const shutdown = (signal) => {
 };
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+// ── Catch unhandled promise rejections ──────────────────────────────────────
+process.on('unhandledRejection', (reason, promise) => {
+    logger.error('Unhandled promise rejection', { reason: reason?.message || reason, stack: reason?.stack });
+});
 // ─────────────────────────────────────────────────────────────────────────────

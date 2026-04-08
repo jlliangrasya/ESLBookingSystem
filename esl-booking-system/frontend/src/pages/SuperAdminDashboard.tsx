@@ -9,10 +9,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Building2, Users, Clock, CheckCircle, LogOut, Loader2,
   ArrowUpCircle, PackagePlus, Pencil, BarChart2, ChevronLeft, Search,
-  UserCog, CreditCard, AlertCircle, Database,
+  UserCog, CreditCard, AlertCircle, Database, Menu, X,
 } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -157,6 +158,7 @@ const SuperAdminDashboard = () => {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [saAnalytics, setSaAnalytics] = useState<SAAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Companies page
   const [companySearch, setCompanySearch] = useState("");
@@ -168,6 +170,10 @@ const SuperAdminDashboard = () => {
   const [allUsers, setAllUsers] = useState<AllUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [userSearch, setUserSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [companyFilterAccounts, setCompanyFilterAccounts] = useState("all");
+  const [accountsSort, setAccountsSort] = useState("name_asc");
   const [companyFilter, setCompanyFilter] = useState<"all" | "pending" | "near_expiry" | "active" | "suspended">("all");
   const [toggleLoading, setToggleLoading] = useState<number | null>(null);
 
@@ -422,11 +428,22 @@ const SuperAdminDashboard = () => {
     if (companyFilter === "suspended") return c.status === "suspended";
     return true;
   });
-  const filteredUsers = allUsers.filter(u =>
-    u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
-    u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
-    (u.company_name ?? "").toLowerCase().includes(userSearch.toLowerCase())
-  );
+  const companyNames = [...new Set(allUsers.map(u => u.company_name).filter(Boolean))].sort() as string[];
+  const filteredUsers = allUsers.filter(u => {
+    const q = userSearch.toLowerCase();
+    const matchSearch = !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || (u.company_name ?? "").toLowerCase().includes(q);
+    const matchRole = roleFilter === "all" || u.role === roleFilter;
+    const matchStatus = statusFilter === "all" || (statusFilter === "active" ? u.is_active : !u.is_active);
+    const matchCompany = companyFilterAccounts === "all" || u.company_name === companyFilterAccounts;
+    return matchSearch && matchRole && matchStatus && matchCompany;
+  }).sort((a, b) => {
+    if (accountsSort === "name_asc") return a.name.localeCompare(b.name);
+    if (accountsSort === "name_desc") return b.name.localeCompare(a.name);
+    if (accountsSort === "newest") return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    if (accountsSort === "oldest") return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    if (accountsSort === "company") return (a.company_name ?? "").localeCompare(b.company_name ?? "");
+    return 0;
+  });
 
   if (loading) {
     return (
@@ -1227,11 +1244,45 @@ const SuperAdminDashboard = () => {
 
   const renderAccountsPage = () => (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search by name, email, or company..." value={userSearch} onChange={e => setUserSearch(e.target.value)} className="pl-9" />
         </div>
+        <Select value={companyFilterAccounts} onValueChange={setCompanyFilterAccounts}>
+          <SelectTrigger className="w-[180px]"><SelectValue placeholder="Company" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Companies</SelectItem>
+            {companyNames.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={roleFilter} onValueChange={setRoleFilter}>
+          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Role" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Roles</SelectItem>
+            <SelectItem value="company_admin">Company Admin</SelectItem>
+            <SelectItem value="teacher">Teacher</SelectItem>
+            <SelectItem value="student">Student</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={accountsSort} onValueChange={setAccountsSort}>
+          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Sort" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="name_asc">Name A–Z</SelectItem>
+            <SelectItem value="name_desc">Name Z–A</SelectItem>
+            <SelectItem value="newest">Newest First</SelectItem>
+            <SelectItem value="oldest">Oldest First</SelectItem>
+            <SelectItem value="company">By Company</SelectItem>
+          </SelectContent>
+        </Select>
         <span className="text-sm text-muted-foreground">{filteredUsers.length} accounts</span>
       </div>
       <Card>
@@ -1402,8 +1453,8 @@ const SuperAdminDashboard = () => {
               <BrandLogo variant="white" />
             </div>
 
-            {/* Nav icons + actions */}
-            <nav className="flex items-center gap-5">
+            {/* Desktop nav — hidden on mobile */}
+            <nav className="hidden min-[620px]:flex items-center gap-5">
               {navItems.map(({ key, label, icon: Icon }) => (
                 <button
                   key={key}
@@ -1426,7 +1477,42 @@ const SuperAdminDashboard = () => {
                 <span className="text-[10px] font-medium">Logout</span>
               </Button>
             </nav>
+
+            {/* Mobile: notification + hamburger */}
+            <div className="flex min-[620px]:hidden items-center gap-2">
+              <NotificationBell variant="white" />
+              <Button variant="ghost" size="icon"
+                className="text-white/80 hover:text-white hover:bg-white/10"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+                {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+              </Button>
+            </div>
           </div>
+
+          {/* Mobile menu */}
+          {mobileMenuOpen && (
+            <div className="min-[620px]:hidden brand-gradient border-t border-white/10 pb-3">
+              {navItems.map(({ key, label, icon: Icon }) => (
+                <button
+                  key={key}
+                  onClick={() => { setPage(key); setMobileMenuOpen(false); if (key !== "companies") { setSelectedCompanyId(null); setCompanyProfile(null); } if (key !== "soa") setSoaCompany(null); if (key === "backup") fetchBackupLogs(); }}
+                  className={`flex items-center gap-3 px-4 py-3 w-full transition-colors ${
+                    page === key ? "text-white bg-white/10" : "text-white/80 hover:text-white hover:bg-white/10"
+                  }`}
+                >
+                  <Icon className="h-5 w-5" />
+                  <span className="text-sm font-medium">{label}</span>
+                </button>
+              ))}
+              <button
+                onClick={() => { setMobileMenuOpen(false); handleLogout(); }}
+                className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-red-200 hover:bg-white/10 w-full transition-colors"
+              >
+                <LogOut className="h-5 w-5" />
+                <span className="text-sm font-medium">Logout</span>
+              </button>
+            </div>
+          )}
         </header>
 
         <div className="max-w-7xl mx-auto px-4 py-8">

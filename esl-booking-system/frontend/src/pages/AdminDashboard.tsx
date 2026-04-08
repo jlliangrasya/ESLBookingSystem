@@ -100,6 +100,8 @@ const AdminDashboard = () => {
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [todayPage, setTodayPage] = useState(1);
+  const todayPerPage = 10;
 
   interface AnalyticsData {
     sessionsPerMonth: { month: string; sessions: number }[];
@@ -253,15 +255,15 @@ const AdminDashboard = () => {
   };
 
   const enrolledStudents = paidStudentPackages.filter(
-    (sp) => sp.payment_status === "paid" && sp.sessions_remaining > 0,
+    (sp) => sp.payment_status === "paid",
   ).length;
   const pendingEnrollees = studentPackages.filter(
     (sp) => sp.payment_status === "unpaid" && sp.sessions_remaining > 0,
   );
 
-  const todayStr = new Date().toDateString();
+  const todayKey = fmtDate(new Date().toISOString(), "yyyy-MM-dd");
   const todayBookings = bookings.filter(
-    (b) => new Date(b.appointment_date).toDateString() === todayStr,
+    (b) => fmtDate(b.appointment_date, "yyyy-MM-dd") === todayKey,
   );
 
   return (
@@ -597,7 +599,7 @@ const AdminDashboard = () => {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    todayBookings.map((b) => (
+                    todayBookings.slice((todayPage - 1) * todayPerPage, todayPage * todayPerPage).map((b) => (
                       <TableRow key={b.id}>
                         <TableCell className="text-sm font-medium">
                           {b.student_name}
@@ -641,6 +643,23 @@ const AdminDashboard = () => {
                   )}
                 </TableBody>
               </Table>
+              {todayBookings.length > todayPerPage && (
+                <div className="flex items-center justify-between px-4 py-2 border-t">
+                  <span className="text-xs text-muted-foreground">
+                    Showing {(todayPage - 1) * todayPerPage + 1}–{Math.min(todayPage * todayPerPage, todayBookings.length)} of {todayBookings.length}
+                  </span>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs"
+                      disabled={todayPage <= 1} onClick={() => setTodayPage(p => p - 1)}>
+                      Previous
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs"
+                      disabled={todayPage * todayPerPage >= todayBookings.length} onClick={() => setTodayPage(p => p + 1)}>
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -652,11 +671,11 @@ const AdminDashboard = () => {
               <BarChart2 className="h-5 w-5 text-primary" />
               <h2 className="font-semibold text-sm">Analytics</h2>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
                 <div>
                   <p className="text-xs text-gray-500 font-medium">
-                    Total Sessions
+                    Total Sessions (This Month)
                   </p>
                   <p className="text-2xl font-bold text-gray-800">
                     {analytics.totals.totalSessions}
@@ -666,14 +685,14 @@ const AdminDashboard = () => {
               <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
                 <div>
                   <p className="text-xs text-gray-500 font-medium">
-                    Total Students
+                    Active Students
                   </p>
                   <p className="text-2xl font-bold text-gray-800">
                     {analytics.totals.totalStudents}
                   </p>
                 </div>
               </div>
-              <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
+              {/* <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
                 <div>
                   <p className="text-xs text-gray-500 font-medium">
                     Est. Revenue
@@ -685,7 +704,7 @@ const AdminDashboard = () => {
                     ).toLocaleString()}
                   </p>
                 </div>
-              </div>
+              </div> */}
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <Card>

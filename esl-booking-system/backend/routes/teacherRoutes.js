@@ -52,7 +52,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
         const [students] = await pool.query(`
             SELECT
                 u.id, u.name, u.nationality, u.age,
-                tp.package_name,
+                tp.duration_minutes,
                 sp.sessions_remaining,
                 sp.sessions_remaining + (
                   SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR)))
@@ -78,7 +78,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
                 b.student_absent,
                 b.booking_group_id,
                 u.name AS student_name,
-                tp.package_name,
+                tp.duration_minutes,
                 sp.subject
             FROM bookings b
             JOIN student_packages sp ON b.student_package_id = sp.id
@@ -102,7 +102,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
                 b.booking_group_id,
                 u.name AS student_name,
                 sp.student_id,
-                tp.package_name,
+                tp.duration_minutes,
                 sp.subject,
                 CASE WHEN cr.id IS NOT NULL THEN TRUE ELSE FALSE END AS has_report
             FROM bookings b
@@ -432,7 +432,7 @@ router.get('/completed-classes', authenticateToken, requireRole('teacher'), asyn
         const [rows] = await pool.query(`
             SELECT b.id, b.appointment_date, b.status, b.student_absent, b.teacher_absent,
                    b.booking_group_id,
-                   u.name AS student_name, sp.student_id, tp.package_name, sp.subject,
+                   u.name AS student_name, sp.student_id, tp.duration_minutes, sp.subject,
                    CASE WHEN cr.id IS NOT NULL THEN TRUE ELSE FALSE END AS has_report
             FROM bookings b
             JOIN student_packages sp ON b.student_package_id = sp.id
@@ -484,7 +484,7 @@ router.get('/pending-confirmation', authenticateToken, requireRole('teacher'), a
                 b.student_package_id, b.booking_group_id,
                 u.name AS student_name,
                 sp.student_id,
-                tp.package_name,
+                tp.duration_minutes,
                 sp.subject
             FROM bookings b
             JOIN student_packages sp ON b.student_package_id = sp.id

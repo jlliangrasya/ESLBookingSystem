@@ -7,10 +7,12 @@ const notify = require("../utils/notify");
 const { logAction } = require("../utils/audit");
 
 // Helper: check if admin user has a specific permission or is_owner
+const ALLOWED_PERMISSIONS = ['can_add_teacher', 'can_edit_teacher', 'can_delete_teacher'];
 async function canDo(userId, permission) {
+    if (!ALLOWED_PERMISSIONS.includes(permission)) return false;
     const [[user]] = await pool.query('SELECT is_owner FROM users WHERE id = ?', [userId]);
     if (user?.is_owner) return true;
-    const [[perm]] = await pool.query(`SELECT ${permission} FROM admin_permissions WHERE user_id = ?`, [userId]);
+    const [[perm]] = await pool.query('SELECT * FROM admin_permissions WHERE user_id = ?', [userId]);
     return !!perm?.[permission];
 }
 
@@ -847,7 +849,9 @@ router.get('/students/:id', authenticateToken, requireRole('company_admin'), asy
               ) AS unused_sessions
        FROM student_packages sp
        JOIN tutorial_packages tp ON sp.package_id = tp.id
-       WHERE sp.student_id = ? AND sp.company_id = ? AND sp.payment_status = 'paid' AND sp.sessions_remaining > 0
+       WHERE sp.student_id = ? AND sp.company_id = ? AND sp.payment_status = 'paid'
+         AND (sp.sessions_remaining > 0
+              OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = sp.id AND b2.status NOT IN ('done','cancelled')))
        ORDER BY sp.purchased_at DESC LIMIT 1`,
       [id, companyId]
     );
@@ -1167,11 +1171,13 @@ router.put('/students/:id/assign-teacher', authenticateToken, requireRole('compa
       if (!teacher) return res.status(400).json({ message: 'Teacher not found or inactive' });
     }
 
-    // Find student's active paid package (prefer one with sessions remaining)
+    // Find student's active paid package (prefer one with sessions remaining or active bookings)
     const [[activePkg]] = await pool.query(
       `SELECT id FROM student_packages
        WHERE student_id = ? AND company_id = ? AND payment_status = 'paid'
-       ORDER BY CASE WHEN sessions_remaining > 0 THEN 0 ELSE 1 END, purchased_at DESC LIMIT 1`,
+       ORDER BY CASE WHEN sessions_remaining > 0
+                     OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = student_packages.id AND b2.status NOT IN ('done','cancelled'))
+                     THEN 0 ELSE 1 END, purchased_at DESC LIMIT 1`,
       [studentId, companyId]
     );
     if (!activePkg) return res.status(404).json({ message: 'No active paid package found for this student' });
@@ -1288,11 +1294,13 @@ router.post('/students/:id/assign-package', authenticateToken, requireRole('comp
     if (!pkg) return res.status(404).json({ message: 'Package not found or inactive' });
 
     // Check if student already has a paid package — if so, append sessions
-    // Prefer the one with sessions remaining (the active one bookings are made against)
+    // Prefer the one with sessions remaining or active bookings
     const [[existingPkg]] = await pool.query(
       `SELECT id FROM student_packages
        WHERE student_id = ? AND company_id = ? AND payment_status = 'paid'
-       ORDER BY CASE WHEN sessions_remaining > 0 THEN 0 ELSE 1 END, purchased_at DESC
+       ORDER BY CASE WHEN sessions_remaining > 0
+                     OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = student_packages.id AND b2.status NOT IN ('done','cancelled'))
+                     THEN 0 ELSE 1 END, purchased_at DESC
        LIMIT 1`,
       [studentId, companyId]
     );
@@ -1441,21 +1449,20 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
   try {
     const companyId = req.user.company_id;
 
-    // Sessions per month (last 6 months) — done bookings
+    // Sessions per month (last 6 months) — count distinct done classes
     const [sessionsPerMonth] = await pool.query(
       `SELECT DATE_FORMAT(appointment_date, '%Y-%m') AS month,
-              COUNT(*) AS total,
-              SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS completed,
-              SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled
+              COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS sessions
        FROM bookings
-       WHERE company_id = ? AND appointment_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+       WHERE company_id = ? AND status = 'done'
+         AND appointment_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
        GROUP BY month ORDER BY month ASC`,
       [companyId]
     );
 
     // Student growth (new students per month, last 6 months)
     const [studentGrowth] = await pool.query(
-      `SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS new_students
+      `SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS students
        FROM users
        WHERE company_id = ? AND role = 'student'
          AND created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
@@ -1478,10 +1485,14 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
     // Summary totals + plan limits
     const [[totals]] = await pool.query(
       `SELECT
-         (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'student') AS totalStudents,
+         (SELECT COUNT(DISTINCT sp_a.student_id) FROM student_packages sp_a
+          WHERE sp_a.company_id = ? AND sp_a.payment_status = 'paid'
+            AND (sp_a.sessions_remaining > 0
+                 OR EXISTS (SELECT 1 FROM bookings b_a WHERE b_a.student_package_id = sp_a.id AND b_a.status NOT IN ('done','cancelled')))) AS totalStudents,
          (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE) AS teachersCount,
          (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'company_admin' AND is_active = TRUE) AS adminsCount,
-         (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND status = 'done') AS totalSessions,
+         (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND status = 'done'
+           AND YEAR(appointment_date) = YEAR(CURDATE()) AND MONTH(appointment_date) = MONTH(CURDATE())) AS totalSessions,
          (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND status = 'cancelled') AS totalCancelled,
          (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND DATE(appointment_date) = CURDATE() AND status != 'cancelled') AS classesToday,
          (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND YEARWEEK(appointment_date, 1) = YEARWEEK(CURDATE(), 1) AND status != 'cancelled') AS classesThisWeek,
@@ -1502,15 +1513,22 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
       [companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId]
     );
 
-    // Per-teacher workload (next 7 days)
+    // Per-teacher workload (next 7 days) — count distinct classes, not individual slots
     const [teacherWorkload] = await pool.query(
       `SELECT u.id, u.name,
-         SUM(CASE WHEN DATE(b.appointment_date) = CURDATE() AND b.status NOT IN ('cancelled') THEN 1 ELSE 0 END) AS today,
-         SUM(CASE WHEN b.appointment_date >= NOW() AND b.appointment_date < DATE_ADD(CURDATE(), INTERVAL 7 DAY) AND b.status NOT IN ('cancelled','done') THEN 1 ELSE 0 END) AS next7days
+         (SELECT COUNT(DISTINCT COALESCE(b1.booking_group_id, CAST(b1.id AS CHAR)))
+          FROM bookings b1
+          WHERE b1.teacher_id = u.id AND b1.company_id = u.company_id
+            AND DATE(b1.appointment_date) = CURDATE()
+            AND b1.status NOT IN ('cancelled')) AS today,
+         (SELECT COUNT(DISTINCT COALESCE(b2.booking_group_id, CAST(b2.id AS CHAR)))
+          FROM bookings b2
+          WHERE b2.teacher_id = u.id AND b2.company_id = u.company_id
+            AND b2.appointment_date >= NOW()
+            AND b2.appointment_date < DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+            AND b2.status NOT IN ('cancelled','done')) AS next7days
        FROM users u
-       LEFT JOIN bookings b ON b.teacher_id = u.id AND b.company_id = u.company_id
        WHERE u.company_id = ? AND u.role = 'teacher' AND u.is_active = TRUE
-       GROUP BY u.id, u.name
        ORDER BY next7days DESC`,
       [companyId]
     );

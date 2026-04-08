@@ -66,7 +66,7 @@ router.post('/test', authenticateToken, async (req, res) => {
         res.json({ message: 'Push sent (check device)' });
     } catch (err) {
         logger.error('Push test error:', { error: err.message });
-        res.status(500).json({ message: 'Push test failed', error: err.message });
+        res.status(500).json({ message: 'Push test failed' });
     }
 });
 

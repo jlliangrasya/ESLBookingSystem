@@ -28,21 +28,21 @@ type Page = "dashboard" | "classes" | "profile";
 interface Teacher { id: number; name: string; email: string; }
 interface AssignedStudent {
   id: number; name: string; nationality: string; age: number;
-  package_name: string; sessions_remaining: number; unused_sessions: number; subject: string; payment_status: string;
+  duration_minutes: number; sessions_remaining: number; unused_sessions: number; subject: string; payment_status: string;
 }
 interface Booking {
   id: number; appointment_date: string; status: string; student_name: string;
-  package_name: string; subject: string; class_mode: string | null; meeting_link: string | null;
+  duration_minutes: number; subject: string; class_mode: string | null; meeting_link: string | null;
   student_absent: boolean; slot_count?: number;
 }
 interface CompletedBooking {
   id: number; appointment_date: string; status: string; student_name: string;
-  student_id: number; package_name: string; subject: string; has_report: boolean;
+  student_id: number; duration_minutes: number; subject: string; has_report: boolean;
   student_absent: boolean; teacher_absent: boolean; slot_count?: number;
 }
 interface PendingItem {
   id: number; appointment_date: string; status: string; student_name: string;
-  student_id: number; package_name: string; subject: string;
+  student_id: number; duration_minutes: number; subject: string;
   student_package_id: number; student_absent: boolean; slot_count?: number;
 }
 interface TeacherLeave {
@@ -370,10 +370,10 @@ const TeacherDashboard = () => {
     if (page === "classes") fetchFilteredCompleted(classesMonth, classesYear);
   }, [page]);
 
-  // Computed
-  const todayStr = new Date().toDateString();
-  const todayUpcoming = bookings.filter(b => new Date(b.appointment_date).toDateString() === todayStr).length;
-  const todayCompleted = completedBookings.filter(b => new Date(b.appointment_date).toDateString() === todayStr && b.status === "done").length;
+  // Computed — use fmtDate for consistent date handling (appointment_date is stored as display time)
+  const todayKey = fmtDate(new Date().toISOString(), "yyyy-MM-dd");
+  const todayUpcoming = bookings.filter(b => fmtDate(b.appointment_date, "yyyy-MM-dd") === todayKey).length;
+  const todayCompleted = completedBookings.filter(b => fmtDate(b.appointment_date, "yyyy-MM-dd") === todayKey && b.status === "done").length;
 
   const weekDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
@@ -779,7 +779,7 @@ const TeacherDashboard = () => {
                             Time
                           </th>
                           {weekDays.map((day, i) => {
-                            const isToday = day.toDateString() === todayStr;
+                            const isToday = day.toDateString() === new Date().toDateString();
                             return (
                               <th
                                 key={i}
@@ -883,7 +883,7 @@ const TeacherDashboard = () => {
                     <TableRow>
                       <TableHead>Date & Time</TableHead>
                       <TableHead>Student</TableHead>
-                      <TableHead>Package</TableHead>
+                      <TableHead>Duration</TableHead>
                       <TableHead>Subject</TableHead>
                       <TableHead>Student Attendance</TableHead>
                       <TableHead>Action</TableHead>
@@ -904,7 +904,7 @@ const TeacherDashboard = () => {
                             {(b.slot_count ?? 1) > 1 && <span className="ml-1 text-xs text-muted-foreground">({(b.slot_count ?? 1) * 30}min)</span>}
                           </TableCell>
                           <TableCell className="font-medium">{b.student_name}</TableCell>
-                          <TableCell className="text-xs">{b.package_name}</TableCell>
+                          <TableCell className="text-xs">{b.duration_minutes} min</TableCell>
                           <TableCell className="text-xs">{b.subject}</TableCell>
                           <TableCell>
                             {b.student_absent ? (
@@ -960,18 +960,17 @@ const TeacherDashboard = () => {
                       </TableHead>
                       <TableHead>Date & Time</TableHead>
                       <TableHead>Student</TableHead>
-                      <TableHead>Package</TableHead>
+                      <TableHead>Duration</TableHead>
                       <TableHead>Subject</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Class Info</TableHead>
                       <TableHead>Attendance</TableHead>
-                      <TableHead></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {bookings.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center text-muted-foreground text-sm py-8">
+                        <TableCell colSpan={8} className="text-center text-muted-foreground text-sm py-8">
                           No upcoming classes
                         </TableCell>
                       </TableRow>
@@ -989,7 +988,7 @@ const TeacherDashboard = () => {
                               {(b.slot_count ?? 1) > 1 && <span className="ml-1 text-xs text-muted-foreground">({(b.slot_count ?? 1) * 30}min)</span>}
                             </TableCell>
                             <TableCell className="font-medium">{b.student_name}</TableCell>
-                            <TableCell className="text-xs">{b.package_name}</TableCell>
+                            <TableCell className="text-xs">{b.duration_minutes} min</TableCell>
                             <TableCell className="text-xs">{b.subject}</TableCell>
                             <TableCell>
                               <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColors[b.status] || "bg-gray-100"}`}>
@@ -1015,21 +1014,6 @@ const TeacherDashboard = () => {
                               ) : (
                                 <span className="text-xs text-muted-foreground">—</span>
                               )}
-                            </TableCell>
-                            <TableCell>
-                              <Button size="sm" variant="ghost" className="text-xs h-7 text-destructive hover:text-destructive"
-                                onClick={() => {
-                                  const apptTime = parseUTC(b.appointment_date)?.getTime() ?? 0;
-                                  const hoursUntil = (apptTime - Date.now()) / (1000 * 60 * 60);
-                                  if (cancellationHours > 0 && hoursUntil < cancellationHours) {
-                                    axios.post(`${import.meta.env.VITE_API_URL}/api/teacher/bookings/${b.id}/cancel`, {}, { headers }).catch(() => {});
-                                    setCancelBlocked(true);
-                                  } else {
-                                    setCancelConfirm(b);
-                                  }
-                                }}>
-                                Cancel
-                              </Button>
                             </TableCell>
                           </TableRow>
                         );
@@ -1076,7 +1060,7 @@ const TeacherDashboard = () => {
                       <TableRow>
                         <TableHead>Date & Time</TableHead>
                         <TableHead>Student</TableHead>
-                        <TableHead>Package</TableHead>
+                        <TableHead>Duration</TableHead>
                         <TableHead>Subject</TableHead>
                         <TableHead>Attendance</TableHead>
                         <TableHead>Report</TableHead>
@@ -1097,7 +1081,7 @@ const TeacherDashboard = () => {
                               {(b.slot_count ?? 1) > 1 && <span className="ml-1 text-xs text-muted-foreground">({(b.slot_count ?? 1) * 30}min)</span>}
                             </TableCell>
                             <TableCell className="font-medium">{b.student_name}</TableCell>
-                            <TableCell className="text-xs">{b.package_name}</TableCell>
+                            <TableCell className="text-xs">{b.duration_minutes} min</TableCell>
                             <TableCell className="text-xs">{b.subject}</TableCell>
                             <TableCell>
                               <div className="flex gap-1 flex-wrap">
@@ -1220,9 +1204,9 @@ const TeacherDashboard = () => {
                       <TableHead>Name</TableHead>
                       <TableHead>Nationality</TableHead>
                       <TableHead>Age</TableHead>
-                      <TableHead>Package</TableHead>
+                      <TableHead>Duration</TableHead>
                       <TableHead>Subject</TableHead>
-                      <TableHead>Sessions</TableHead>
+                      {/* <TableHead>Sessions</TableHead> */}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1237,16 +1221,16 @@ const TeacherDashboard = () => {
                         <TableCell className="font-medium">{s.name}</TableCell>
                         <TableCell>{s.nationality || "—"}</TableCell>
                         <TableCell>{s.age || "—"}</TableCell>
-                        <TableCell className="text-xs">{s.package_name}</TableCell>
+                        <TableCell className="text-xs">{s.duration_minutes} min</TableCell>
                         <TableCell className="text-xs">{s.subject}</TableCell>
-                        <TableCell>
+                        {/* <TableCell>
                           <div className="flex gap-1">
                             <Badge variant="secondary">{s.unused_sessions ?? s.sessions_remaining} remaining</Badge>
                             {s.sessions_remaining !== (s.unused_sessions ?? s.sessions_remaining) && (
                               <Badge variant="outline" className="text-muted-foreground text-[10px]">{s.sessions_remaining} available to book</Badge>
                             )}
                           </div>
-                        </TableCell>
+                        </TableCell> */}
                       </TableRow>
                     ))}
                   </TableBody>

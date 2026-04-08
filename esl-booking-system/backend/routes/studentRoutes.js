@@ -29,7 +29,9 @@ router.get('/dashboard', authenticateToken, requireRole('student'), async (req, 
                     ) AS unused_sessions
              FROM student_packages sp
              JOIN tutorial_packages tp ON sp.package_id = tp.id
-             WHERE sp.student_id = ? AND sp.company_id = ? AND sp.payment_status = 'paid' AND sp.sessions_remaining > 0
+             WHERE sp.student_id = ? AND sp.company_id = ? AND sp.payment_status = 'paid'
+               AND (sp.sessions_remaining > 0
+                    OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = sp.id AND b2.status NOT IN ('done','cancelled')))
              ORDER BY sp.purchased_at DESC LIMIT 1`,
             [userId, companyId]
         );
@@ -83,7 +85,7 @@ router.get('/dashboard', authenticateToken, requireRole('student'), async (req, 
         res.json({ student, package: packageDetails, bookings, absences });
     } catch (error) {
         console.error("Error fetching student dashboard:", error);
-        res.status(500).json({ message: "Server error", error: error.message });
+        res.status(500).json({ message: "Server error" });
     }
 });
 
@@ -200,7 +202,9 @@ router.post('/feedback', authenticateToken, requireRole('student'), async (req, 
         // Find the teacher assigned to the student's active paid package
         const [[pkg]] = await pool.query(
             `SELECT teacher_id FROM student_packages
-             WHERE student_id = ? AND company_id = ? AND payment_status = 'paid' AND sessions_remaining > 0
+             WHERE student_id = ? AND company_id = ? AND payment_status = 'paid'
+               AND (sessions_remaining > 0
+                    OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = student_packages.id AND b2.status NOT IN ('done','cancelled')))
              ORDER BY purchased_at DESC LIMIT 1`,
             [studentId, companyId]
         );
@@ -492,11 +496,13 @@ router.get("/students", authenticateToken, requireRole('company_admin'), async (
                 IFNULL(sp.sessions_remaining, 0) + IFNULL(active_bk.active_classes, 0) AS unused_sessions,
                 sp.teacher_id,
                 t.name AS teacher_name,
-                CASE WHEN sp.payment_status = 'paid' AND sp.sessions_remaining > 0 THEN TRUE ELSE FALSE END AS enrolled
+                CASE WHEN sp.payment_status = 'paid' AND (sp.sessions_remaining > 0 OR IFNULL(active_bk.active_classes, 0) > 0) THEN TRUE ELSE FALSE END AS enrolled
             FROM users u
             LEFT JOIN (
                 SELECT sp2.*, ROW_NUMBER() OVER (PARTITION BY sp2.student_id ORDER BY
-                    CASE WHEN sp2.payment_status = 'paid' AND sp2.sessions_remaining > 0 THEN 0 ELSE 1 END,
+                    CASE WHEN sp2.payment_status = 'paid' AND (sp2.sessions_remaining > 0
+                         OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = sp2.id AND b2.status NOT IN ('done','cancelled')))
+                         THEN 0 ELSE 1 END,
                     sp2.purchased_at DESC) AS rn
                 FROM student_packages sp2 WHERE sp2.company_id = ?
             ) sp ON u.id = sp.student_id AND sp.rn = 1
@@ -568,7 +574,8 @@ router.get("/student-packages/paid", authenticateToken, requireRole('company_adm
             JOIN users u ON sp.student_id = u.id
             JOIN tutorial_packages tp ON sp.package_id = tp.id
             WHERE sp.payment_status = 'paid' AND sp.company_id = ?
-              AND sp.sessions_remaining > 0
+              AND (sp.sessions_remaining > 0
+                   OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = sp.id AND b2.status NOT IN ('done','cancelled')))
             ORDER BY sp.purchased_at DESC
         `, [companyId]);
         res.json(rows);

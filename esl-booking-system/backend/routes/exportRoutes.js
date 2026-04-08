@@ -30,7 +30,9 @@ router.get('/students', authenticateToken, requireRole('company_admin'), async (
             FROM users u
             LEFT JOIN (
                 SELECT sp2.*, ROW_NUMBER() OVER (PARTITION BY sp2.student_id ORDER BY
-                    CASE WHEN sp2.payment_status = 'paid' AND sp2.sessions_remaining > 0 THEN 0 ELSE 1 END,
+                    CASE WHEN sp2.payment_status = 'paid' AND (sp2.sessions_remaining > 0
+                         OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = sp2.id AND b2.status NOT IN ('done','cancelled')))
+                         THEN 0 ELSE 1 END,
                     sp2.purchased_at DESC) AS rn
                 FROM student_packages sp2 WHERE sp2.company_id = ?
             ) sp ON u.id = sp.student_id AND sp.rn = 1
