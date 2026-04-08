@@ -148,22 +148,21 @@ router.post('/login', async (req, res) => {
 
         // For non-super_admin, verify company is active
         let trialExpired = false;
+        let companyStatus = 'active';
         if (user.role !== 'super_admin' && user.company_id) {
             const [[company]] = await pool.query(
                 'SELECT status, trial_ends_at FROM companies WHERE id = ?',
                 [user.company_id]
             );
             if (company && company.status === 'locked') {
-                return res.status(403).json({
-                    message: 'Your account is locked due to non-payment. Please contact support to restore access.',
-                    account_locked: true,
-                });
-            }
-            if (!company || company.status !== 'active') {
+                // Allow login but flag — frontend redirects to locked page
+                companyStatus = 'locked';
+            } else if (company && company.status === 'suspended') {
+                // Allow login but flag — frontend redirects to suspended page
+                companyStatus = 'suspended';
+            } else if (!company || company.status !== 'active') {
                 return res.status(403).json({ message: 'Your company account is not active' });
-            }
-            // Trial expired: allow login but flag so frontend redirects to upgrade page
-            if (company.trial_ends_at && new Date(company.trial_ends_at) < new Date()) {
+            } else if (company.trial_ends_at && new Date(company.trial_ends_at) < new Date()) {
                 trialExpired = true;
             }
         }
@@ -189,6 +188,7 @@ router.post('/login', async (req, res) => {
                 is_owner: user.is_owner ?? false,
             },
             trial_expired: trialExpired,
+            company_status: companyStatus,
         });
     } catch (err) {
         console.error(err);

@@ -62,7 +62,8 @@ const Login = () => {
       );
 
       const trialExpired = res.data.trial_expired ?? false;
-      login(res.data.token, res.data.user, trialExpired);
+      const companyStatus = res.data.company_status ?? 'active';
+      login(res.data.token, res.data.user, trialExpired, companyStatus);
 
       // Subscribe to push notifications (best-effort)
       if (isPushSupported()) {
@@ -73,6 +74,8 @@ const Login = () => {
         console.warn('[Push] not supported in this browser');
       }
 
+      if (companyStatus === 'locked') return navigate("/company-locked");
+      if (companyStatus === 'suspended') return navigate("/company-suspended");
       if (trialExpired) return navigate("/upgrade");
       navigate(ROLE_ROUTES[res.data.user.role as UserRole] ?? "/");
     } catch (err: unknown) {

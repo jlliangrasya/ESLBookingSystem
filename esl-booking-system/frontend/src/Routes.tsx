@@ -28,6 +28,8 @@ const StudentProfilePage       = lazy(() => import("./pages/StudentProfilePage.t
 const ActivityLogPage          = lazy(() => import("./pages/ActivityLogPage.tsx"));
 const SubscriptionPlansPage    = lazy(() => import("./pages/SubscriptionPlansPage.tsx"));
 const DocumentationPage        = lazy(() => import("./pages/DocumentationPage.tsx"));
+const CompanyLockedPage        = lazy(() => import("./pages/CompanyLockedPage.tsx"));
+const CompanySuspendedPage     = lazy(() => import("./pages/CompanySuspendedPage.tsx"));
 
 const AppRoutes = () => {
   return (
@@ -38,6 +40,8 @@ const AppRoutes = () => {
         <Route path="/" element={<Home />} />
         <Route path="/company/register" element={<CompanyRegisterPage />} />
         <Route path="/upgrade" element={<UpgradePage />} />
+        <Route path="/company-locked" element={<CompanyLockedPage />} />
+        <Route path="/company-suspended" element={<CompanySuspendedPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
 
