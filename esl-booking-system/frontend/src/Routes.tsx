@@ -29,6 +29,7 @@ const ActivityLogPage          = lazy(() => import("./pages/ActivityLogPage.tsx"
 const SubscriptionPlansPage    = lazy(() => import("./pages/SubscriptionPlansPage.tsx"));
 const DocumentationPage        = lazy(() => import("./pages/DocumentationPage.tsx"));
 const CompanyLockedPage        = lazy(() => import("./pages/CompanyLockedPage.tsx"));
+const CompanyLockedUserPage    = lazy(() => import("./pages/CompanyLockedUserPage.tsx"));
 const CompanySuspendedPage     = lazy(() => import("./pages/CompanySuspendedPage.tsx"));
 
 const AppRoutes = () => {
@@ -41,6 +42,7 @@ const AppRoutes = () => {
         <Route path="/company/register" element={<CompanyRegisterPage />} />
         <Route path="/upgrade" element={<UpgradePage />} />
         <Route path="/company-locked" element={<CompanyLockedPage />} />
+        <Route path="/company-locked-user" element={<CompanyLockedUserPage />} />
         <Route path="/company-suspended" element={<CompanySuspendedPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />

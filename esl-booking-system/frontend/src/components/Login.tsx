@@ -74,7 +74,10 @@ const Login = () => {
         console.warn('[Push] not supported in this browser');
       }
 
-      if (companyStatus === 'locked') return navigate("/company-locked");
+      if (companyStatus === 'locked') {
+        if (res.data.user.role === 'company_admin') return navigate("/company-locked");
+        return navigate("/company-locked-user");
+      }
       if (companyStatus === 'suspended') return navigate("/company-suspended");
       if (trialExpired) return navigate("/upgrade");
       navigate(ROLE_ROUTES[res.data.user.role as UserRole] ?? "/");
