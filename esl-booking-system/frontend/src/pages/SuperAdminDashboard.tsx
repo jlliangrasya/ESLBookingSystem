@@ -712,6 +712,7 @@ const SuperAdminDashboard = () => {
                   <TableHead>Current Plan</TableHead>
                   <TableHead>Requested Plan</TableHead>
                   <TableHead>Price/mo</TableHead>
+                  <TableHead>Reference</TableHead>
                   <TableHead>Submitted</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -726,6 +727,21 @@ const SuperAdminDashboard = () => {
                     <TableCell className="text-xs">{req.current_plan || "Free Trial"}</TableCell>
                     <TableCell className="text-xs font-medium">{req.requested_plan}</TableCell>
                     <TableCell className="text-xs">₱{req.price_monthly.toLocaleString()}/mo</TableCell>
+                    <TableCell className="text-xs">
+                      {req.notes ? (() => {
+                        try {
+                          const parsed = JSON.parse(req.notes);
+                          return (
+                            <div>
+                              {parsed.reference_number && <span className="font-mono font-semibold text-primary">{parsed.reference_number}</span>}
+                              {parsed.contact_name && <div className="text-muted-foreground">{parsed.contact_name}</div>}
+                            </div>
+                          );
+                        } catch {
+                          return <span className="text-muted-foreground">{req.notes}</span>;
+                        }
+                      })() : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
                     <TableCell className="text-xs text-muted-foreground">{new Date(req.created_at).toLocaleDateString()}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
