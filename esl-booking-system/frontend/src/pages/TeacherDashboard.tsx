@@ -18,6 +18,7 @@ import NotificationBell from "@/components/NotificationBell";
 import InstallAppButton from "@/components/InstallAppButton";
 import ReportModal from "@/components/ReportModal";
 import { fmtDate, fmtDateOnly, parseUTC, TIMEZONES } from "@/utils/timezone";
+import AnnouncementPanel from "@/components/AnnouncementPanel";
 import TablePagination from "@/components/TablePagination";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -618,6 +619,7 @@ const TeacherDashboard = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+        <AnnouncementPanel />
 
         {/* ═══ DASHBOARD PAGE ═══ */}
         {page === "dashboard" && (

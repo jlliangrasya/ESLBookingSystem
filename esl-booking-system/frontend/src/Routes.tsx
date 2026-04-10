@@ -28,6 +28,11 @@ const StudentProfilePage       = lazy(() => import("./pages/StudentProfilePage.t
 const ActivityLogPage          = lazy(() => import("./pages/ActivityLogPage.tsx"));
 const SubscriptionPlansPage    = lazy(() => import("./pages/SubscriptionPlansPage.tsx"));
 const DocumentationPage        = lazy(() => import("./pages/DocumentationPage.tsx"));
+const AnnouncementManagementPage = lazy(() => import("./pages/AnnouncementManagementPage.tsx"));
+const BulkImportPage             = lazy(() => import("./pages/BulkImportPage.tsx"));
+const TeacherAssignmentsPage     = lazy(() => import("./pages/TeacherAssignmentsPage.tsx"));
+const StudentAssignmentsPage     = lazy(() => import("./pages/StudentAssignmentsPage.tsx"));
+const RecurringSchedulesPage     = lazy(() => import("./pages/RecurringSchedulesPage.tsx"));
 
 const AppRoutes = () => {
   return (
@@ -125,12 +130,56 @@ const AppRoutes = () => {
           }
         />
 
+        {/* Announcements Management — Company Admin */}
+        <Route
+          path="/admin/announcements"
+          element={
+            <ProtectedRoute allowedRoles={['company_admin']}>
+              <AnnouncementManagementPage />
+            </ProtectedRoute>
+          }
+        />
+        {/* Recurring Schedules — Company Admin */}
+        <Route
+          path="/admin/recurring"
+          element={
+            <ProtectedRoute allowedRoles={['company_admin']}>
+              <RecurringSchedulesPage />
+            </ProtectedRoute>
+          }
+        />
+        {/* Bulk Import — Company Admin */}
+        <Route
+          path="/admin/import"
+          element={
+            <ProtectedRoute allowedRoles={['company_admin']}>
+              <BulkImportPage />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Teacher */}
         <Route
           path="/teacher-dashboard"
           element={
             <ProtectedRoute allowedRoles={['teacher']}>
               <TeacherDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/teacher/recurring"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <RecurringSchedulesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/teacher/assignments"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <TeacherAssignmentsPage />
             </ProtectedRoute>
           }
         />
@@ -144,6 +193,22 @@ const AppRoutes = () => {
         />
 
         {/* Student */}
+        <Route
+          path="/student/recurring"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <RecurringSchedulesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/student/assignments"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <StudentAssignmentsPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/student-profile"
           element={
