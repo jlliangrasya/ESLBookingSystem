@@ -32,7 +32,7 @@ const Footer = () => {
           />
           <span className="flex items-center gap-2">
             <MapPin className="h-4 w-4" />
-            Cebu City, Philippines
+            Philippines
           </span>
         </div>
         <p className="mt-5 text-xs text-gray-500">
