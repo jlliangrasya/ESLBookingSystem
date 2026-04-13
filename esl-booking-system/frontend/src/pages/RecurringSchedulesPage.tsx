@@ -1,9 +1,9 @@
 import { useState, useEffect, useContext, useCallback } from "react";
 import axios from "axios";
 import {
-  CalendarDays, Plus, Loader2, ChevronDown, ChevronUp, XCircle, CheckCircle, AlertTriangle, Clock,
+  CalendarDays, Plus, Loader2, XCircle, CheckCircle, AlertTriangle,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -81,7 +81,7 @@ const RecurringSchedulesPage: React.FC = () => {
   const [selectedDetail, setSelectedDetail] = useState<ScheduleDetail | null>(null);
   const [packages, setPackages] = useState<StudentPackage[]>([]);
   const [saving, setSaving] = useState(false);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [, /* expandedId */] = useState<number | null>(null);
 
   // Create form
   const [selectedPkgId, setSelectedPkgId] = useState("");

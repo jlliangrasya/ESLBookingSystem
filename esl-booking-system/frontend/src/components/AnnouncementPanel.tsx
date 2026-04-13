@@ -1,7 +1,6 @@
 import { useState, useEffect, useContext, useCallback } from "react";
 import axios from "axios";
 import { Megaphone, Pin, X, ChevronDown, ChevronUp } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import AuthContext from "@/context/AuthContext";

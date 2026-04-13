@@ -1,6 +1,6 @@
 import { useState, useEffect, useContext, useCallback } from "react";
 import axios from "axios";
-import { FileText, Plus, Loader2, CheckCircle, Clock, AlertCircle, ExternalLink } from "lucide-react";
+import { FileText, Plus, Loader2, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
