@@ -175,7 +175,7 @@ const AppRoutes = () => {
           <Route
             path="/admin/announcements"
             element={
-              <ProtectedRoute allowedRoles={["company_admin"]}>
+              <ProtectedRoute allowedRoles={["company_admin", "super_admin"]}>
                 <AnnouncementManagementPage />
               </ProtectedRoute>
             }

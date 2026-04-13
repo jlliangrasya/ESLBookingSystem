@@ -1,6 +1,7 @@
 import { useState, useEffect, useContext, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Megaphone, Pin, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Megaphone, Pin, X, ChevronDown, ChevronUp, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import AuthContext from "@/context/AuthContext";
@@ -18,8 +19,10 @@ interface Announcement {
 }
 
 const AnnouncementPanel: React.FC = () => {
+  const navigate = useNavigate();
   const authContext = useContext(AuthContext);
   const token = authContext?.token ?? null;
+  const role = authContext?.user?.role;
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [expanded, setExpanded] = useState(true);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -58,7 +61,8 @@ const AnnouncementPanel: React.FC = () => {
 
   const unreadCount = announcements.filter(a => !a.is_read).length;
 
-  if (announcements.length === 0) return null;
+  // Hide for non-admins if no announcements; always show for admins (they can add)
+  if (announcements.length === 0 && role !== "company_admin" && role !== "super_admin") return null;
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -90,7 +94,19 @@ const AnnouncementPanel: React.FC = () => {
             </Badge>
           )}
         </div>
-        {expanded ? <ChevronUp className="h-4 w-4 text-blue-500" /> : <ChevronDown className="h-4 w-4 text-blue-500" />}
+        <div className="flex items-center gap-2">
+          {(role === "company_admin" || role === "super_admin") && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1 border-blue-300 text-blue-700 hover:bg-blue-100"
+              onClick={(e) => { e.stopPropagation(); navigate("/admin/announcements"); }}
+            >
+              <Plus className="h-3 w-3" /> Add
+            </Button>
+          )}
+          {expanded ? <ChevronUp className="h-4 w-4 text-blue-500" /> : <ChevronDown className="h-4 w-4 text-blue-500" />}
+        </div>
       </div>
 
       {expanded && (
