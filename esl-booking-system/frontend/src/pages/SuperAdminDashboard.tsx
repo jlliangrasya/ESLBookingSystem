@@ -21,6 +21,7 @@ import {
 } from "recharts";
 import BrandLogo from "@/components/BrandLogo";
 import NotificationBell from "@/components/NotificationBell";
+import AnnouncementPanel from "@/components/AnnouncementPanel";
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 interface Stats {
@@ -1532,6 +1533,7 @@ const SuperAdminDashboard = () => {
         </header>
 
         <div className="max-w-7xl mx-auto px-4 py-8">
+          <AnnouncementPanel />
           {page === "dashboard" && renderDashboard()}
           {page === "companies" && renderCompaniesPage()}
           {page === "accounts" && renderAccountsPage()}

@@ -84,6 +84,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
                 b.meeting_link,
                 b.student_absent,
                 b.booking_group_id,
+                b.recurring_schedule_id,
                 u.name AS student_name,
                 tp.duration_minutes,
                 sp.subject

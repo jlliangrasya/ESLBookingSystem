@@ -274,7 +274,7 @@ router.get("/api/student-bookings", authenticateToken, requireRole('company_admi
         const [rows] = await pool.query(`
             SELECT
                 b.id, b.appointment_date, b.status, b.rescheduled_by_admin,
-                b.student_package_id, b.created_at,
+                b.student_package_id, b.recurring_schedule_id, b.created_at,
                 sp.student_id,
                 u.name AS student_name,
                 tp.package_name,

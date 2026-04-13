@@ -24,6 +24,7 @@ import NotificationBell from "@/components/NotificationBell";
 import LanguageToggle from "@/components/LanguageToggle";
 import InstallAppButton from "@/components/InstallAppButton";
 import { fmtDate, fmtDateOnly, fmtTime, parseUTC } from "@/utils/timezone";
+import AnnouncementPanel from "@/components/AnnouncementPanel";
 
 interface Student {
   id: number;
@@ -487,6 +488,11 @@ const StudentDashboard = () => {
             {student?.name || "Student"}
           </h1>
         </div>
+      </div>
+
+      {/* Announcements */}
+      <div className="max-w-7xl mx-auto px-4 pt-6">
+        <AnnouncementPanel />
       </div>
 
       {/* Main content */}
