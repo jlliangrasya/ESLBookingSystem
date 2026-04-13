@@ -43,6 +43,10 @@ const reportRoutes = require('./routes/reportRoutes.js');
 const waitlistRoutes = require('./routes/waitlistRoutes.js');
 const exportRoutes = require('./routes/exportRoutes.js');
 const pushRoutes = require('./routes/pushRoutes.js');
+const announcementRoutes = require('./routes/announcementRoutes.js');
+const importRoutes = require('./routes/importRoutes.js');
+const assignmentRoutes = require('./routes/assignmentRoutes.js');
+const recurringRoutes = require('./routes/recurringRoutes.js');
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -121,6 +125,10 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/waitlist', waitlistRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/push', pushRoutes);
+app.use('/api/announcements', announcementRoutes);
+app.use('/api/import', importRoutes);
+app.use('/api/assignments', assignmentRoutes);
+app.use('/api/recurring', recurringRoutes);
 
 // Ensure push_subscriptions table exists (lightweight, idempotent)
 pool.query(`
