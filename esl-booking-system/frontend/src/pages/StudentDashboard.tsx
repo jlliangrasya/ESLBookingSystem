@@ -576,7 +576,12 @@ const StudentDashboard = () => {
             {t("student.availPackage")}
           </Button>
 
-          <h4 className="font-semibold text-gray-700">{t("student.bookedClasses")}</h4>
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-gray-700">{t("student.bookedClasses")}</h4>
+            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={() => navigate("/student/recurring")}>
+              <CalendarDays className="h-3 w-3" /> Recurring
+            </Button>
+          </div>
           <Calendar
             className="custom-calendar"
             onClickDay={handleDateClick}

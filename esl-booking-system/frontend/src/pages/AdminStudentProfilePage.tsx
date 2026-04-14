@@ -713,6 +713,9 @@ const AdminStudentProfilePage = () => {
                 <Button size="sm" className="gap-1" onClick={() => { setSelectedSlots({}); setAddError(null); setAddSuccess(null); setShowAddClass(true); }}>
                   <Plus className="h-4 w-4" /> Add Class
                 </Button>
+                <Button size="sm" variant="outline" className="gap-1" onClick={() => navigate("/admin/recurring")}>
+                  <CalendarDays className="h-4 w-4" /> Recurring
+                </Button>
               </div>
             )}
           </CardHeader>
