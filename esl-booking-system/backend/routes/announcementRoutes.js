@@ -199,6 +199,9 @@ router.delete('/:id', authenticateToken, requireRole('company_admin', 'super_adm
         if (role === 'company_admin' && existing.company_id !== companyId) {
             return res.status(403).json({ message: 'Forbidden' });
         }
+        if (existing.author_id !== userId) {
+            return res.status(403).json({ message: 'Only the author can delete this announcement' });
+        }
 
         await pool.query('DELETE FROM announcements WHERE id = ?', [id]);
         logAction(existing.company_id, userId, 'delete_announcement', 'announcement', id, { title: existing.title });

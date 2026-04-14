@@ -23,6 +23,7 @@ interface Announcement {
   content: string;
   audience: string;
   is_pinned: boolean;
+  author_id: number;
   author_name: string;
   created_at: string;
   expires_at: string | null;
@@ -186,14 +187,18 @@ const AnnouncementManagementPage: React.FC = () => {
                         {a.expires_at ? formatDate(a.expires_at) : "—"}
                       </TableCell>
                       <TableCell>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openEdit(a)}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-500 hover:text-red-700" onClick={() => setDeleteId(a.id)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
+                        {a.author_id === user?.id ? (
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openEdit(a)}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-500 hover:text-red-700" onClick={() => setDeleteId(a.id)}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Read only</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
