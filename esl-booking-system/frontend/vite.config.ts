@@ -33,14 +33,6 @@ export default defineConfig({
         importScripts: ['/sw-push.js'],
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-cache',
-              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
-            },
-          },
-          {
             // Real-time data: bookings, availability, notifications — never serve stale
             urlPattern: ({ url }: { url: URL }) => {
               const p = url.pathname;
