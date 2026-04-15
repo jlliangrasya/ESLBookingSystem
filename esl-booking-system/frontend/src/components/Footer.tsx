@@ -9,11 +9,11 @@ const Footer = () => {
       <div className="max-w-5xl mx-auto px-4 py-10 text-center">
         <div className="flex flex-wrap justify-center gap-6 text-sm">
           <a
-            href="mailto:brightfolks@gmail.com"
+            href="mailto:brightfolkscenter@gmail.com"
             className="flex items-center gap-2 hover:text-[#6BBAD0] transition-colors"
           >
             <Mail className="h-4 w-4" />
-            brightfolks@gmail.com
+            brightfolkscenter@gmail.com
           </a>
           <Separator
             orientation="vertical"
@@ -32,7 +32,7 @@ const Footer = () => {
           />
           <span className="flex items-center gap-2">
             <MapPin className="h-4 w-4" />
-            Cebu City, Philippines
+            Philippines
           </span>
         </div>
         <p className="mt-5 text-xs text-gray-500">

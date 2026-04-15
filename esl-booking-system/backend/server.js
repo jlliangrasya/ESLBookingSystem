@@ -43,6 +43,10 @@ const reportRoutes = require('./routes/reportRoutes.js');
 const waitlistRoutes = require('./routes/waitlistRoutes.js');
 const exportRoutes = require('./routes/exportRoutes.js');
 const pushRoutes = require('./routes/pushRoutes.js');
+const announcementRoutes = require('./routes/announcementRoutes.js');
+const importRoutes = require('./routes/importRoutes.js');
+const assignmentRoutes = require('./routes/assignmentRoutes.js');
+const recurringRoutes = require('./routes/recurringRoutes.js');
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -121,23 +125,135 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/waitlist', waitlistRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/push', pushRoutes);
+app.use('/api/announcements', announcementRoutes);
+app.use('/api/import', importRoutes);
+app.use('/api/assignments', assignmentRoutes);
+app.use('/api/recurring', recurringRoutes);
 
-// Ensure push_subscriptions table exists (lightweight, idempotent)
-pool.query(`
-  CREATE TABLE IF NOT EXISTS push_subscriptions (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    endpoint VARCHAR(500) NOT NULL,
-    p256dh VARCHAR(255) NOT NULL,
-    auth VARCHAR(255) NOT NULL,
-    user_agent VARCHAR(255) DEFAULT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE KEY uq_endpoint (endpoint),
-    INDEX idx_push_user (user_id)
-  )
-`).then(() => logger.info('push_subscriptions table ensured'))
-  .catch((err) => logger.error('Failed to ensure push_subscriptions table', { error: err.message }));
+// ── Auto-migrate: ensure all tables & columns exist (idempotent) ────────────
+async function runAutoMigrations() {
+  const migrations = [
+    // push_subscriptions
+    { name: 'push_subscriptions', sql: `CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, endpoint VARCHAR(500) NOT NULL,
+        p256dh VARCHAR(255) NOT NULL, auth VARCHAR(255) NOT NULL, user_agent VARCHAR(255) DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE KEY uq_endpoint (endpoint), INDEX idx_push_user (user_id))` },
+    // company_payments
+    { name: 'company_payments', sql: `CREATE TABLE IF NOT EXISTS company_payments (
+        id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, amount DECIMAL(10,2) NOT NULL,
+        payment_date DATE NOT NULL, period_start DATE NULL, period_end DATE NULL, notes TEXT NULL,
+        recorded_by INT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (company_id) REFERENCES companies(id),
+        FOREIGN KEY (recorded_by) REFERENCES users(id))` },
+    // announcements
+    { name: 'announcements', sql: `CREATE TABLE IF NOT EXISTS announcements (
+        id INT AUTO_INCREMENT PRIMARY KEY, company_id INT DEFAULT NULL, author_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL, content TEXT NOT NULL,
+        audience ENUM('company_admin','teachers','students','all') NOT NULL DEFAULT 'all',
+        is_pinned TINYINT(1) DEFAULT 0, expires_at TIMESTAMP NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+        FOREIGN KEY (author_id) REFERENCES users(id),
+        INDEX idx_ann_company_audience (company_id, audience, created_at),
+        INDEX idx_ann_expires (expires_at))` },
+    // announcement_reads
+    { name: 'announcement_reads', sql: `CREATE TABLE IF NOT EXISTS announcement_reads (
+        id INT AUTO_INCREMENT PRIMARY KEY, announcement_id INT NOT NULL, user_id INT NOT NULL,
+        read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (announcement_id) REFERENCES announcements(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE KEY uq_ann_user (announcement_id, user_id), INDEX idx_annread_user (user_id))` },
+    // bulk_import_logs
+    { name: 'bulk_import_logs', sql: `CREATE TABLE IF NOT EXISTS bulk_import_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, imported_by INT NOT NULL,
+        import_type ENUM('teachers','students') NOT NULL, total_rows INT NOT NULL DEFAULT 0,
+        success_count INT NOT NULL DEFAULT 0, skipped_count INT NOT NULL DEFAULT 0,
+        error_details JSON NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (company_id) REFERENCES companies(id),
+        FOREIGN KEY (imported_by) REFERENCES users(id),
+        INDEX idx_bil_company (company_id, created_at))` },
+    // assignments
+    { name: 'assignments', sql: `CREATE TABLE IF NOT EXISTS assignments (
+        id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, teacher_id INT NOT NULL,
+        student_id INT NOT NULL, booking_id INT DEFAULT NULL, title VARCHAR(255) NOT NULL,
+        instructions TEXT NOT NULL, due_date DATETIME NOT NULL, max_score INT DEFAULT NULL,
+        resource_links JSON NULL, status ENUM('active','closed') DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (company_id) REFERENCES companies(id),
+        FOREIGN KEY (teacher_id) REFERENCES users(id),
+        FOREIGN KEY (student_id) REFERENCES users(id),
+        FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL,
+        INDEX idx_assign_teacher (company_id, teacher_id),
+        INDEX idx_assign_student (student_id, status), INDEX idx_assign_due (due_date))` },
+    // assignment_submissions
+    { name: 'assignment_submissions', sql: `CREATE TABLE IF NOT EXISTS assignment_submissions (
+        id INT AUTO_INCREMENT PRIMARY KEY, assignment_id INT NOT NULL, student_id INT NOT NULL,
+        response_text TEXT NOT NULL, reference_links JSON NULL, is_late TINYINT(1) DEFAULT 0,
+        submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, score INT DEFAULT NULL,
+        feedback TEXT DEFAULT NULL, graded_at TIMESTAMP NULL DEFAULT NULL, graded_by INT DEFAULT NULL,
+        FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE,
+        FOREIGN KEY (student_id) REFERENCES users(id),
+        FOREIGN KEY (graded_by) REFERENCES users(id),
+        UNIQUE KEY uq_submission (assignment_id, student_id))` },
+    // recurring_schedules
+    { name: 'recurring_schedules', sql: `CREATE TABLE IF NOT EXISTS recurring_schedules (
+        id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, student_package_id INT NOT NULL,
+        teacher_id INT NOT NULL, student_id INT NOT NULL, days_of_week JSON NOT NULL,
+        start_time TIME NOT NULL, duration_minutes INT NOT NULL, slots_per_class INT NOT NULL,
+        num_weeks INT NOT NULL, start_date DATE NOT NULL, end_date DATE NOT NULL,
+        total_possible INT NOT NULL, sessions_booked INT NOT NULL, skipped_dates JSON NULL,
+        status ENUM('active','cancelled','completed') DEFAULT 'active',
+        created_by INT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        cancelled_at TIMESTAMP NULL DEFAULT NULL,
+        FOREIGN KEY (company_id) REFERENCES companies(id),
+        FOREIGN KEY (student_package_id) REFERENCES student_packages(id),
+        FOREIGN KEY (teacher_id) REFERENCES users(id),
+        FOREIGN KEY (student_id) REFERENCES users(id),
+        FOREIGN KEY (created_by) REFERENCES users(id),
+        INDEX idx_rs_company (company_id, status),
+        INDEX idx_rs_teacher (teacher_id, status), INDEX idx_rs_student (student_id))` },
+  ];
+
+  for (const m of migrations) {
+    try { await pool.query(m.sql); } catch (err) {
+      logger.error(`Migration ${m.name} failed`, { error: err.message });
+    }
+  }
+
+  // Add columns to companies (safe: ignores if already exist)
+  const addCols = [
+    ["company_name", "VARCHAR(255) NOT NULL DEFAULT ''"],
+    ["company_email", "VARCHAR(255) NOT NULL DEFAULT ''"],
+    ["company_phone", "VARCHAR(50) NULL"],
+    ["company_address", "TEXT NULL"],
+  ];
+  for (const [col, def] of addCols) {
+    try { await pool.query(`ALTER TABLE companies ADD COLUMN ${col} ${def}`); }
+    catch (err) { if (!err.message.includes('Duplicate column')) logger.error(`Add column ${col} failed`, { error: err.message }); }
+  }
+
+  // Add recurring_schedule_id to bookings
+  try { await pool.query('ALTER TABLE bookings ADD COLUMN recurring_schedule_id INT DEFAULT NULL'); }
+  catch (err) { if (!err.message.includes('Duplicate column')) logger.error('Add recurring_schedule_id failed', { error: err.message }); }
+
+  // Backfill: copy old name/email into company_name/company_email if old columns exist
+  try {
+    const [[{ cnt }]] = await pool.query("SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'name'");
+    if (cnt > 0) {
+      await pool.query("UPDATE companies SET company_name = name WHERE company_name = '' AND name IS NOT NULL AND name != ''");
+      await pool.query("UPDATE companies SET company_email = email WHERE company_email = '' AND email IS NOT NULL AND email != ''");
+      await pool.query("UPDATE companies SET company_phone = phone WHERE company_phone IS NULL AND phone IS NOT NULL AND phone != ''");
+      await pool.query("UPDATE companies SET company_address = address WHERE company_address IS NULL AND address IS NOT NULL AND address != ''");
+      logger.info('Backfilled company_name/email/phone/address from old columns');
+    }
+  } catch { /* old columns don't exist — nothing to backfill */ }
+
+  logger.info('Auto-migrations complete');
+}
+runAutoMigrations();
 
 const { startScheduler } = require('./scheduler');
 startScheduler();

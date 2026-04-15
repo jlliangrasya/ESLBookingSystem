@@ -62,7 +62,8 @@ const Login = () => {
       );
 
       const trialExpired = res.data.trial_expired ?? false;
-      login(res.data.token, res.data.user, trialExpired);
+      const companyStatus = res.data.company_status ?? 'active';
+      login(res.data.token, res.data.user, trialExpired, companyStatus);
 
       // Subscribe to push notifications (best-effort)
       if (isPushSupported()) {
@@ -73,6 +74,16 @@ const Login = () => {
         console.warn('[Push] not supported in this browser');
       }
 
+      // Suspended = non-payment → admin can pay, students/teachers see generic message
+      if (companyStatus === 'suspended') {
+        if (res.data.user.role === 'company_admin') return navigate("/company-suspended");
+        return navigate("/company-locked-user");
+      }
+      // Locked = by Brightfolks → admin sees contact page, students/teachers see generic message
+      if (companyStatus === 'locked') {
+        if (res.data.user.role === 'company_admin') return navigate("/company-locked");
+        return navigate("/company-locked-user");
+      }
       if (trialExpired) return navigate("/upgrade");
       navigate(ROLE_ROUTES[res.data.user.role as UserRole] ?? "/");
     } catch (err: unknown) {

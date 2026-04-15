@@ -12,9 +12,20 @@ const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) => {
 
   if (!authContext) return <Navigate to="/" />;
 
-  const { token, user, trialExpired } = authContext;
+  const { token, user, trialExpired, companyStatus } = authContext;
 
   if (!token || !user) return <Navigate to="/" />;
+
+  // Suspended (non-payment) → admin pays, others see generic
+  if (companyStatus === 'suspended') {
+    if (user.role === 'company_admin') return <Navigate to="/company-suspended" />;
+    return <Navigate to="/company-locked-user" />;
+  }
+  // Locked (by Brightfolks) → admin contacts support, others see generic
+  if (companyStatus === 'locked') {
+    if (user.role === 'company_admin') return <Navigate to="/company-locked" />;
+    return <Navigate to="/company-locked-user" />;
+  }
 
   // If company admin's trial has expired, force to upgrade page
   if (user.role === 'company_admin' && trialExpired) return <Navigate to="/upgrade" />;

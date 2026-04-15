@@ -18,7 +18,8 @@ interface AuthContextType {
   token: string | null;
   user: User | null;
   trialExpired: boolean;
-  login: (token: string, user: User, trialExpired?: boolean) => void;
+  companyStatus: string;
+  login: (token: string, user: User, trialExpired?: boolean, companyStatus?: string) => void;
   logout: () => void;
 }
 
@@ -36,14 +37,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [trialExpired, setTrialExpired] = useState<boolean>(
     localStorage.getItem("trial_expired") === "true"
   );
+  const [companyStatus, setCompanyStatus] = useState<string>(
+    localStorage.getItem("company_status") || "active"
+  );
 
-  const login = (token: string, user: User, expired = false) => {
+  const login = (token: string, user: User, expired = false, status = "active") => {
     setToken(token);
     setUser(user);
     setTrialExpired(expired);
+    setCompanyStatus(status);
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(user));
     localStorage.setItem("trial_expired", String(expired));
+    localStorage.setItem("company_status", status);
     const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
     if (user.timezone && user.timezone !== "UTC") {
       setUserTimezone(user.timezone);
@@ -57,9 +63,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setToken(null);
     setUser(null);
     setTrialExpired(false);
+    setCompanyStatus("active");
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     localStorage.removeItem("trial_expired");
+    localStorage.removeItem("company_status");
     localStorage.removeItem("userTimezone");
 
     if (currentToken) {
@@ -83,7 +91,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [token]);
 
   return (
-    <AuthContext.Provider value={{ token, user, trialExpired, login, logout }}>
+    <AuthContext.Provider value={{ token, user, trialExpired, companyStatus, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

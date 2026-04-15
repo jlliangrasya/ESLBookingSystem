@@ -44,6 +44,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { fmtDate } from "@/utils/timezone";
+import AnnouncementPanel from "@/components/AnnouncementPanel";
 
 interface Feedback {
   id: number;
@@ -270,6 +271,7 @@ const AdminDashboard = () => {
     <>
       <NavBar />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+        <AnnouncementPanel />
         {/* Plan badge */}
         {analytics?.totals.planName && (
           <div className="flex items-center gap-2">

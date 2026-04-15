@@ -10,7 +10,7 @@ interface Props {
 
 const InstallAppButton: React.FC<Props> = ({ variant = 'default' }) => {
   const { t } = useTranslation();
-  const { canInstall, canInstallNative, isInstalled, platform, install } = usePWAInstall();
+  const { canInstallNative, isInstalled, platform, install } = usePWAInstall();
   const [showInstructions, setShowInstructions] = useState(false);
 
   if (isInstalled) return null;
