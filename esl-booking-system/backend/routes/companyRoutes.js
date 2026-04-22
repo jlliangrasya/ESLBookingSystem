@@ -84,14 +84,15 @@ router.post('/register', async (req, res) => {
             message: `"${company_name}" applied for a ${plan.name} plan and is awaiting approval.`,
         })));
 
-        // Issue #14: Notify the company owner about the pending status with estimated timeline
-        await notify({
+        // Issue #14: Notify the company owner about the pending status with estimated timeline.
+        // `notify` is intentionally fire-and-forget, so it should not be awaited or chained with `.catch()`.
+        notify({
             userId: ownerResult.insertId,
             companyId,
             type: 'onboarding_update',
             title: 'Registration received',
             message: 'Your company registration is being reviewed. Applications are typically processed within 24-48 hours. You will be notified once approved.',
-        }).catch(() => {});
+        });
 
         // Send confirmation email
         sendMail({
