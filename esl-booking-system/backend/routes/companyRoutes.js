@@ -21,7 +21,7 @@ router.get('/subscription-plans', async (req, res) => {
 
 // PUBLIC: Register a new company (status: pending)
 router.post('/register', async (req, res) => {
-    const { company_name, company_email, company_phone, company_address, subscription_plan_id, owner_name, owner_email, owner_password } = req.body;
+    const { company_name, company_email, company_phone, company_address, subscription_plan_id, owner_name, owner_email, owner_password, payment_reference } = req.body;
 
     if (!company_name || !company_email || !subscription_plan_id || !owner_name || !owner_email || !owner_password) {
         return res.status(400).json({ message: 'Missing required fields' });
@@ -71,6 +71,27 @@ router.post('/register', async (req, res) => {
              VALUES (?, TRUE, TRUE, TRUE)`,
             [ownerResult.insertId]
         );
+
+        // For paid plans, record the pending payment with the reference number in notes
+        const isTrial = plan.price_monthly === 0;
+        if (!isTrial) {
+            const today = new Date().toISOString().split('T')[0];
+            const periodEndDt = new Date();
+            periodEndDt.setMonth(periodEndDt.getMonth() + 1);
+            const periodEnd = periodEndDt.toISOString().split('T')[0];
+            await connection.query(
+                `INSERT INTO company_payments (company_id, amount, payment_date, period_start, period_end, notes, recorded_by)
+                 VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+                [
+                    companyId,
+                    plan.price_monthly,
+                    today,
+                    today,
+                    periodEnd,
+                    payment_reference ? `Ref: ${payment_reference}` : 'Awaiting payment verification',
+                ]
+            );
+        }
 
         await connection.commit();
 

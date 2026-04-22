@@ -39,6 +39,7 @@ const planIcons = [BookOpen, Users, Star];
 const UpgradePage = () => {
   const authContext = useContext(AuthContext);
   const navigate = useNavigate();
+  const trialExpired = authContext?.trialExpired ?? false;
 
   const [plans, setPlans] = useState<Plan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
@@ -164,14 +165,16 @@ const UpgradePage = () => {
       {/* Header */}
       <div className="bg-white border-b px-4 py-3 flex items-center justify-between max-w-7xl mx-auto">
         <BrandLogo />
-        <div className="text-center">
-          <p className="text-sm font-semibold text-red-600">
-            Your free trial has expired
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Choose a plan to continue
-          </p>
-        </div>
+        {trialExpired && (
+          <div className="text-center">
+            <p className="text-sm font-semibold text-red-600">
+              Your free trial has expired
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Choose a plan to continue
+            </p>
+          </div>
+        )}
         <Button
           variant="ghost"
           size="sm"

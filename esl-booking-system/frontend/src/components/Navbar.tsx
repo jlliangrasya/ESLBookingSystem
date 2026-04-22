@@ -2,7 +2,7 @@ import { useContext, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import BrandLogo from "@/components/BrandLogo";
-import { CalendarDays, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus, BookOpen, Menu, X } from "lucide-react";
+import { CalendarDays, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus, BookOpen, Menu, X, TrendingUp } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -135,6 +135,14 @@ const NavBar: React.FC = () => {
                   </Link>
                 </DropdownMenuItem>
               )}
+              {role === "company_admin" && isOwner && (
+                <DropdownMenuItem asChild>
+                  <Link to="/upgrade" className="cursor-pointer flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-primary" />
+                    <span className="text-primary font-medium">Upgrade Plan</span>
+                  </Link>
+                </DropdownMenuItem>
+              )}
               {(role === "company_admin" || role === "teacher") && <DropdownMenuSeparator />}
               <DropdownMenuItem
                 onClick={handleLogout}
@@ -181,6 +189,10 @@ const NavBar: React.FC = () => {
 
           {(role === "company_admin" || role === "super_admin") && (
             <MobileNavLink to="/activity-log" icon={ClipboardList} label={t("nav.activityLog")} />
+          )}
+
+          {role === "company_admin" && isOwner && (
+            <MobileNavLink to="/upgrade" icon={TrendingUp} label="Upgrade Plan" />
           )}
 
           <div className="flex items-center gap-3 px-4 py-2">

@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users, UserCheck, X,
+  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users, UserCheck, X, CheckCircle, AlertTriangle,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly, localToMysql } from "@/utils/timezone";
 
@@ -88,6 +88,8 @@ for (let h = 7; h <= 22; h++) {
   if (h < 22) TIME_SLOTS.push(`${String(h).padStart(2, "0")}:30`);
 }
 TIME_SLOTS.push("22:30");
+
+const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
@@ -323,6 +325,22 @@ const AdminStudentProfilePage = () => {
   const [addError, setAddError] = useState<string | null>(null);
   const [addSuccess, setAddSuccess] = useState<string | null>(null);
 
+  // Add class mode toggle + recurring schedule form
+  const [addMode, setAddMode] = useState<"schedule" | "recurring">("schedule");
+  const [recurringDays, setRecurringDays] = useState<string[]>([]);
+  const [recurringTime, setRecurringTime] = useState("09:00");
+  const [recurringWeeks, setRecurringWeeks] = useState("4");
+  const [recurringStartDate, setRecurringStartDate] = useState("");
+  const [recurringTeacherId, setRecurringTeacherId] = useState("");
+  const [recurringResult, setRecurringResult] = useState<{
+    error?: boolean; message?: string;
+    sessions_booked?: number; sessions_remaining?: number;
+    duration_minutes?: number; slots_per_class?: number;
+    skipped_dates?: { date: string; reason: string }[];
+  } | null>(null);
+  const [recurringLoading, setRecurringLoading] = useState(false);
+  const [recurringError, setRecurringError] = useState<string | null>(null);
+
   const toLocalIso = (d: Date) => {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -491,6 +509,48 @@ const AdminStudentProfilePage = () => {
     if (errors.length === 0) {
       setTimeout(() => { setShowAddClass(false); setAddSuccess(null); }, 1200);
     }
+  };
+
+  const handleCreateRecurring = async () => {
+    if (!activePackage || recurringDays.length === 0 || !recurringTime) return;
+    setRecurringLoading(true);
+    setRecurringError(null);
+    setRecurringResult(null);
+    try {
+      const res = await axios.post(`${base}/api/recurring`, {
+        student_package_id: activePackage.id,
+        teacher_id: recurringTeacherId ? Number(recurringTeacherId) : undefined,
+        days_of_week: recurringDays,
+        start_time: recurringTime,
+        num_weeks: parseInt(recurringWeeks) || 4,
+        start_date: recurringStartDate || undefined,
+      }, { headers });
+      setRecurringResult(res.data);
+      fetchData();
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: { message?: string; skipped_dates?: { date: string; reason: string }[] } } })?.response?.data;
+      if (data?.skipped_dates) {
+        setRecurringResult({ error: true, message: data.message, skipped_dates: data.skipped_dates });
+      } else {
+        setRecurringError(data?.message || "Failed to create recurring schedule");
+      }
+    } finally {
+      setRecurringLoading(false);
+    }
+  };
+
+  const resetAddClassDialog = () => {
+    setShowAddClass(false);
+    setAddError(null);
+    setAddSuccess(null);
+    setAddMode("schedule");
+    setRecurringDays([]);
+    setRecurringTime("09:00");
+    setRecurringWeeks("4");
+    setRecurringStartDate("");
+    setRecurringTeacherId("");
+    setRecurringResult(null);
+    setRecurringError(null);
   };
 
   if (loading) {
@@ -710,11 +770,8 @@ const AdminStudentProfilePage = () => {
                     <Users className="h-4 w-4" /> Bulk Assign Classes
                   </Button>
                 )}
-                <Button size="sm" className="gap-1" onClick={() => { setSelectedSlots({}); setAddError(null); setAddSuccess(null); setShowAddClass(true); }}>
+                <Button size="sm" className="gap-1" onClick={() => { setSelectedSlots({}); resetAddClassDialog(); setShowAddClass(true); }}>
                   <Plus className="h-4 w-4" /> Add Class
-                </Button>
-                <Button size="sm" variant="outline" className="gap-1" onClick={() => navigate("/admin/recurring")}>
-                  <CalendarDays className="h-4 w-4" /> Recurring
                 </Button>
               </div>
             )}
@@ -941,123 +998,258 @@ const AdminStudentProfilePage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Add Class Dialog — Weekly Multi-Day Scheduler */}
-      <Dialog open={showAddClass} onOpenChange={(o) => { if (!o) { setShowAddClass(false); setAddError(null); setAddSuccess(null); } }}>
-        <DialogContent className="max-w-lg">
+      {/* Add Class Dialog — mode toggle: One by One | Recurring Schedule */}
+      <Dialog open={showAddClass} onOpenChange={(o) => { if (!o) resetAddClassDialog(); }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Schedule Classes</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            {addError && <p className="text-sm text-destructive whitespace-pre-line">{addError}</p>}
-            {addSuccess && <p className="text-sm text-green-600">{addSuccess}</p>}
 
-            {/* Teacher selector */}
-            <div className="space-y-1.5">
-              <Label>Teacher (applies to all)</Label>
-              <Select value={addTeacherId} onValueChange={setAddTeacherId}>
-                <SelectTrigger><SelectValue placeholder="Select teacher (optional)" /></SelectTrigger>
-                <SelectContent>
-                  {teachers.map((t) => (
-                    <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Mode toggle */}
+          <div className="flex gap-1 bg-muted rounded-lg p-1">
+            <button
+              onClick={() => { setAddMode("schedule"); setRecurringResult(null); setRecurringError(null); }}
+              className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${addMode === "schedule" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              One by One
+            </button>
+            <button
+              onClick={() => { setAddMode("recurring"); setAddError(null); setAddSuccess(null); }}
+              className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${addMode === "recurring" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Recurring Schedule
+            </button>
+          </div>
 
-            {/* Week navigation */}
-            <div className="flex items-center justify-between">
-              <Button variant="ghost" size="sm" onClick={() => shiftWeek(-1)}>
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <span className="text-sm font-medium">
-                {(() => {
-                  const days = getWeekDays(weekStart);
-                  return `${days[0].label} — ${days[6].label}`;
-                })()}
-              </span>
-              <Button variant="ghost" size="sm" onClick={() => shiftWeek(1)}>
-                <ArrowLeft className="h-4 w-4 rotate-180" />
-              </Button>
-            </div>
+          {addMode === "schedule" ? (
+            <>
+              <div className="space-y-4 py-2">
+                {addError && <p className="text-sm text-destructive whitespace-pre-line">{addError}</p>}
+                {addSuccess && <p className="text-sm text-green-600">{addSuccess}</p>}
 
-            {/* Week grid */}
-            <div className="grid grid-cols-7 gap-1.5">
-              {getWeekDays(weekStart).map((day) => {
-                const isSelected = day.date in selectedSlots;
-                const now = new Date();
-                const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-                const isPast = day.date < todayIso;
-                return (
-                  <div key={day.date} className="text-center">
-                    <p className="text-[10px] text-muted-foreground font-medium">{day.dayName}</p>
-                    <button
-                      disabled={isPast}
-                      onClick={() => {
-                        if (isSelected) {
-                          removeSlot(day.date);
-                        } else {
-                          toggleSlot(day.date, "09:00");
-                        }
-                      }}
-                      className={`w-full rounded-lg py-2 text-xs font-medium transition-colors ${
-                        isPast
-                          ? "bg-gray-50 text-gray-300 cursor-not-allowed"
-                          : isSelected
-                            ? "bg-primary text-white"
-                            : "bg-muted/50 hover:bg-primary/10 text-gray-700"
-                      }`}
-                    >
-                      {day.label}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+                {/* Teacher selector */}
+                <div className="space-y-1.5">
+                  <Label>Teacher (applies to all)</Label>
+                  <Select value={addTeacherId} onValueChange={setAddTeacherId}>
+                    <SelectTrigger><SelectValue placeholder="Select teacher (optional)" /></SelectTrigger>
+                    <SelectContent>
+                      {teachers.map((t) => (
+                        <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            {/* Selected slots with time pickers */}
-            {Object.keys(selectedSlots).length > 0 && (
-              <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
-                <p className="text-xs font-medium text-muted-foreground">Selected classes — pick a time for each:</p>
-                {Object.entries(selectedSlots)
-                  .sort(([a], [b]) => a.localeCompare(b))
-                  .map(([date, time]) => {
-                    const [yy, mm, dd] = date.split("-").map(Number);
-                    const label = new Date(yy, mm - 1, dd).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+                {/* Week navigation */}
+                <div className="flex items-center justify-between">
+                  <Button variant="ghost" size="sm" onClick={() => shiftWeek(-1)}>
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm font-medium">
+                    {(() => {
+                      const days = getWeekDays(weekStart);
+                      return `${days[0].label} — ${days[6].label}`;
+                    })()}
+                  </span>
+                  <Button variant="ghost" size="sm" onClick={() => shiftWeek(1)}>
+                    <ArrowLeft className="h-4 w-4 rotate-180" />
+                  </Button>
+                </div>
+
+                {/* Week grid */}
+                <div className="grid grid-cols-7 gap-1.5">
+                  {getWeekDays(weekStart).map((day) => {
+                    const isSelected = day.date in selectedSlots;
+                    const now = new Date();
+                    const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+                    const isPast = day.date < todayIso;
                     return (
-                      <div key={date} className="flex items-center gap-2">
-                        <span className="text-sm font-medium w-28 shrink-0">{label}</span>
-                        <Select value={time} onValueChange={(v) => toggleSlot(date, v)}>
-                          <SelectTrigger className="h-8 text-xs flex-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-60">
-                            {TIME_SLOTS.map((t) => {
-                              const [hStr, mStr] = t.split(":");
-                              const h = Number(hStr);
-                              const suffix = h >= 12 ? "PM" : "AM";
-                              const h12 = h % 12 === 0 ? 12 : h % 12;
-                              return <SelectItem key={t} value={t}>{`${h12}:${mStr} ${suffix}`}</SelectItem>;
-                            })}
-                          </SelectContent>
-                        </Select>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" onClick={() => removeSlot(date)}>
-                          ×
-                        </Button>
+                      <div key={day.date} className="text-center">
+                        <p className="text-[10px] text-muted-foreground font-medium">{day.dayName}</p>
+                        <button
+                          disabled={isPast}
+                          onClick={() => {
+                            if (isSelected) removeSlot(day.date);
+                            else toggleSlot(day.date, "09:00");
+                          }}
+                          className={`w-full rounded-lg py-2 text-xs font-medium transition-colors ${
+                            isPast
+                              ? "bg-gray-50 text-gray-300 cursor-not-allowed"
+                              : isSelected
+                                ? "bg-primary text-white"
+                                : "bg-muted/50 hover:bg-primary/10 text-gray-700"
+                          }`}
+                        >
+                          {day.label}
+                        </button>
                       </div>
                     );
                   })}
+                </div>
+
+                {/* Selected slots with time pickers */}
+                {Object.keys(selectedSlots).length > 0 && (
+                  <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
+                    <p className="text-xs font-medium text-muted-foreground">Selected classes — pick a time for each:</p>
+                    {Object.entries(selectedSlots)
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .map(([date, time]) => {
+                        const [yy, mm, dd] = date.split("-").map(Number);
+                        const label = new Date(yy, mm - 1, dd).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+                        return (
+                          <div key={date} className="flex items-center gap-2">
+                            <span className="text-sm font-medium w-28 shrink-0">{label}</span>
+                            <Select value={time} onValueChange={(v) => toggleSlot(date, v)}>
+                              <SelectTrigger className="h-8 text-xs flex-1">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="max-h-60">
+                                {TIME_SLOTS.map((t) => {
+                                  const [hStr, mStr] = t.split(":");
+                                  const h = Number(hStr);
+                                  const suffix = h >= 12 ? "PM" : "AM";
+                                  const h12 = h % 12 === 0 ? 12 : h % 12;
+                                  return <SelectItem key={t} value={t}>{`${h12}:${mStr} ${suffix}`}</SelectItem>;
+                                })}
+                              </SelectContent>
+                            </Select>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" onClick={() => removeSlot(date)}>
+                              ×
+                            </Button>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddClass(false)}>Cancel</Button>
-            <Button
-              onClick={handleAddClasses}
-              disabled={addLoading || Object.keys(selectedSlots).length === 0}
-            >
-              {addLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : `Schedule ${Object.keys(selectedSlots).length} Class${Object.keys(selectedSlots).length !== 1 ? "es" : ""}`}
-            </Button>
-          </DialogFooter>
+              <DialogFooter>
+                <Button variant="outline" onClick={resetAddClassDialog}>Cancel</Button>
+                <Button onClick={handleAddClasses} disabled={addLoading || Object.keys(selectedSlots).length === 0}>
+                  {addLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : `Schedule ${Object.keys(selectedSlots).length} Class${Object.keys(selectedSlots).length !== 1 ? "es" : ""}`}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              {!recurringResult ? (
+                <div className="space-y-4 py-2">
+                  {recurringError && <p className="text-sm text-destructive">{recurringError}</p>}
+
+                  {/* Teacher */}
+                  <div className="space-y-1.5">
+                    <Label>Teacher</Label>
+                    <Select value={recurringTeacherId} onValueChange={setRecurringTeacherId}>
+                      <SelectTrigger><SelectValue placeholder="Select teacher (optional)" /></SelectTrigger>
+                      <SelectContent>
+                        {teachers.map((t) => (
+                          <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">Leave blank to use the student's assigned teacher.</p>
+                  </div>
+
+                  {/* Days of week */}
+                  <div className="space-y-1.5">
+                    <Label>Days of Week</Label>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {DAYS_OF_WEEK.map((day) => (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => setRecurringDays((prev) =>
+                            prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
+                          )}
+                          className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                            recurringDays.includes(day)
+                              ? "bg-primary text-white border-primary"
+                              : "bg-white text-gray-700 border-gray-300 hover:border-primary/50"
+                          }`}
+                        >
+                          {day.substring(0, 3)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Start time & weeks */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Start Time</Label>
+                      <Input type="time" value={recurringTime} onChange={(e) => setRecurringTime(e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Weeks (1–12)</Label>
+                      <Input type="number" min={1} max={12} value={recurringWeeks} onChange={(e) => setRecurringWeeks(e.target.value)} />
+                    </div>
+                  </div>
+
+                  {/* Start date */}
+                  <div className="space-y-1.5">
+                    <Label>Start Date <span className="text-muted-foreground font-normal">(optional — defaults to tomorrow)</span></Label>
+                    <Input type="date" value={recurringStartDate} onChange={(e) => setRecurringStartDate(e.target.value)} />
+                  </div>
+
+                  {/* Preview */}
+                  {activePackage && recurringDays.length > 0 && (
+                    <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg text-sm space-y-1">
+                      <p><strong>Preview:</strong> ~{recurringDays.length * (parseInt(recurringWeeks) || 4)} classes over {recurringWeeks} weeks</p>
+                      <p>Sessions available: <strong>{activePackage.sessions_remaining}</strong></p>
+                      {recurringDays.length * (parseInt(recurringWeeks) || 4) > activePackage.sessions_remaining && (
+                        <p className="text-amber-600 flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" /> May not have enough sessions
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <DialogFooter>
+                    <Button variant="outline" onClick={resetAddClassDialog}>Cancel</Button>
+                    <Button
+                      onClick={handleCreateRecurring}
+                      disabled={recurringLoading || recurringDays.length === 0 || !recurringTime}
+                    >
+                      {recurringLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create Recurring Schedule"}
+                    </Button>
+                  </DialogFooter>
+                </div>
+              ) : (
+                <div className="space-y-4 py-2">
+                  {recurringResult.error ? (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-red-700 font-medium">{recurringResult.message}</p>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg space-y-1">
+                      <p className="text-green-700 font-medium flex items-center gap-1.5">
+                        <CheckCircle className="h-4 w-4" /> Recurring schedule created!
+                      </p>
+                      <p className="text-sm">{recurringResult.sessions_booked} classes booked</p>
+                      <p className="text-sm">Sessions remaining: {recurringResult.sessions_remaining}</p>
+                    </div>
+                  )}
+                  {recurringResult.skipped_dates && recurringResult.skipped_dates.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium text-amber-600 mb-1 flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5" /> Skipped dates:
+                      </p>
+                      <div className="max-h-36 overflow-y-auto space-y-1 border rounded-lg p-2">
+                        {recurringResult.skipped_dates.map((s, i) => (
+                          <div key={i} className="text-xs flex gap-2">
+                            <span className="font-mono text-gray-600">{s.date}</span>
+                            <span className="text-amber-600">{s.reason}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <DialogFooter>
+                    <Button onClick={resetAddClassDialog}>Done</Button>
+                  </DialogFooter>
+                </div>
+              )}
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

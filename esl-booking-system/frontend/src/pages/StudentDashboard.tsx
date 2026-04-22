@@ -425,6 +425,60 @@ const StudentDashboard = () => {
     }
   };
 
+  // Recurring schedule modal
+  const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  const [showRecurringModal, setShowRecurringModal] = useState(false);
+  const [recurDays, setRecurDays] = useState<string[]>([]);
+  const [recurTime, setRecurTime] = useState("09:00");
+  const [recurWeeks, setRecurWeeks] = useState("4");
+  const [recurStartDate, setRecurStartDate] = useState("");
+  const [recurResult, setRecurResult] = useState<{
+    error?: boolean; message?: string;
+    sessions_booked?: number; sessions_remaining?: number;
+    skipped_dates?: { date: string; reason: string }[];
+  } | null>(null);
+  const [recurLoading, setRecurLoading] = useState(false);
+
+  const resetRecurringModal = () => {
+    setShowRecurringModal(false);
+    setRecurDays([]);
+    setRecurTime("09:00");
+    setRecurWeeks("4");
+    setRecurStartDate("");
+    setRecurResult(null);
+    setRecurLoading(false);
+  };
+
+  const handleCreateRecurring = async () => {
+    if (!packageDetails || recurDays.length === 0 || !recurTime) return;
+    setRecurLoading(true);
+    setRecurResult(null);
+    try {
+      const res = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/recurring`,
+        {
+          student_package_id: packageDetails.id,
+          days_of_week: recurDays,
+          start_time: recurTime,
+          num_weeks: parseInt(recurWeeks) || 4,
+          start_date: recurStartDate || undefined,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setRecurResult(res.data);
+      fetchStudentData();
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: { message?: string; skipped_dates?: { date: string; reason: string }[] } } })?.response?.data;
+      if (data?.skipped_dates) {
+        setRecurResult({ error: true, message: data.message, skipped_dates: data.skipped_dates });
+      } else {
+        setRecurResult({ error: true, message: data?.message || "Failed to create recurring schedule" });
+      }
+    } finally {
+      setRecurLoading(false);
+    }
+  };
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const handleLogout = () => {
     authContext?.logout();
@@ -578,9 +632,11 @@ const StudentDashboard = () => {
 
           <div className="flex items-center justify-between">
             <h4 className="font-semibold text-gray-700">{t("student.bookedClasses")}</h4>
-            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={() => navigate("/student/recurring")}>
-              <CalendarDays className="h-3 w-3" /> Recurring
-            </Button>
+            {packageDetails && (
+              <Button variant="outline" size="sm" className="text-xs gap-1" onClick={() => { resetRecurringModal(); setShowRecurringModal(true); }}>
+                <CalendarDays className="h-3 w-3" /> Recurring
+              </Button>
+            )}
           </div>
           <Calendar
             className="custom-calendar"
@@ -891,6 +947,148 @@ const StudentDashboard = () => {
             <Button variant="outline" onClick={() => setShowCancelConfirm(null)}>{t("student.noKeepIt")}</Button>
             <Button variant="destructive" onClick={handleConfirmCancel}>{t("student.yesCancel")}</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Recurring Schedule Modal */}
+      <Dialog open={showRecurringModal} onOpenChange={(o) => { if (!o) resetRecurringModal(); }}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5 text-primary" /> New Recurring Schedule
+            </DialogTitle>
+          </DialogHeader>
+          {!recurResult ? (
+            <div className="space-y-4 py-2">
+              {!packageDetails && (
+                <p className="text-sm text-amber-600">You need an active paid package to create a recurring schedule.</p>
+              )}
+
+              {/* Days of week */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Days of Week</label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {DAYS_OF_WEEK.map((day) => (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => setRecurDays((prev) =>
+                        prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
+                      )}
+                      className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                        recurDays.includes(day)
+                          ? "bg-primary text-white border-primary"
+                          : "bg-white text-gray-700 border-gray-300 hover:border-primary/50"
+                      }`}
+                    >
+                      {day.substring(0, 3)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Start time & weeks */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Start Time</label>
+                  <input
+                    type="time"
+                    value={recurTime}
+                    onChange={(e) => setRecurTime(e.target.value)}
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Weeks (1–12)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={12}
+                    value={recurWeeks}
+                    onChange={(e) => setRecurWeeks(e.target.value)}
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  />
+                </div>
+              </div>
+
+              {/* Start date */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">
+                  Start Date <span className="text-muted-foreground font-normal">(optional — defaults to tomorrow)</span>
+                </label>
+                <input
+                  type="date"
+                  value={recurStartDate}
+                  min={new Date().toISOString().split("T")[0]}
+                  onChange={(e) => setRecurStartDate(e.target.value)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+              </div>
+
+              {/* Preview */}
+              {packageDetails && recurDays.length > 0 && (
+                <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg text-sm space-y-1">
+                  <p><strong>Preview:</strong> ~{recurDays.length * (parseInt(recurWeeks) || 4)} classes over {recurWeeks} weeks</p>
+                  <p>Sessions available: <strong>{packageDetails.sessions_remaining}</strong></p>
+                  {recurDays.length * (parseInt(recurWeeks) || 4) > packageDetails.sessions_remaining && (
+                    <p className="text-amber-600 text-xs">May not have enough sessions remaining.</p>
+                  )}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={resetRecurringModal}
+                  className="px-4 py-2 text-sm rounded-md border border-input bg-background hover:bg-accent transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateRecurring}
+                  disabled={recurLoading || recurDays.length === 0 || !recurTime || !packageDetails}
+                  className="px-4 py-2 text-sm rounded-md bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {recurLoading && <span className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                  {recurLoading ? "Creating..." : "Create Schedule"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              {recurResult.error ? (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-red-700 font-medium">{recurResult.message}</p>
+                </div>
+              ) : (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg space-y-1">
+                  <p className="text-green-700 font-semibold">Recurring schedule created!</p>
+                  <p className="text-sm">{recurResult.sessions_booked} classes booked</p>
+                  <p className="text-sm">Sessions remaining: {recurResult.sessions_remaining}</p>
+                </div>
+              )}
+              {recurResult.skipped_dates && recurResult.skipped_dates.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-amber-600 mb-1">Skipped dates:</p>
+                  <div className="max-h-36 overflow-y-auto space-y-1 border rounded-lg p-2">
+                    {recurResult.skipped_dates.map((s, i) => (
+                      <div key={i} className="text-xs flex gap-2">
+                        <span className="font-mono text-gray-600">{s.date}</span>
+                        <span className="text-amber-600">{s.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-end pt-2">
+                <button
+                  onClick={resetRecurringModal}
+                  className="px-4 py-2 text-sm rounded-md bg-primary text-white hover:bg-primary/90 transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
