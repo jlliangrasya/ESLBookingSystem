@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import NavBar from "../components/Navbar";
 import axios from "axios";
@@ -769,7 +769,7 @@ const AdminDashboard = () => {
 
       {/* Feedback Modal */}
       <Dialog open={showFeedback} onOpenChange={setShowFeedback}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Student Feedback</DialogTitle>
           </DialogHeader>
@@ -808,7 +808,7 @@ const AdminDashboard = () => {
 
       {/* Receipt / Reference Number Modal */}
       <Dialog open={!!receiptImage} onOpenChange={() => setReceiptImage(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
               {receiptImage?.startsWith("data:")
@@ -840,7 +840,7 @@ const AdminDashboard = () => {
 
       {/* Teacher Conflict Dialog — Issue #5 */}
       <Dialog open={!!teacherConflict} onOpenChange={(o) => { if (!o) setTeacherConflict(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-amber-500" /> Teacher Preference Conflict

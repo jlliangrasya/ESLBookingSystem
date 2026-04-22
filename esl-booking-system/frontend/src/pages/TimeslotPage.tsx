@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import axios from "axios";
@@ -448,7 +448,7 @@ const TimeslotPage = () => {
 
       {/* Class Info Modal */}
       <Dialog open={showClassModal} onOpenChange={setShowClassModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Video className="h-4 w-4 text-primary" />

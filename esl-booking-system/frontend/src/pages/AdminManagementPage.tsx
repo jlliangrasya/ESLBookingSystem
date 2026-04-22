@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from "react";
+﻿import { useState, useEffect, useContext } from "react";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
@@ -206,7 +206,7 @@ const AdminManagementPage = () => {
 
       {/* Add Admin Modal */}
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Add Admin Account</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             {addError && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{addError}</AlertDescription></Alert>}
@@ -234,7 +234,7 @@ const AdminManagementPage = () => {
 
       {/* Edit Permissions Modal */}
       <Dialog open={!!editAdmin} onOpenChange={(o) => !o && setEditAdmin(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Edit Permissions — {editAdmin?.name}</DialogTitle></DialogHeader>
           <div className="space-y-2 py-2 border rounded-lg p-3">
             <p className="text-sm font-medium">Teacher Permissions</p>
@@ -256,7 +256,7 @@ const AdminManagementPage = () => {
 
       {/* Delete Confirm Modal */}
       <Dialog open={!!deleteAdmin} onOpenChange={(o) => !o && setDeleteAdmin(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Delete Admin</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground py-2">
             Are you sure you want to delete <span className="font-medium">{deleteAdmin?.name}</span>?

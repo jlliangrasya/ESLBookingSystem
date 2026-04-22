@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from "react";
+﻿import { useState, useEffect, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import axios from "axios";
@@ -37,6 +37,7 @@ interface Student {
 
 interface PackageDetails {
   id: number;
+  student_package_id: number;
   package_name: string;
   sessions_remaining: number;
   unused_sessions: number;
@@ -457,7 +458,7 @@ const StudentDashboard = () => {
       const res = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/recurring`,
         {
-          student_package_id: packageDetails.id,
+          student_package_id: packageDetails.student_package_id,
           days_of_week: recurDays,
           start_time: recurTime,
           num_weeks: parseInt(recurWeeks) || 4,
@@ -916,7 +917,7 @@ const StudentDashboard = () => {
 
       {/* Cancellation Policy Modal */}
       <Dialog open={showCancelPolicyModal} onOpenChange={setShowCancelPolicyModal}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{t("student.cancelNotAllowed")}</DialogTitle>
           </DialogHeader>
@@ -936,7 +937,7 @@ const StudentDashboard = () => {
 
       {/* Confirm Cancel Modal */}
       <Dialog open={showCancelConfirm !== null} onOpenChange={(o) => { if (!o) setShowCancelConfirm(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{t("student.cancelClass")}</DialogTitle>
           </DialogHeader>
@@ -952,7 +953,7 @@ const StudentDashboard = () => {
 
       {/* Recurring Schedule Modal */}
       <Dialog open={showRecurringModal} onOpenChange={(o) => { if (!o) resetRecurringModal(); }}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5 text-primary" /> New Recurring Schedule
@@ -1094,7 +1095,7 @@ const StudentDashboard = () => {
 
       {/* Class Info Modal */}
       <Dialog open={showClassModal} onOpenChange={setShowClassModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Video className="h-4 w-4 text-primary" />

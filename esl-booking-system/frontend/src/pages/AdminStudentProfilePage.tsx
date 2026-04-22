@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
@@ -883,7 +883,7 @@ const AdminStudentProfilePage = () => {
 
       {/* Edit Student Dialog */}
       <Dialog open={showEdit} onOpenChange={(o) => { if (!o) setShowEdit(false); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Edit Student</DialogTitle>
           </DialogHeader>
@@ -924,7 +924,7 @@ const AdminStudentProfilePage = () => {
 
       {/* Reset Password Dialog */}
       <Dialog open={showResetPw} onOpenChange={(o) => { if (!o) setShowResetPw(false); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Reset Student Password</DialogTitle>
           </DialogHeader>
@@ -969,7 +969,7 @@ const AdminStudentProfilePage = () => {
 
       {/* Class Report Dialog */}
       <Dialog open={!!viewingReport} onOpenChange={(o) => { if (!o) setViewingReport(null); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Class Report</DialogTitle>
           </DialogHeader>
@@ -1000,7 +1000,7 @@ const AdminStudentProfilePage = () => {
 
       {/* Add Class Dialog — mode toggle: One by One | Recurring Schedule */}
       <Dialog open={showAddClass} onOpenChange={(o) => { if (!o) resetAddClassDialog(); }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Schedule Classes</DialogTitle>
           </DialogHeader>
@@ -1255,7 +1255,7 @@ const AdminStudentProfilePage = () => {
 
       {/* Session Adjustment Dialog */}
       <Dialog open={!!showAdjust} onOpenChange={(o) => { if (!o) { setShowAdjust(null); setAdjustSuccess(null); } }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>
               {showAdjust === "add" ? "Add Sessions" : "Deduct Sessions"}
@@ -1326,7 +1326,7 @@ const AdminStudentProfilePage = () => {
 
       {/* Assign Teacher to Student (package-level + cascade) */}
       <Dialog open={showAssignTeacher} onOpenChange={(o) => { if (!o) { setShowAssignTeacher(false); setAssignTeacherMsg(null); } }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <UserCheck className="h-5 w-5" /> Assign Teacher to Student
@@ -1368,7 +1368,7 @@ const AdminStudentProfilePage = () => {
 
       {/* Bulk Assign Teacher Dialog */}
       <Dialog open={showBulkAssign} onOpenChange={(o) => { if (!o) setShowBulkAssign(false); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" /> Bulk Assign Teacher to Unassigned Classes
@@ -1406,7 +1406,7 @@ const AdminStudentProfilePage = () => {
 
       {/* Assign Package Dialog */}
       <Dialog open={showAssignPkg} onOpenChange={(o) => { if (!o) setShowAssignPkg(false); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Assign Package to Student</DialogTitle>
           </DialogHeader>
@@ -1448,7 +1448,7 @@ const AdminStudentProfilePage = () => {
 
       {/* Session Adjustment History Dialog */}
       <Dialog open={showAdjustHistory} onOpenChange={(o) => { if (!o) setShowAdjustHistory(false); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <History className="h-5 w-5" /> Session Adjustment History

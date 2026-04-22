@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import axios from "axios";
 import {
   Dialog,
@@ -75,7 +75,7 @@ const ReportModal: React.FC<ReportModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Class Report — {studentName}</DialogTitle>
         </DialogHeader>

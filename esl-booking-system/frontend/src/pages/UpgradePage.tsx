@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from "react";
+﻿import { useState, useEffect, useContext } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import AuthContext from "@/context/AuthContext";
@@ -376,7 +376,7 @@ const UpgradePage = () => {
         open={step === "agreement"}
         onOpenChange={(open) => !open && setStep("plans")}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
               User Agreement — {selectedPlan?.name} Plan

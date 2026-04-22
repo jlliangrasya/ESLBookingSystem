@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from "react";
+﻿import { useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import AuthContext from "@/context/AuthContext";
@@ -143,7 +143,7 @@ const CompanySuspendedPage = () => {
 
       {/* Payment Modal */}
       <Dialog open={showModal} onOpenChange={(o) => { if (!submitting) setShowModal(o); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-center">Payment for {selectedPlan?.name}</DialogTitle>
           </DialogHeader>

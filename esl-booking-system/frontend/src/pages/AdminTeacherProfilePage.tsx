@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
@@ -426,7 +426,7 @@ const AdminTeacherProfilePage = () => {
 
       {/* Reset Password Dialog */}
       <Dialog open={showResetPw} onOpenChange={(o) => { if (!o) setShowResetPw(false); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Reset Teacher Password</DialogTitle>
           </DialogHeader>
@@ -471,7 +471,7 @@ const AdminTeacherProfilePage = () => {
 
       {/* Edit Dialog */}
       <Dialog open={showEdit} onOpenChange={(o) => { if (!o) setShowEdit(false); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Edit Teacher</DialogTitle>
           </DialogHeader>

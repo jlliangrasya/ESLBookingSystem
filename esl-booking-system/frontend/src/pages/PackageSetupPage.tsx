@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
@@ -627,7 +627,7 @@ const PackageSetupPage = () => {
 
       {/* Add / Edit Package Modal */}
       <Dialog open={showModal} onOpenChange={(o) => !o && setShowModal(false)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               {editPackage ? "Edit Package" : "Add Package"}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from "react";
+﻿import { useState, useEffect, useContext } from "react";
 import axios from "axios";
 import AuthContext from "@/context/AuthContext";
 import NavBar from "@/components/Navbar";
@@ -251,7 +251,7 @@ const SubscriptionPlansPage = () => {
 
       {/* Add / Edit Modal */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editPlan ? "Edit Plan" : "Add Subscription Plan"}</DialogTitle>
           </DialogHeader>

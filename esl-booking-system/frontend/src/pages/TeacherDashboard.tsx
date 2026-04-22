@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from "react";
+﻿import { useState, useEffect, useContext } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import AuthContext from "@/context/AuthContext";
@@ -1317,7 +1317,7 @@ const TeacherDashboard = () => {
 
       {/* Day schedule modal */}
       <Dialog open={showDayModal} onOpenChange={setShowDayModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               {selectedDayBookings[0] ? fmtDate(selectedDayBookings[0].appointment_date, "MMM d, yyyy") : ""} Schedule
@@ -1340,7 +1340,7 @@ const TeacherDashboard = () => {
 
       {/* Class Info dialog */}
       <Dialog open={!!editingBooking} onOpenChange={o => { if (!o) setEditingBooking(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Set Class Info</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             {classInfoError && <p className="text-sm text-destructive">{classInfoError}</p>}
@@ -1374,7 +1374,7 @@ const TeacherDashboard = () => {
 
       {/* Bulk Class Info dialog */}
       <Dialog open={bulkClassInfoOpen} onOpenChange={o => { if (!o) setBulkClassInfoOpen(false); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Set Class Info for {selectedBookingIds.size} Booking(s)</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             {classInfoError && <p className="text-sm text-destructive">{classInfoError}</p>}
@@ -1409,7 +1409,7 @@ const TeacherDashboard = () => {
       {/* Cancel Booking dialog */}
       {cancelConfirm && (
         <Dialog open onOpenChange={o => { if (!o) setCancelConfirm(null); }}>
-          <DialogContent className="max-w-sm">
+          <DialogContent className="sm:max-w-sm">
             <DialogHeader><DialogTitle>Cancel Class</DialogTitle></DialogHeader>
             <p className="text-sm text-muted-foreground py-2">Are you sure? The student and admin will be notified.</p>
             <DialogFooter>
@@ -1425,7 +1425,7 @@ const TeacherDashboard = () => {
       {/* Cancel Blocked dialog */}
       {cancelBlocked && (
         <Dialog open onOpenChange={o => { if (!o) setCancelBlocked(false); }}>
-          <DialogContent className="max-w-sm">
+          <DialogContent className="sm:max-w-sm">
             <DialogHeader><DialogTitle>Cannot Cancel</DialogTitle></DialogHeader>
             <p className="text-sm text-muted-foreground py-2">
               Cancellation is not allowed within <span className="font-semibold">{cancellationHours} hour(s)</span> of the scheduled class time. Your admin has been notified.
@@ -1439,7 +1439,7 @@ const TeacherDashboard = () => {
 
       {/* Leave Request dialog */}
       <Dialog open={showLeaveModal} onOpenChange={setShowLeaveModal}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Request Leave</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
@@ -1487,7 +1487,7 @@ const TeacherDashboard = () => {
 
       {/* Recurring Schedule Dialog — Issue #15 */}
       <Dialog open={showRecurring} onOpenChange={(o) => { if (!o) { setShowRecurring(false); setRecurringMsg(null); } }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Set Recurring Schedule</DialogTitle>
           </DialogHeader>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext, useMemo } from "react";
+﻿import { useState, useEffect, useContext, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
@@ -417,7 +417,7 @@ const TeacherManagementPage = () => {
 
       {/* Add Teacher Modal */}
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Add Teacher</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             {addError && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{addError}</AlertDescription></Alert>}
@@ -436,7 +436,7 @@ const TeacherManagementPage = () => {
 
       {/* Edit Teacher Modal */}
       <Dialog open={!!editTeacher} onOpenChange={(o) => !o && setEditTeacher(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Edit Teacher</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             {editError && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{editError}</AlertDescription></Alert>}
@@ -454,7 +454,7 @@ const TeacherManagementPage = () => {
 
       {/* Delete Confirm Modal */}
       <Dialog open={!!deleteTeacher} onOpenChange={(o) => !o && setDeleteTeacher(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Remove Teacher</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground py-2">
             Are you sure you want to remove <span className="font-medium">{deleteTeacher?.name}</span>? This cannot be undone.
@@ -470,7 +470,7 @@ const TeacherManagementPage = () => {
 
       {/* Schedule Modal */}
       <Dialog open={!!scheduleTeacher} onOpenChange={(o) => !o && setScheduleTeacher(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>{scheduleTeacher?.name} — Upcoming Schedule</DialogTitle></DialogHeader>
           {scheduleLoading ? (
             <div className="flex justify-center py-6"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
@@ -503,7 +503,7 @@ const TeacherManagementPage = () => {
 
       {/* Leaves Modal */}
       <Dialog open={!!leaveTeacher} onOpenChange={(o) => !o && setLeaveTeacher(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>{leaveTeacher?.name} — Leave Requests</DialogTitle></DialogHeader>
           {leaveLoading ? (
             <div className="flex justify-center py-6"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
@@ -540,7 +540,7 @@ const TeacherManagementPage = () => {
 
       {/* Leave Conflict Dialog */}
       <Dialog open={showLeaveConflictDialog} onOpenChange={(o) => { if (!o) { setShowLeaveConflictDialog(false); setLeaveConflicts([]); setPendingLeaveId(null); } }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-amber-600">
               <AlertCircle className="h-5 w-5" /> Conflicting Classes Found

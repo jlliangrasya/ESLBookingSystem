@@ -21,8 +21,8 @@ router.get('/dashboard', authenticateToken, requireRole('student'), async (req, 
         const student = studentRows[0];
 
         const [packageRows] = await pool.query(
-            `SELECT tp.id, tp.package_name, tp.price,
-                    sp.sessions_remaining, tp.session_limit,
+            `SELECT sp.id AS student_package_id, tp.id, tp.package_name, tp.price,
+                    sp.sessions_remaining, tp.session_limit, tp.duration_minutes,
                     sp.sessions_remaining + (
                       SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR)))
                       FROM bookings b WHERE b.student_package_id = sp.id AND b.status NOT IN ('done','cancelled')
