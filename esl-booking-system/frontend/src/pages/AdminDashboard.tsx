@@ -75,6 +75,21 @@ interface Booking {
   rescheduled_by_admin: boolean;
   teacher_name: string | null;
   created_at: string;
+  booking_group_id: string | null;
+  slot_count?: number;
+}
+
+function groupMultiSlotBookings(rows: Booking[]): Booking[] {
+  const groups = new Map<string, Booking>();
+  for (const row of rows) {
+    const key = row.booking_group_id || `solo_${row.id}`;
+    if (!groups.has(key)) {
+      groups.set(key, { ...row, slot_count: 1 });
+    } else {
+      groups.get(key)!.slot_count = (groups.get(key)!.slot_count ?? 1) + 1;
+    }
+  }
+  return Array.from(groups.values());
 }
 
 interface StudentPackage {
@@ -263,8 +278,8 @@ const AdminDashboard = () => {
   );
 
   const todayKey = fmtDate(new Date().toISOString(), "yyyy-MM-dd");
-  const todayBookings = bookings.filter(
-    (b) => fmtDate(b.appointment_date, "yyyy-MM-dd") === todayKey,
+  const todayBookings = groupMultiSlotBookings(
+    bookings.filter((b) => fmtDate(b.appointment_date, "yyyy-MM-dd") === todayKey),
   );
 
   return (
@@ -608,6 +623,9 @@ const AdminDashboard = () => {
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {fmtDate(b.appointment_date, "h:mm a")}
+                          {(b.slot_count ?? 1) > 1 && (
+                            <span className="ml-1 text-xs text-muted-foreground">({(b.slot_count ?? 1) * 30}min)</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-sm">
                           {b.teacher_name || "—"}

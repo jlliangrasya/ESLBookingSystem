@@ -860,7 +860,7 @@ router.get('/students/:id', authenticateToken, requireRole('company_admin'), asy
 
     const [bookings] = await pool.query(
       `SELECT b.id, b.appointment_date, b.status, b.class_mode, b.meeting_link,
-              b.student_absent, b.teacher_absent, b.teacher_id,
+              b.student_absent, b.teacher_absent, b.teacher_id, b.booking_group_id,
               u.name AS teacher_name,
               CASE WHEN cr.id IS NOT NULL THEN TRUE ELSE FALSE END AS has_report
        FROM bookings b

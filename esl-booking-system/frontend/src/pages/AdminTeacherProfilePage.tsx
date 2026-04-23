@@ -330,8 +330,8 @@ const AdminTeacherProfilePage = () => {
                       if (h < 22 || h === 22) slots.push(`${String(h).padStart(2, "0")}:30`);
                     }
                     return slots.map((time) => (
-                      <tr key={time}>
-                        <td className="p-1 font-medium text-muted-foreground">{(() => {
+                      <tr key={time} className="group">
+                        <td className="p-1 font-medium text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary group-hover:font-semibold transition-colors rounded">{(() => {
                           const [hh, mm] = time.split(":");
                           const h = Number(hh);
                           return `${h % 12 === 0 ? 12 : h % 12}:${mm} ${h >= 12 ? "PM" : "AM"}`;

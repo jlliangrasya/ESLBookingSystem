@@ -65,6 +65,21 @@ interface BookingRecord {
   teacher_id: number | null;
   teacher_name: string | null;
   has_report: boolean;
+  booking_group_id: string | null;
+  slot_count?: number;
+}
+
+function groupBookings(rows: BookingRecord[]): BookingRecord[] {
+  const groups = new Map<string, BookingRecord>();
+  for (const row of rows) {
+    const key = row.booking_group_id || `solo_${row.id}`;
+    if (!groups.has(key)) {
+      groups.set(key, { ...row, slot_count: 1 });
+    } else {
+      groups.get(key)!.slot_count = (groups.get(key)!.slot_count ?? 1) + 1;
+    }
+  }
+  return Array.from(groups.values());
 }
 
 interface Teacher {
@@ -452,7 +467,7 @@ const AdminStudentProfilePage = () => {
       ]);
       setStudent(profileRes.data.student);
       setActivePackage(profileRes.data.activePackage);
-      setBookings(profileRes.data.bookings);
+      setBookings(groupBookings(profileRes.data.bookings));
       setTeachers(teachersRes.data.map((t: Teacher) => ({ id: t.id, name: t.name })));
     } catch (err) {
       console.error("Error fetching student profile:", err);
@@ -800,6 +815,9 @@ const AdminStudentProfilePage = () => {
                     <TableRow key={b.id}>
                       <TableCell className="text-sm">
                         {fmtDate(b.appointment_date, "MMM d, yyyy h:mm a")}
+                        {(b.slot_count ?? 1) > 1 && (
+                          <span className="ml-1 text-xs text-muted-foreground">({(b.slot_count ?? 1) * 30}min)</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm">
                         {(b.status === "pending" || b.status === "confirmed") ? (

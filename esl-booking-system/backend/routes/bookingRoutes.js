@@ -275,6 +275,7 @@ router.get("/api/student-bookings", authenticateToken, requireRole('company_admi
             SELECT
                 b.id, b.appointment_date, b.status, b.rescheduled_by_admin,
                 b.student_package_id, b.recurring_schedule_id, b.created_at,
+                b.booking_group_id,
                 sp.student_id,
                 u.name AS student_name,
                 tp.package_name,

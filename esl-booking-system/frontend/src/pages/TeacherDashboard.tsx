@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import {
   CalendarDays, Users, LogOut, Loader2, FileText, CalendarOff,
   Plus, X, Video, LayoutList, UserCircle, Activity, CheckSquare,
-  ChevronLeft, ChevronRight, Menu,
+  ChevronLeft, ChevronRight, Menu, UserX, Timer, CheckCircle2, Search,
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 import NotificationBell from "@/components/NotificationBell";
@@ -127,11 +127,21 @@ const TeacherDashboard = () => {
   const [completedBookings, setCompletedBookings] = useState<CompletedBooking[]>([]);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingItem[]>([]);
   const [upcomingPage, setUpcomingPage] = useState(1);
-  const [upcomingPageSize, setUpcomingPageSize] = useState(20);
+  const [upcomingPageSize, setUpcomingPageSize] = useState(10);
+  // Upcoming classes filters & sort
+  const [upcomingSearch, setUpcomingSearch] = useState("");
+  const [upcomingFilterStudent, setUpcomingFilterStudent] = useState("all");
+  const [upcomingFilterNoClassInfo, setUpcomingFilterNoClassInfo] = useState(false);
+  const [upcomingFilterDate, setUpcomingFilterDate] = useState("");
+  const [upcomingSort, setUpcomingSort] = useState("date-asc");
   const [completedPage, setCompletedPage] = useState(1);
   const [completedPageSize, setCompletedPageSize] = useState(20);
   const [classesThisWeek, setClassesThisWeek] = useState(0);
   const [classesThisMonth, setClassesThisMonth] = useState(0);
+  const [completedWithReportThisWeek, setCompletedWithReportThisWeek] = useState(0);
+  const [absentStudentsThisWeek, setAbsentStudentsThisWeek] = useState(0);
+  const [fiftyMinThisWeek, setFiftyMinThisWeek] = useState(0);
+  const [twentyFiveMinThisWeek, setTwentyFiveMinThisWeek] = useState(0);
   const [health, setHealth] = useState<Health>({ total_done: 0, total_absent: 0, attended: 0 });
   const [leaves, setLeaves] = useState<TeacherLeave[]>([]);
   const [feedback, setFeedback] = useState<{ id: number; student_name: string; message: string; created_at: string }[]>([]);
@@ -141,6 +151,13 @@ const TeacherDashboard = () => {
   const [calendarBookings, setCalendarBookings] = useState<Record<string, { student: string; time: string }[]>>({});
   const [selectedDayBookings, setSelectedDayBookings] = useState<Booking[]>([]);
   const [showDayModal, setShowDayModal] = useState(false);
+  // Inline class-info editing inside the day modal
+  const [dayModalEditingId, setDayModalEditingId] = useState<number | null>(null);
+  const [dayModalForm, setDayModalForm] = useState({ class_mode: "", meeting_link: "" });
+  const [dayModalOtherMode, setDayModalOtherMode] = useState(false);
+  const [dayModalSaving, setDayModalSaving] = useState(false);
+  const [dayModalError, setDayModalError] = useState<string | null>(null);
+  const [dayModalCopiedId, setDayModalCopiedId] = useState<number | null>(null);
 
   // Confirm classes
   const [doneLoadingId, setDoneLoadingId] = useState<number | null>(null);
@@ -218,6 +235,10 @@ const TeacherDashboard = () => {
       setCompletedBookings(dash.completedBookings || []);
       setClassesThisWeek(dash.classes_this_week ?? 0);
       setClassesThisMonth(dash.classes_this_month ?? 0);
+      setCompletedWithReportThisWeek(dash.completed_with_report_this_week ?? 0);
+      setAbsentStudentsThisWeek(dash.absent_students_this_week ?? 0);
+      setFiftyMinThisWeek(dash.fifty_min_this_week ?? 0);
+      setTwentyFiveMinThisWeek(dash.twenty_five_min_this_week ?? 0);
       setHealth(dash.health ?? { total_done: 0, total_absent: 0, attended: 0 });
       setCancellationHours(settingsRes.data.cancellation_hours ?? 1);
       setFeedback(feedbackRes.data || []);
@@ -381,18 +402,50 @@ const TeacherDashboard = () => {
   const todayUpcoming = bookings.filter(b => fmtDate(b.appointment_date, "yyyy-MM-dd") === todayKey).length;
   const todayCompleted = completedBookings.filter(b => fmtDate(b.appointment_date, "yyyy-MM-dd") === todayKey && b.status === "done").length;
 
+  // Filtered + sorted upcoming classes (derived, no state needed)
+  const filteredUpcoming = bookings
+    .filter(b => {
+      if (upcomingSearch) {
+        const q = upcomingSearch.toLowerCase();
+        if (!b.student_name.toLowerCase().includes(q) && !(b.subject ?? "").toLowerCase().includes(q)) return false;
+      }
+      if (upcomingFilterStudent !== "all" && b.student_name !== upcomingFilterStudent) return false;
+      if (upcomingFilterNoClassInfo && (b.class_mode || b.meeting_link)) return false;
+      if (upcomingFilterDate && fmtDate(b.appointment_date, "yyyy-MM-dd") !== upcomingFilterDate) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (upcomingSort === "date-desc") return new Date(b.appointment_date).getTime() - new Date(a.appointment_date).getTime();
+      if (upcomingSort === "student-asc") return a.student_name.localeCompare(b.student_name);
+      if (upcomingSort === "student-desc") return b.student_name.localeCompare(a.student_name);
+      return new Date(a.appointment_date).getTime() - new Date(b.appointment_date).getTime(); // date-asc default
+    });
+
+  // Unique student names for the student filter dropdown
+  const upcomingStudentNames = [...new Set(bookings.map(b => b.student_name))].sort();
+  const hasUpcomingFilters = upcomingSearch || upcomingFilterStudent !== "all" || upcomingFilterDate || upcomingFilterNoClassInfo;
+
   const weekDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
     d.setDate(d.getDate() + i);
     return d;
   });
 
-  // Build a Set of "YYYY-MM-DD|HH:mm" keys for all booked upcoming slots
+  // Build a Set of "YYYY-MM-DD|HH:mm" keys for all booked upcoming slots.
+  // Multi-slot bookings (slot_count > 1) are expanded into every 30-min slot they occupy
+  // so the availability grid marks ALL covered slots as booked, not just the first.
   const bookedSlotKeys = new Set<string>(
-    bookings.map(b => {
+    bookings.flatMap(b => {
+      const slotCount = b.slot_count ?? 1;
       const dateKey = fmtDate(b.appointment_date, "yyyy-MM-dd");
-      const timeKey = fmtDate(b.appointment_date, "HH:mm");
-      return `${dateKey}|${timeKey}`;
+      const baseTime = fmtDate(b.appointment_date, "HH:mm");
+      const [bh, bm] = baseTime.split(":").map(Number);
+      return Array.from({ length: slotCount }, (_, i) => {
+        const totalMin = bh * 60 + bm + i * 30;
+        const h = String(Math.floor(totalMin / 60)).padStart(2, "0");
+        const m = String(totalMin % 60).padStart(2, "0");
+        return `${dateKey}|${h}:${m}`;
+      });
     })
   );
 
@@ -442,6 +495,32 @@ const TeacherDashboard = () => {
     }
   };
 
+  const handleSaveDayModalClassInfo = async () => {
+    if (!dayModalEditingId) return;
+    setDayModalSaving(true);
+    setDayModalError(null);
+    try {
+      await axios.put(
+        `${import.meta.env.VITE_API_URL}/api/teacher/bookings/${dayModalEditingId}/class-info`,
+        dayModalForm,
+        { headers }
+      );
+      // Update the booking in selectedDayBookings and the main bookings list
+      setSelectedDayBookings(prev =>
+        prev.map(b => b.id === dayModalEditingId
+          ? { ...b, class_mode: dayModalForm.class_mode || null, meeting_link: dayModalForm.meeting_link || null }
+          : b
+        )
+      );
+      setDayModalEditingId(null);
+      fetchData();
+    } catch (err: unknown) {
+      setDayModalError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to update");
+    } finally {
+      setDayModalSaving(false);
+    }
+  };
+
   const toggleBookingSelection = (id: number) => {
     setSelectedBookingIds(prev => {
       const next = new Set(prev);
@@ -452,10 +531,11 @@ const TeacherDashboard = () => {
   };
 
   const toggleSelectAll = () => {
-    if (selectedBookingIds.size === bookings.length) {
+    const visibleIds = filteredUpcoming.map(b => b.id);
+    if (visibleIds.every(id => selectedBookingIds.has(id))) {
       setSelectedBookingIds(new Set());
     } else {
-      setSelectedBookingIds(new Set(bookings.map(b => b.id)));
+      setSelectedBookingIds(new Set(visibleIds));
     }
   };
 
@@ -668,6 +748,41 @@ const TeacherDashboard = () => {
                   <span className="text-sm text-muted-foreground">Classes this week</span>
                   <span className="font-bold text-blue-600 text-lg">{classesThisWeek}</span>
                 </div>
+                {/* Weekly detail KPIs */}
+                <div className="grid grid-cols-2 gap-3">
+                  <Card>
+                    <CardContent className="pt-4">
+                      <p className="text-2xl font-bold text-emerald-600">{completedWithReportThisWeek}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Completed This Week
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <p className="text-2xl font-bold text-red-500">{absentStudentsThisWeek}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <UserX className="h-3.5 w-3.5" /> Absent Students This Week
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <p className="text-2xl font-bold text-indigo-600">{fiftyMinThisWeek}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <Timer className="h-3.5 w-3.5" /> 50-min Classes This Week
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <p className="text-2xl font-bold text-violet-600">{twentyFiveMinThisWeek}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <Timer className="h-3.5 w-3.5" /> 25-min Classes This Week
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
                 {/* Pending confirmation badge */}
                 {pendingConfirmation.length > 0 && (
                   <div className="border border-orange-200 rounded-lg p-3 bg-orange-50 flex items-center justify-between">
@@ -807,8 +922,8 @@ const TeacherDashboard = () => {
                       </thead>
                       <tbody>
                         {SLOT_TIMES.map((time) => (
-                          <tr key={time}>
-                            <td className="border-b border-r p-1 text-muted-foreground text-right pr-2 whitespace-nowrap bg-gray-50">
+                          <tr key={time} className="group">
+                            <td className="border-b border-r p-1 text-right pr-2 whitespace-nowrap bg-gray-50 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary group-hover:font-semibold transition-colors">
                               {fmt12(time)}
                             </td>
                             {weekDays.map((day, i) => {
@@ -951,6 +1066,11 @@ const TeacherDashboard = () => {
               <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-3">
                 <CardTitle className="text-base flex items-center gap-2">
                   <CalendarDays className="h-4 w-4 text-primary" /> Upcoming Classes
+                  {filteredUpcoming.length !== bookings.length && (
+                    <span className="text-xs font-normal text-muted-foreground">
+                      ({filteredUpcoming.length} of {bookings.length})
+                    </span>
+                  )}
                 </CardTitle>
                 {selectedBookingIds.size > 0 && (
                   <Button size="sm" className="gap-1" onClick={() => { setClassForm({ class_mode: "", meeting_link: "" }); setOtherModeActive(false); setClassInfoError(null); setBulkClassInfoOpen(true); }}>
@@ -959,11 +1079,87 @@ const TeacherDashboard = () => {
                 )}
               </CardHeader>
               <CardContent>
+                {/* Filter toolbar */}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {/* Search */}
+                  <div className="relative flex-1 min-w-[180px]">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <Input
+                      placeholder="Search student or subject..."
+                      value={upcomingSearch}
+                      onChange={e => { setUpcomingSearch(e.target.value); setUpcomingPage(1); }}
+                      className="h-8 pl-8 text-xs"
+                    />
+                  </div>
+
+                  {/* Filter by student name */}
+                  <Select value={upcomingFilterStudent} onValueChange={v => { setUpcomingFilterStudent(v); setUpcomingPage(1); }}>
+                    <SelectTrigger className="h-8 text-xs w-40">
+                      <SelectValue placeholder="All Students" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Students</SelectItem>
+                      {upcomingStudentNames.map(name => (
+                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Filter by date */}
+                  <Input
+                    type="date"
+                    value={upcomingFilterDate}
+                    onChange={e => { setUpcomingFilterDate(e.target.value); setUpcomingPage(1); }}
+                    className="h-8 text-xs w-36"
+                  />
+
+                  {/* Filter: no class info set */}
+                  <Button
+                    size="sm"
+                    variant={upcomingFilterNoClassInfo ? "default" : "outline"}
+                    className={`h-8 text-xs gap-1.5 ${upcomingFilterNoClassInfo ? "" : "text-muted-foreground"}`}
+                    onClick={() => { setUpcomingFilterNoClassInfo(v => !v); setUpcomingPage(1); }}
+                  >
+                    <Video className="h-3 w-3" />
+                    No Class Info
+                  </Button>
+
+                  {/* Sort */}
+                  <Select value={upcomingSort} onValueChange={v => { setUpcomingSort(v); setUpcomingPage(1); }}>
+                    <SelectTrigger className="h-8 text-xs w-44">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="date-asc">Date: Earliest First</SelectItem>
+                      <SelectItem value="date-desc">Date: Latest First</SelectItem>
+                      <SelectItem value="student-asc">Student: A → Z</SelectItem>
+                      <SelectItem value="student-desc">Student: Z → A</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {/* Clear all filters */}
+                  {hasUpcomingFilters && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 text-xs text-muted-foreground"
+                      onClick={() => { setUpcomingSearch(""); setUpcomingFilterStudent("all"); setUpcomingFilterDate(""); setUpcomingFilterNoClassInfo(false); setUpcomingPage(1); }}
+                    >
+                      <X className="h-3 w-3 mr-1" /> Clear
+                    </Button>
+                  )}
+                </div>
+
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-10">
-                        <input type="checkbox" checked={bookings.length > 0 && selectedBookingIds.size === bookings.length} onChange={toggleSelectAll} className="accent-primary h-4 w-4 cursor-pointer" />
+                        <input
+                          type="checkbox"
+                          checked={filteredUpcoming.length > 0 && filteredUpcoming.every(b => selectedBookingIds.has(b.id))}
+                          onChange={toggleSelectAll}
+                          className="accent-primary h-4 w-4 cursor-pointer"
+                        />
                       </TableHead>
                       <TableHead>Date & Time</TableHead>
                       <TableHead>Student</TableHead>
@@ -975,14 +1171,14 @@ const TeacherDashboard = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {bookings.length === 0 ? (
+                    {filteredUpcoming.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={8} className="text-center text-muted-foreground text-sm py-8">
-                          No upcoming classes
+                          {bookings.length === 0 ? "No upcoming classes" : "No classes match the current filters"}
                         </TableCell>
                       </TableRow>
                     ) : (
-                      bookings.slice((upcomingPage - 1) * upcomingPageSize, upcomingPage * upcomingPageSize).map((b) => {
+                      filteredUpcoming.slice((upcomingPage - 1) * upcomingPageSize, upcomingPage * upcomingPageSize).map((b) => {
                         const classTime = parseUTC(b.appointment_date)?.getTime() ?? 0;
                         const canMarkAbsent = Date.now() >= classTime + 15 * 60 * 1000;
                         return (
@@ -1028,10 +1224,16 @@ const TeacherDashboard = () => {
                     )}
                   </TableBody>
                 </Table>
-                {bookings.length > 0 && (
-                  <TablePagination page={upcomingPage} totalPages={Math.max(1, Math.ceil(bookings.length / upcomingPageSize))}
-                    pageSize={upcomingPageSize} totalItems={bookings.length}
-                    onPageChange={setUpcomingPage} onPageSizeChange={setUpcomingPageSize} />
+                {filteredUpcoming.length > 0 && (
+                  <TablePagination
+                    page={upcomingPage}
+                    totalPages={Math.max(1, Math.ceil(filteredUpcoming.length / upcomingPageSize))}
+                    pageSize={upcomingPageSize}
+                    totalItems={filteredUpcoming.length}
+                    onPageChange={setUpcomingPage}
+                    onPageSizeChange={(s) => { setUpcomingPageSize(s); setUpcomingPage(1); }}
+                    pageSizeOptions={[10, 15, 20, 30]}
+                  />
                 )}
               </CardContent>
             </Card>
@@ -1316,24 +1518,128 @@ const TeacherDashboard = () => {
       {/* ── Dialogs ── */}
 
       {/* Day schedule modal */}
-      <Dialog open={showDayModal} onOpenChange={setShowDayModal}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={showDayModal} onOpenChange={(o) => { if (!o) { setShowDayModal(false); setDayModalEditingId(null); setDayModalOtherMode(false); setDayModalError(null); } }}>
+        <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {selectedDayBookings[0] ? fmtDate(selectedDayBookings[0].appointment_date, "MMM d, yyyy") : ""} Schedule
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            {selectedDayBookings.map(b => (
-              <div key={b.id} className="rounded-lg border p-3 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-sm">{fmtDate(b.appointment_date, "h:mm a")}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[b.status] || "bg-gray-100"}`}>{b.status}</span>
+            {selectedDayBookings.map(b => {
+              const isEditing = dayModalEditingId === b.id;
+              const hasInfo = !!(b.class_mode || b.meeting_link);
+              return (
+                <div key={b.id} className="rounded-lg border p-3 space-y-2">
+                  {/* Time + status */}
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-sm">{fmtDate(b.appointment_date, "h:mm a")}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[b.status] || "bg-gray-100"}`}>{b.status}</span>
+                  </div>
+
+                  {/* Student + subject */}
+                  <p className="text-sm font-medium">{b.student_name} <span className="text-muted-foreground font-normal">· {b.subject}</span></p>
+
+                  {/* Class info — display or edit */}
+                  {isEditing ? (
+                    <div className="space-y-2 pt-1 border-t">
+                      {dayModalError && <p className="text-xs text-destructive">{dayModalError}</p>}
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Mode of Class</label>
+                        <Select
+                          value={dayModalOtherMode || (dayModalForm.class_mode !== "" && !knownModes.includes(dayModalForm.class_mode)) ? "Others" : dayModalForm.class_mode}
+                          onValueChange={(v) => {
+                            if (v === "Others") { setDayModalOtherMode(true); setDayModalForm(f => ({ ...f, class_mode: "" })); }
+                            else { setDayModalOtherMode(false); setDayModalForm(f => ({ ...f, class_mode: v })); }
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select platform" /></SelectTrigger>
+                          <SelectContent>
+                            {classModeOptions.map(v => <SelectItem key={v} value={v} className="text-xs">{v}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        {(dayModalOtherMode || (dayModalForm.class_mode !== "" && !knownModes.includes(dayModalForm.class_mode))) && (
+                          <Input
+                            placeholder="Enter platform name..."
+                            value={dayModalForm.class_mode}
+                            onChange={e => setDayModalForm(f => ({ ...f, class_mode: e.target.value }))}
+                            className="h-8 text-xs mt-1"
+                          />
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Meeting Link</label>
+                        <Input
+                          placeholder="https://..."
+                          value={dayModalForm.meeting_link}
+                          onChange={e => setDayModalForm(f => ({ ...f, meeting_link: e.target.value }))}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <Button size="sm" className="h-7 text-xs flex-1" onClick={handleSaveDayModalClassInfo} disabled={dayModalSaving}>
+                          {dayModalSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setDayModalEditingId(null); setDayModalOtherMode(false); setDayModalError(null); }}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1 pt-1 border-t">
+                      {hasInfo ? (
+                        <>
+                          {b.class_mode && (
+                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <Video className="h-3 w-3 shrink-0" />
+                              <span className="font-medium text-foreground">{b.class_mode}</span>
+                            </div>
+                          )}
+                          {b.meeting_link ? (
+                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
+                              <Video className="h-3 w-3 shrink-0" />
+                              <a href={b.meeting_link} target="_blank" rel="noopener noreferrer"
+                                className="text-primary underline break-all">{b.meeting_link}</a>
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(b.meeting_link!);
+                                  setDayModalCopiedId(b.id);
+                                  setTimeout(() => setDayModalCopiedId(null), 2000);
+                                }}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20"
+                              >
+                                {dayModalCopiedId === b.id ? "Copied!" : "Copy"}
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">No link set</p>
+                          )}
+                          <Button size="sm" variant="outline" className="h-6 text-xs gap-1 mt-1"
+                            onClick={() => {
+                              setDayModalEditingId(b.id);
+                              setDayModalOtherMode(!!(b.class_mode && !knownModes.includes(b.class_mode)));
+                              setDayModalForm({ class_mode: b.class_mode || "", meeting_link: b.meeting_link || "" });
+                              setDayModalError(null);
+                            }}>
+                            <Video className="h-3 w-3" /> Edit Info
+                          </Button>
+                        </>
+                      ) : (
+                        <Button size="sm" variant="outline" className="h-6 text-xs gap-1"
+                          onClick={() => {
+                            setDayModalEditingId(b.id);
+                            setDayModalOtherMode(false);
+                            setDayModalForm({ class_mode: "", meeting_link: "" });
+                            setDayModalError(null);
+                          }}>
+                          <Video className="h-3 w-3" /> Set Class Info
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <p className="text-sm">{b.student_name} · {b.subject}</p>
-                {b.class_mode && <p className="text-xs text-muted-foreground"><Video className="h-3 w-3 inline mr-1" />{b.class_mode}</p>}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </DialogContent>
       </Dialog>

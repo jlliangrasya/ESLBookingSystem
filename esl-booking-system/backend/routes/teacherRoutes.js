@@ -124,36 +124,92 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
         `, [teacherId, companyId]);
         const completedBookings = groupMultiSlotBookings(completedRows).slice(0, 20);
 
-        // Classes this week and this month — count distinct classes (not slots)
-        const [[weekRow]] = await pool.query(`
-            SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS classes_this_week
-            FROM bookings
-            WHERE teacher_id = ? AND company_id = ?
-              AND status IN ('confirmed', 'done')
-              AND YEARWEEK(appointment_date, 1) = YEARWEEK(?, 1)
-        `, [teacherId, companyId, todayDate()]);
+        // Classes this week / month + weekly detail stats — all run in parallel
+        const [
+            [[weekRow]],
+            [[monthRow]],
+            [[healthRow]],
+            [[completedReportRow]],
+            [[absentStudentsRow]],
+            [[fiftyMinRow]],
+            [[twentyFiveMinRow]],
+        ] = await Promise.all([
+            pool.query(`
+                SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS classes_this_week
+                FROM bookings
+                WHERE teacher_id = ? AND company_id = ?
+                  AND status IN ('confirmed', 'done')
+                  AND YEARWEEK(appointment_date, 1) = YEARWEEK(?, 1)
+            `, [teacherId, companyId, todayDate()]),
 
-        const [[monthRow]] = await pool.query(`
-            SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS classes_this_month
-            FROM bookings
-            WHERE teacher_id = ? AND company_id = ?
-              AND status IN ('confirmed', 'done')
-              AND YEAR(appointment_date) = YEAR(?)
-              AND MONTH(appointment_date) = MONTH(?)
-        `, [teacherId, companyId, todayDate(), todayDate()]);
+            pool.query(`
+                SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS classes_this_month
+                FROM bookings
+                WHERE teacher_id = ? AND company_id = ?
+                  AND status IN ('confirmed', 'done')
+                  AND YEAR(appointment_date) = YEAR(?)
+                  AND MONTH(appointment_date) = MONTH(?)
+            `, [teacherId, companyId, todayDate(), todayDate()]),
 
-        // Health summary (all-time) — count distinct classes
-        const [[healthRow]] = await pool.query(`
-            SELECT COUNT(DISTINCT grp) AS total_done,
-                   COUNT(DISTINCT CASE WHEN teacher_absent = TRUE THEN grp END) AS total_absent
-            FROM (SELECT COALESCE(booking_group_id, CAST(id AS CHAR)) AS grp, teacher_absent
-                  FROM bookings WHERE teacher_id = ? AND company_id = ? AND status = 'done') t
-        `, [teacherId, companyId]);
+            pool.query(`
+                SELECT COUNT(DISTINCT grp) AS total_done,
+                       COUNT(DISTINCT CASE WHEN teacher_absent = TRUE THEN grp END) AS total_absent
+                FROM (SELECT COALESCE(booking_group_id, CAST(id AS CHAR)) AS grp, teacher_absent
+                      FROM bookings WHERE teacher_id = ? AND company_id = ? AND status = 'done') t
+            `, [teacherId, companyId]),
+
+            // Completed classes this week that have a submitted report
+            pool.query(`
+                SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR))) AS completed_with_report
+                FROM bookings b
+                WHERE b.teacher_id = ? AND b.company_id = ?
+                  AND b.status = 'done'
+                  AND EXISTS (SELECT 1 FROM class_reports cr WHERE cr.booking_id = b.id)
+                  AND YEARWEEK(b.appointment_date, 1) = YEARWEEK(?, 1)
+            `, [teacherId, companyId, todayDate()]),
+
+            // Students marked absent this week
+            pool.query(`
+                SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS absent_students
+                FROM bookings
+                WHERE teacher_id = ? AND company_id = ?
+                  AND status = 'done' AND student_absent = TRUE
+                  AND YEARWEEK(appointment_date, 1) = YEARWEEK(?, 1)
+            `, [teacherId, companyId, todayDate()]),
+
+            // 50-minute classes this week
+            pool.query(`
+                SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR))) AS fifty_min
+                FROM bookings b
+                JOIN student_packages sp ON b.student_package_id = sp.id
+                JOIN tutorial_packages tp ON sp.package_id = tp.id
+                WHERE b.teacher_id = ? AND b.company_id = ?
+                  AND b.status IN ('confirmed', 'done')
+                  AND tp.duration_minutes = 50
+                  AND YEARWEEK(b.appointment_date, 1) = YEARWEEK(?, 1)
+            `, [teacherId, companyId, todayDate()]),
+
+            // 25-minute classes this week
+            pool.query(`
+                SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR))) AS twenty_five_min
+                FROM bookings b
+                JOIN student_packages sp ON b.student_package_id = sp.id
+                JOIN tutorial_packages tp ON sp.package_id = tp.id
+                WHERE b.teacher_id = ? AND b.company_id = ?
+                  AND b.status IN ('confirmed', 'done')
+                  AND tp.duration_minutes = 25
+                  AND YEARWEEK(b.appointment_date, 1) = YEARWEEK(?, 1)
+            `, [teacherId, companyId, todayDate()]),
+        ]);
 
         res.json({
             teacher, students, bookings, completedBookings,
             classes_this_week: weekRow.classes_this_week,
             classes_this_month: monthRow.classes_this_month,
+            completed_with_report_this_week: completedReportRow.completed_with_report || 0,
+            absent_students_this_week: absentStudentsRow.absent_students || 0,
+            fifty_min_this_week: fiftyMinRow.fifty_min || 0,
+            twenty_five_min_this_week: twentyFiveMinRow.twenty_five_min || 0,
             health: {
                 total_done: healthRow.total_done || 0,
                 total_absent: healthRow.total_absent || 0,
