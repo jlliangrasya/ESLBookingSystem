@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import {
   Dialog,
@@ -33,8 +33,41 @@ const ReportModal: React.FC<ReportModalProps> = ({
   const [notes, setNotes] = useState("");
   const [remarks, setRemarks] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch existing report when modal opens
+  useEffect(() => {
+    if (!open || !bookingId) return;
+    const token = localStorage.getItem("token");
+    setIsFetching(true);
+    setIsEditing(false);
+    setSuccess(false);
+    setError(null);
+    axios
+      .get(`${import.meta.env.VITE_API_URL}/api/reports/booking/${bookingId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((res) => {
+        const r = res.data;
+        setNewWords(r.new_words || "");
+        setSentences(r.sentences || "");
+        setNotes(r.notes || "");
+        setRemarks(r.remarks || "");
+        setIsEditing(true);
+      })
+      .catch(() => {
+        // No existing report — start fresh
+        setNewWords("");
+        setSentences("");
+        setNotes("");
+        setRemarks("");
+        setIsEditing(false);
+      })
+      .finally(() => setIsFetching(false));
+  }, [open, bookingId]);
 
   const handleSubmit = async () => {
     setIsLoading(true);
@@ -56,10 +89,6 @@ const ReportModal: React.FC<ReportModalProps> = ({
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false);
-        setNewWords("");
-        setSentences("");
-        setNotes("");
-        setRemarks("");
         onClose();
       }, 1500);
     } catch (err) {
@@ -77,78 +106,94 @@ const ReportModal: React.FC<ReportModalProps> = ({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Class Report — {studentName}</DialogTitle>
+          <DialogTitle>
+            {isEditing ? "Edit Report" : "Class Report"} — {studentName}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {error && (
+          {isFetching && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading report...
+            </div>
+          )}
+
+          {!isFetching && error && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
-          {success && (
+          {!isFetching && success && (
             <Alert className="border-green-500 bg-green-50 text-green-700">
               <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <AlertDescription>Report submitted successfully!</AlertDescription>
+              <AlertDescription>
+                {isEditing ? "Report updated successfully!" : "Report submitted successfully!"}
+              </AlertDescription>
             </Alert>
           )}
 
-          <div className="space-y-1.5">
-            <Label>New Words</Label>
-            <Textarea
-              rows={2}
-              placeholder="e.g. persevere, eloquent, ambiguous..."
-              value={newWords}
-              onChange={(e) => setNewWords(e.target.value)}
-              className="resize-none"
-            />
-          </div>
+          {!isFetching && (
+            <>
+              <div className="space-y-1.5">
+                <Label>New Words</Label>
+                <Textarea
+                  rows={2}
+                  placeholder="e.g. persevere, eloquent, ambiguous..."
+                  value={newWords}
+                  onChange={(e) => setNewWords(e.target.value)}
+                  className="resize-none"
+                />
+              </div>
 
-          <div className="space-y-1.5">
-            <Label>Sentences</Label>
-            <Textarea
-              rows={3}
-              placeholder="Sample sentences used in class..."
-              value={sentences}
-              onChange={(e) => setSentences(e.target.value)}
-              className="resize-none"
-            />
-          </div>
+              <div className="space-y-1.5">
+                <Label>Sentences</Label>
+                <Textarea
+                  rows={3}
+                  placeholder="Sample sentences used in class..."
+                  value={sentences}
+                  onChange={(e) => setSentences(e.target.value)}
+                  className="resize-none"
+                />
+              </div>
 
-          <div className="space-y-1.5">
-            <Label>Notes</Label>
-            <Textarea
-              rows={3}
-              placeholder="Topic covered, areas practiced..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="resize-none"
-            />
-          </div>
+              <div className="space-y-1.5">
+                <Label>Notes</Label>
+                <Textarea
+                  rows={3}
+                  placeholder="Topic covered, areas practiced..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="resize-none"
+                />
+              </div>
 
-          <div className="space-y-1.5">
-            <Label>Remarks</Label>
-            <Textarea
-              rows={2}
-              placeholder="Overall performance and feedback..."
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-              className="resize-none"
-            />
-          </div>
+              <div className="space-y-1.5">
+                <Label>Remarks</Label>
+                <Textarea
+                  rows={2}
+                  placeholder="Overall performance and feedback..."
+                  value={remarks}
+                  onChange={(e) => setRemarks(e.target.value)}
+                  className="resize-none"
+                />
+              </div>
+            </>
+          )}
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isLoading}>
+          <Button variant="outline" onClick={onClose} disabled={isLoading || isFetching}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isLoading || success}>
+          <Button onClick={handleSubmit} disabled={isLoading || isFetching || success}>
             {isLoading ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Submitting...
+                {isEditing ? "Updating..." : "Submitting..."}
               </>
+            ) : isEditing ? (
+              "Update Report"
             ) : (
               "Submit Report"
             )}

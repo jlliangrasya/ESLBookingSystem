@@ -219,7 +219,6 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
       WHERE b.teacher_id = ? AND b.company_id = ? AND b.appointment_date >= NOW()
         AND b.status NOT IN ('cancelled')
       ORDER BY b.appointment_date ASC
-      LIMIT 20
     `, [id, companyId]);
 
     const [leaves] = await pool.query(
@@ -227,7 +226,85 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
       [id, companyId]
     );
 
-    res.json({ teacher, schedule, leaves });
+    // Completed bookings with report flag
+    const [completedBookings] = await pool.query(`
+      SELECT b.id, b.appointment_date, b.student_absent, b.teacher_absent,
+             u.name AS student_name, tp.duration_minutes, sp.subject,
+             IF(cr.id IS NOT NULL, TRUE, FALSE) AS has_report
+      FROM bookings b
+      JOIN student_packages sp ON b.student_package_id = sp.id
+      JOIN users u ON sp.student_id = u.id
+      JOIN tutorial_packages tp ON sp.package_id = tp.id
+      LEFT JOIN class_reports cr ON cr.booking_id = b.id
+      WHERE b.teacher_id = ? AND b.company_id = ? AND b.status = 'done'
+      ORDER BY b.appointment_date DESC
+    `, [id, companyId]);
+
+    // KPI queries
+    const today = new Date().toISOString().slice(0, 10);
+    const [
+      [[fiftyMinRow]],
+      [[twentyFiveMinRow]],
+      [[totalCompletedRow]],
+      [[totalAbsencesRow]],
+      [[totalPresentRow]],
+      [[thisMonthRow]],
+    ] = await Promise.all([
+      pool.query(`
+        SELECT COUNT(*) AS cnt FROM bookings b
+        JOIN student_packages sp ON b.student_package_id = sp.id
+        JOIN tutorial_packages tp ON sp.package_id = tp.id
+        WHERE b.teacher_id = ? AND b.company_id = ? AND b.status = 'done'
+          AND b.student_absent = FALSE AND tp.duration_minutes = 50
+          AND YEARWEEK(b.appointment_date, 1) = YEARWEEK(?, 1)
+      `, [id, companyId, today]),
+      pool.query(`
+        SELECT COUNT(*) AS cnt FROM bookings b
+        JOIN student_packages sp ON b.student_package_id = sp.id
+        JOIN tutorial_packages tp ON sp.package_id = tp.id
+        WHERE b.teacher_id = ? AND b.company_id = ? AND b.status = 'done'
+          AND b.student_absent = FALSE AND tp.duration_minutes = 25
+          AND YEARWEEK(b.appointment_date, 1) = YEARWEEK(?, 1)
+      `, [id, companyId, today]),
+      pool.query(`
+        SELECT COUNT(*) AS cnt FROM bookings
+        WHERE teacher_id = ? AND company_id = ? AND status = 'done'
+      `, [id, companyId]),
+      pool.query(`
+        SELECT COUNT(*) AS cnt FROM bookings
+        WHERE teacher_id = ? AND company_id = ? AND status = 'done' AND student_absent = TRUE
+      `, [id, companyId]),
+      pool.query(`
+        SELECT COUNT(*) AS cnt FROM bookings
+        WHERE teacher_id = ? AND company_id = ? AND status = 'done' AND student_absent = FALSE
+      `, [id, companyId]),
+      pool.query(`
+        SELECT COUNT(*) AS cnt FROM bookings
+        WHERE teacher_id = ? AND company_id = ? AND status = 'done'
+          AND MONTH(appointment_date) = MONTH(?) AND YEAR(appointment_date) = YEAR(?)
+      `, [id, companyId, today, today]),
+    ]);
+
+    const totalDone = totalCompletedRow.cnt || 0;
+    const totalAbsent = totalAbsencesRow.cnt || 0;
+
+    res.json({
+      teacher, schedule, leaves, completedBookings,
+      kpi: {
+        fifty_min_this_week: fiftyMinRow.cnt || 0,
+        twenty_five_min_this_week: twentyFiveMinRow.cnt || 0,
+        total_completed: totalDone,
+        total_absences: totalAbsent,
+        total_present: totalPresentRow.cnt || 0,
+        classes_this_month: thisMonthRow.cnt || 0,
+      },
+      health: {
+        total_done: totalDone,
+        total_absent: totalAbsent,
+        attended: totalDone - totalAbsent,
+        rate: totalDone > 0 ? Math.round(((totalDone - totalAbsent) / totalDone) * 100) : 0,
+      },
+    });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }

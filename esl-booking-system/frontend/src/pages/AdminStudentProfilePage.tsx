@@ -848,12 +848,12 @@ const AdminStudentProfilePage = () => {
                         </span>
                       </TableCell>
                       <TableCell>
-                        {b.student_absent && (
+                        {!!b.student_absent && (
                           <span className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-700 mr-1">
                             Student Absent
                           </span>
                         )}
-                        {b.teacher_absent && (
+                        {!!b.teacher_absent && (
                           <span className="text-xs px-2 py-1 rounded-full font-medium bg-red-100 text-red-700">
                             Teacher Absent
                           </span>

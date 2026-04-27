@@ -172,7 +172,7 @@ const AnnouncementManagementPage: React.FC = () => {
                     <TableRow key={a.id}>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          {a.is_pinned && <Pin className="h-3 w-3 text-amber-500" />}
+                          {!!a.is_pinned && <Pin className="h-3 w-3 text-amber-500" />}
                           <span className="font-medium">{a.title}</span>
                         </div>
                         <p className="text-xs text-gray-500 mt-0.5 truncate max-w-sm">{a.content}</p>

@@ -711,32 +711,32 @@ const TeacherDashboard = () => {
                 <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Overview</h2>
                 <div className="grid grid-cols-2 gap-3">
                   <Card>
-                    <CardContent className="pt-4">
-                      <p className="text-2xl font-bold">{students.length}</p>
+                    <CardContent className="p-3">
+                      <p className="text-xl font-bold">{students.length}</p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                         <Users className="h-3.5 w-3.5" /> Assigned Students
                       </p>
                     </CardContent>
                   </Card>
                   <Card>
-                    <CardContent className="pt-4">
-                      <p className="text-2xl font-bold text-orange-600">{todayUpcoming}</p>
+                    <CardContent className="p-3">
+                      <p className="text-xl font-bold text-orange-600">{todayUpcoming}</p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                         <CalendarDays className="h-3.5 w-3.5" /> Upcoming Today
                       </p>
                     </CardContent>
                   </Card>
                   <Card>
-                    <CardContent className="pt-4">
-                      <p className="text-2xl font-bold text-green-600">{todayCompleted}</p>
+                    <CardContent className="p-3">
+                      <p className="text-xl font-bold text-green-600">{todayCompleted}</p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                         <FileText className="h-3.5 w-3.5" /> Completed Today
                       </p>
                     </CardContent>
                   </Card>
                   <Card>
-                    <CardContent className="pt-4">
-                      <p className="text-2xl font-bold text-primary">{classesThisMonth}</p>
+                    <CardContent className="p-3">
+                      <p className="text-xl font-bold text-primary">{classesThisMonth}</p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                         <CalendarDays className="h-3.5 w-3.5" /> This Month
                       </p>
@@ -751,34 +751,34 @@ const TeacherDashboard = () => {
                 {/* Weekly detail KPIs */}
                 <div className="grid grid-cols-2 gap-3">
                   <Card>
-                    <CardContent className="pt-4">
-                      <p className="text-2xl font-bold text-emerald-600">{completedWithReportThisWeek}</p>
+                    <CardContent className="p-3">
+                      <p className="text-xl font-bold text-emerald-600">{completedWithReportThisWeek}</p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                         <CheckCircle2 className="h-3.5 w-3.5" /> Completed This Week
                       </p>
                     </CardContent>
                   </Card>
                   <Card>
-                    <CardContent className="pt-4">
-                      <p className="text-2xl font-bold text-red-500">{absentStudentsThisWeek}</p>
+                    <CardContent className="p-3">
+                      <p className="text-xl font-bold text-red-500">{absentStudentsThisWeek}</p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                         <UserX className="h-3.5 w-3.5" /> Absent Students This Week
                       </p>
                     </CardContent>
                   </Card>
                   <Card>
-                    <CardContent className="pt-4">
-                      <p className="text-2xl font-bold text-indigo-600">{fiftyMinThisWeek}</p>
+                    <CardContent className="p-3">
+                      <p className="text-xl font-bold text-indigo-600">{fiftyMinThisWeek}</p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                        <Timer className="h-3.5 w-3.5" /> 50-min Classes This Week
+                        <Timer className="h-3.5 w-3.5" /> 50-min Completed This Week
                       </p>
                     </CardContent>
                   </Card>
                   <Card>
-                    <CardContent className="pt-4">
-                      <p className="text-2xl font-bold text-violet-600">{twentyFiveMinThisWeek}</p>
+                    <CardContent className="p-3">
+                      <p className="text-xl font-bold text-violet-600">{twentyFiveMinThisWeek}</p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                        <Timer className="h-3.5 w-3.5" /> 25-min Classes This Week
+                        <Timer className="h-3.5 w-3.5" /> 25-min Completed This Week
                       </p>
                     </CardContent>
                   </Card>
@@ -1299,14 +1299,16 @@ const TeacherDashboard = () => {
                             <TableCell className="text-xs">{b.subject}</TableCell>
                             <TableCell>
                               <div className="flex gap-1 flex-wrap">
-                                {b.student_absent && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">Student Absent</span>}
-                                {b.teacher_absent && <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">Teacher Absent</span>}
+                                {!!b.student_absent && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">Student Absent</span>}
+                                {!!b.teacher_absent && <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">Teacher Absent</span>}
                                 {!b.student_absent && !b.teacher_absent && <span className="text-xs text-muted-foreground">Present</span>}
                               </div>
                             </TableCell>
                             <TableCell>
                               {b.has_report ? (
-                                <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">✓ Reported</Badge>
+                                <Button size="sm" variant="outline" className="text-xs h-7 border-green-400 text-green-700 hover:bg-green-50" onClick={() => openReport(b)}>
+                                  ✓ View / Edit Report
+                                </Button>
                               ) : (
                                 <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => openReport(b)}>
                                   Submit Report

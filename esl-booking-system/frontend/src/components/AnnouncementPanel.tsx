@@ -119,7 +119,7 @@ const AnnouncementPanel: React.FC = () => {
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {a.is_pinned && <Pin className="h-3 w-3 text-amber-500 flex-shrink-0" />}
+                    {!!a.is_pinned && <Pin className="h-3 w-3 text-amber-500 flex-shrink-0" />}
                     <span className={`text-sm font-semibold ${!a.is_read ? "text-blue-800 dark:text-blue-200" : "text-gray-700 dark:text-gray-300"}`}>
                       {a.title}
                     </span>

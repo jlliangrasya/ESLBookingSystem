@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { CalendarDays, Check, Copy, Info, RefreshCw, User, Video } from "lucide-react";
+import { ArrowLeft, CalendarDays, Check, Copy, Info, RefreshCw, User, Video } from "lucide-react";
 
 interface Booking {
   id: number;
@@ -294,6 +294,9 @@ const TimeslotPage = () => {
   return (
     <div className="min-h-screen brand-gradient-subtle pattern-dots-light">
       <div className="max-w-5xl mx-auto px-4 py-8">
+      <Button variant="ghost" size="sm" className="gap-1.5 -ml-2 mb-4" onClick={() => navigate(-1)}>
+        <ArrowLeft className="h-4 w-4" /> Back
+      </Button>
       <div className="flex items-start justify-between mb-8">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">
@@ -506,7 +509,7 @@ const TimeslotPage = () => {
                     )}
                   </div>
                   {/* Absence indicators / action */}
-                  {b.student_absent && (
+                  {!!b.student_absent && (
                     <div className="pt-1">
                       <span className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-700">
                         You were marked absent

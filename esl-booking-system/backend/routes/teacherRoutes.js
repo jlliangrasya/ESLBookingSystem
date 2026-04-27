@@ -119,10 +119,11 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
             JOIN tutorial_packages tp ON sp.package_id = tp.id
             LEFT JOIN class_reports cr ON cr.booking_id = b.id
             WHERE b.teacher_id = ? AND b.company_id = ? AND b.status = 'done'
-            ORDER BY b.appointment_date DESC
-            LIMIT 50
+            ORDER BY b.appointment_date ASC
+            LIMIT 100
         `, [teacherId, companyId]);
-        const completedBookings = groupMultiSlotBookings(completedRows).slice(0, 20);
+        // Group ASC so earliest slot is representative, then reverse for most-recent-first display
+        const completedBookings = groupMultiSlotBookings(completedRows).reverse().slice(0, 20);
 
         // Classes this week / month + weekly detail stats — all run in parallel
         const [
@@ -184,7 +185,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
                 JOIN student_packages sp ON b.student_package_id = sp.id
                 JOIN tutorial_packages tp ON sp.package_id = tp.id
                 WHERE b.teacher_id = ? AND b.company_id = ?
-                  AND b.status IN ('confirmed', 'done')
+                  AND b.status = 'done'
                   AND tp.duration_minutes = 50
                   AND YEARWEEK(b.appointment_date, 1) = YEARWEEK(?, 1)
             `, [teacherId, companyId, todayDate()]),
@@ -196,7 +197,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
                 JOIN student_packages sp ON b.student_package_id = sp.id
                 JOIN tutorial_packages tp ON sp.package_id = tp.id
                 WHERE b.teacher_id = ? AND b.company_id = ?
-                  AND b.status IN ('confirmed', 'done')
+                  AND b.status = 'done'
                   AND tp.duration_minutes = 25
                   AND YEARWEEK(b.appointment_date, 1) = YEARWEEK(?, 1)
             `, [teacherId, companyId, todayDate()]),
@@ -557,7 +558,7 @@ router.get('/pending-confirmation', authenticateToken, requireRole('teacher'), a
             WHERE b.teacher_id = ? AND b.company_id = ?
               AND b.appointment_date < ?
               AND b.status IN ('pending', 'confirmed')
-            ORDER BY b.appointment_date DESC
+            ORDER BY b.appointment_date ASC
         `, [teacherId, companyId, nowDatetime()]);
         res.json(groupMultiSlotBookings(rows));
     } catch (err) {

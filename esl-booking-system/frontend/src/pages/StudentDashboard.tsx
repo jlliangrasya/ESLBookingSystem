@@ -752,12 +752,12 @@ const StudentDashboard = () => {
                       </TableCell>
                       <TableCell className="text-sm">{a.teacher_name || "—"}</TableCell>
                       <TableCell>
-                        {a.student_absent && (
+                        {!!a.student_absent && (
                           <span className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-700">
                             {t("student.youAbsent")}
                           </span>
                         )}
-                        {a.teacher_absent && (
+                        {!!a.teacher_absent && (
                           <span className="text-xs px-2 py-1 rounded-full font-medium bg-red-100 text-red-700 ml-1">
                             {t("student.teacherAbsent")}
                           </span>
@@ -1153,7 +1153,7 @@ const StudentDashboard = () => {
                     )}
                   </div>
                   {/* Absence indicators / action */}
-                  {b.student_absent && (
+                  {!!b.student_absent && (
                     <div className="pt-1">
                       <span className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-700">
                         {t("student.youMarkedAbsent")}
