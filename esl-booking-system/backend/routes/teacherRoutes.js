@@ -506,10 +506,10 @@ router.get('/completed-classes', authenticateToken, requireRole('teacher'), asyn
             LEFT JOIN class_reports cr ON cr.booking_id = b.id
             WHERE b.teacher_id = ? AND b.company_id = ? AND b.status = 'done'
               AND YEAR(b.appointment_date) = ? AND MONTH(b.appointment_date) = ?
-            ORDER BY b.appointment_date DESC
+            ORDER BY b.appointment_date ASC
         `, [teacherId, companyId, year, month]);
 
-        res.json(groupMultiSlotBookings(rows));
+        res.json(groupMultiSlotBookings(rows).reverse());
     } catch (err) {
         res.status(500).json({ message: 'Server error' });
     }

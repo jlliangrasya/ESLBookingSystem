@@ -130,6 +130,10 @@ async function run5HourReminders() {
               AND b.reminded_5h = FALSE
               AND b.appointment_date BETWEEN DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 4 HOUR)
                                           AND DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 5.5 HOUR)
+              AND (b.booking_group_id IS NULL OR b.appointment_date = (
+                  SELECT MIN(b2.appointment_date) FROM bookings b2
+                  WHERE b2.booking_group_id = b.booking_group_id
+              ))
         `);
 
         for (const booking of upcoming) {
@@ -153,7 +157,12 @@ async function run5HourReminders() {
                 });
             }
 
-            await pool.query('UPDATE bookings SET reminded_5h = TRUE WHERE id = ?', [booking.id]);
+            // Mark all slots in the group (first + second for 50-min classes) so no duplicate fires
+            if (booking.booking_group_id) {
+                await pool.query('UPDATE bookings SET reminded_5h = TRUE WHERE booking_group_id = ?', [booking.booking_group_id]);
+            } else {
+                await pool.query('UPDATE bookings SET reminded_5h = TRUE WHERE id = ?', [booking.id]);
+            }
         }
 
         if (upcoming.length > 0) {
@@ -180,6 +189,10 @@ async function run30MinReminders() {
               AND b.reminded = FALSE
               AND b.appointment_date BETWEEN CONVERT_TZ(NOW(), '+00:00', '+08:00')
                                           AND DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 40 MINUTE)
+              AND (b.booking_group_id IS NULL OR b.appointment_date = (
+                  SELECT MIN(b2.appointment_date) FROM bookings b2
+                  WHERE b2.booking_group_id = b.booking_group_id
+              ))
         `);
 
         for (const booking of upcoming) {
@@ -225,7 +238,12 @@ async function run30MinReminders() {
                 }).catch(() => {});
             }
 
-            await pool.query('UPDATE bookings SET reminded = TRUE WHERE id = ?', [booking.id]);
+            // Mark all slots in the group (first + second for 50-min classes) so no duplicate fires
+            if (booking.booking_group_id) {
+                await pool.query('UPDATE bookings SET reminded = TRUE WHERE booking_group_id = ?', [booking.booking_group_id]);
+            } else {
+                await pool.query('UPDATE bookings SET reminded = TRUE WHERE id = ?', [booking.id]);
+            }
         }
 
         if (upcoming.length > 0) {
