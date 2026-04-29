@@ -214,7 +214,7 @@ router.post('/forgot-password', forgotPasswordLimiter, async (req, res) => {
             [token, expires, user.id]
         );
 
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').split(',')[0].trim();
         const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
 
         await sendMail({

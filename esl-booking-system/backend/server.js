@@ -52,7 +52,11 @@ const app = express();
 const httpServer = http.createServer(app);
 
 // Allowed origins: strict in production; wildcard only for local dev
-const allowedOrigin = process.env.FRONTEND_URL || (process.env.NODE_ENV !== 'production' ? '*' : null);
+// FRONTEND_URL can be comma-separated to support multiple origins (e.g. during migration)
+const rawOrigin = process.env.FRONTEND_URL || (process.env.NODE_ENV !== 'production' ? '*' : null);
+const allowedOrigin = rawOrigin && rawOrigin !== '*'
+    ? rawOrigin.split(',').map(s => s.trim())
+    : rawOrigin;
 if (process.env.NODE_ENV === 'production' && !allowedOrigin) {
     logger.error('FATAL: FRONTEND_URL is required in production for CORS.');
     process.exit(1);
