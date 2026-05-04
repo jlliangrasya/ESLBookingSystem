@@ -151,6 +151,50 @@ router.post('/bookings/:id/mark-teacher-absent', authenticateToken, requireRole(
     }
 });
 
+// Lightweight stats for profile page
+router.get('/stats', authenticateToken, requireRole('student'), async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const companyId = req.user.company_id;
+
+        const [[{ completed_count }]] = await pool.query(
+            `SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR))) AS completed_count
+             FROM bookings b
+             JOIN student_packages sp ON b.student_package_id = sp.id
+             WHERE sp.student_id = ? AND sp.company_id = ? AND b.status = 'done'`,
+            [userId, companyId]
+        );
+
+        const [[{ upcoming_count }]] = await pool.query(
+            `SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR))) AS upcoming_count
+             FROM bookings b
+             JOIN student_packages sp ON b.student_package_id = sp.id
+             WHERE sp.student_id = ? AND sp.company_id = ?
+               AND DATE(b.appointment_date) >= CURDATE()
+               AND b.status NOT IN ('done', 'cancelled')`,
+            [userId, companyId]
+        );
+
+        const [[activePkg]] = await pool.query(
+            `SELECT sp.sessions_remaining
+             FROM student_packages sp
+             WHERE sp.student_id = ? AND sp.company_id = ? AND sp.payment_status = 'paid'
+               AND (sp.sessions_remaining > 0
+                    OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = sp.id AND b2.status NOT IN ('done','cancelled')))
+             ORDER BY sp.purchased_at DESC LIMIT 1`,
+            [userId, companyId]
+        );
+
+        res.json({
+            completed_count: Number(completed_count),
+            upcoming_count: Number(upcoming_count),
+            sessions_remaining: activePkg ? Number(activePkg.sessions_remaining) : 0,
+        });
+    } catch (err) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // Get student's package history (all availed packages, newest first)
 router.get('/package-history', authenticateToken, requireRole('student'), async (req, res) => {
     try {
@@ -175,7 +219,7 @@ router.get('/package-history', authenticateToken, requireRole('student'), async 
 router.get('/profile', authenticateToken, requireRole('student'), async (req, res) => {
     try {
         const [[student]] = await pool.query(
-            'SELECT id, name, email, guardian_name, nationality, age, timezone FROM users WHERE id = ?',
+            'SELECT id, name, email, guardian_name, nationality, age, timezone, created_at FROM users WHERE id = ?',
             [req.user.id]
         );
         res.json(student);
