@@ -7,8 +7,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Pencil, Save, Eye, EyeOff, UserCircle, ArrowLeft, Package } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Pencil,
+  Save,
+  Eye,
+  EyeOff,
+  UserCircle,
+  ArrowLeft,
+  Package,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { TIMEZONES, setUserTimezone } from "@/utils/timezone";
 
@@ -42,7 +56,11 @@ const StudentProfilePage = () => {
   const base = import.meta.env.VITE_API_URL;
 
   const [profile, setProfile] = useState<StudentProfile>({
-    name: "", email: "", guardian_name: "", nationality: "", age: "",
+    name: "",
+    email: "",
+    guardian_name: "",
+    nationality: "",
+    age: "",
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   });
   const [password, setPassword] = useState("");
@@ -54,11 +72,13 @@ const StudentProfilePage = () => {
   const [packageHistory, setPackageHistory] = useState<PackageHistory[]>([]);
 
   useEffect(() => {
-    axios.get(`${base}/api/student/package-history`, { headers })
+    axios
+      .get(`${base}/api/student/package-history`, { headers })
       .then((res) => setPackageHistory(res.data))
       .catch(console.error);
 
-    axios.get(`${base}/api/student/profile`, { headers })
+    axios
+      .get(`${base}/api/student/profile`, { headers })
       .then((res) => {
         setProfile({
           name: res.data.name || "",
@@ -66,7 +86,10 @@ const StudentProfilePage = () => {
           guardian_name: res.data.guardian_name || "",
           nationality: res.data.nationality || "",
           age: res.data.age?.toString() || "",
-          timezone: res.data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+          timezone:
+            res.data.timezone ||
+            Intl.DateTimeFormat().resolvedOptions().timeZone ||
+            "UTC",
         });
       })
       .catch(console.error);
@@ -99,14 +122,22 @@ const StudentProfilePage = () => {
       setIsEditing(false);
       setPassword("");
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to save";
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to save";
       setSaveError(msg);
     } finally {
       setSaving(false);
     }
   };
 
-  const field = (id: string, label: string, value: string, key: keyof StudentProfile, type = "text") => (
+  const field = (
+    id: string,
+    label: string,
+    value: string,
+    key: keyof StudentProfile,
+    type = "text",
+  ) => (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
       <Input
@@ -129,7 +160,11 @@ const StudentProfilePage = () => {
       </div>
 
       <div className="max-w-lg mx-auto px-4 py-8 space-y-4">
-        <Button variant="ghost" className="gap-2 -ml-2" onClick={() => navigate("/studentdashboard")}>
+        <Button
+          variant="ghost"
+          className="gap-2 -ml-2"
+          onClick={() => navigate("/studentdashboard")}
+        >
           <ArrowLeft className="h-4 w-4" /> {t("profile.backToDashboard")}
         </Button>
 
@@ -141,26 +176,52 @@ const StudentProfilePage = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {saveMsg && <p className="text-sm text-green-600 font-medium">{saveMsg}</p>}
-            {saveError && <p className="text-sm text-destructive">{saveError}</p>}
+            {saveMsg && (
+              <p className="text-sm text-green-600 font-medium">{saveMsg}</p>
+            )}
+            {saveError && (
+              <p className="text-sm text-destructive">{saveError}</p>
+            )}
 
             {field("s-name", t("profile.fullName"), profile.name, "name")}
-            {field("s-email", t("profile.email"), profile.email, "email", "email")}
-            {field("s-guardian", t("profile.guardianName"), profile.guardian_name, "guardian_name")}
-            {field("s-nationality", t("profile.nationality"), profile.nationality, "nationality")}
+            {field(
+              "s-email",
+              t("profile.email"),
+              profile.email,
+              "email",
+              "email",
+            )}
+            {field(
+              "s-guardian",
+              t("profile.guardianName"),
+              profile.guardian_name,
+              "guardian_name",
+            )}
+            {field(
+              "s-nationality",
+              t("profile.nationality"),
+              profile.nationality,
+              "nationality",
+            )}
             {field("s-age", t("profile.age"), profile.age, "age", "number")}
 
             <div className="space-y-1.5">
               <Label>{t("profile.timezone")}</Label>
               <Select
                 value={profile.timezone}
-                onValueChange={(v) => setProfile((p) => ({ ...p, timezone: v }))}
+                onValueChange={(v) =>
+                  setProfile((p) => ({ ...p, timezone: v }))
+                }
                 disabled={!isEditing}
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent className="max-h-60">
                   {TIMEZONES.map((tz) => (
-                    <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+                    <SelectItem key={tz.value} value={tz.value}>
+                      {tz.label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -168,7 +229,10 @@ const StudentProfilePage = () => {
 
             <div className="space-y-1.5">
               <Label htmlFor="s-password">
-                {t("profile.password")} <span className="text-muted-foreground text-xs">({t("profile.passwordHint")})</span>
+                {t("profile.password")}{" "}
+                <span className="text-muted-foreground text-xs">
+                  ({t("profile.passwordHint")})
+                </span>
               </Label>
               <div className="relative">
                 <Input
@@ -187,19 +251,31 @@ const StudentProfilePage = () => {
                   tabIndex={-1}
                   disabled={!isEditing}
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
                 </button>
               </div>
             </div>
 
             <div className="pt-2">
               {isEditing ? (
-                <Button onClick={handleSave} disabled={saving} className="gap-2">
+                <Button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="gap-2"
+                >
                   <Save className="h-4 w-4" />
                   {saving ? t("profile.saving") : t("profile.save")}
                 </Button>
               ) : (
-                <Button variant="outline" onClick={handleEdit} className="gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleEdit}
+                  className="gap-2"
+                >
                   <Pencil className="h-4 w-4" />
                   {t("profile.editProfile")}
                 </Button>
@@ -211,29 +287,49 @@ const StudentProfilePage = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <Package className="h-5 w-5 text-primary" />
-              Package History
+              Student Records
             </CardTitle>
           </CardHeader>
           <CardContent>
             {packageHistory.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No packages availed yet.</p>
+              <p className="text-sm text-muted-foreground">
+                No packages availed yet.
+              </p>
             ) : (
               <div className="space-y-3">
                 {packageHistory.map((pkg) => (
-                  <div key={pkg.id} className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3">
+                  <div
+                    key={pkg.id}
+                    className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3"
+                  >
                     <div className="space-y-0.5">
                       <p className="font-medium text-sm">{pkg.package_name}</p>
-                      {pkg.subject && <p className="text-xs text-muted-foreground">{pkg.subject}</p>}
+                      {pkg.subject && (
+                        <p className="text-xs text-muted-foreground">
+                          {pkg.subject}
+                        </p>
+                      )}
                       <p className="text-xs text-muted-foreground">
-                        {pkg.session_limit} sessions · {pkg.duration_minutes} min ·{" "}
-                        {pkg.currency} {Number(pkg.price).toLocaleString()}
+                        {pkg.session_limit} sessions · {pkg.duration_minutes}{" "}
+                        min · {pkg.currency}{" "}
+                        {Number(pkg.price).toLocaleString()}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Availed: {new Date(pkg.purchased_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                        Availed:{" "}
+                        {new Date(pkg.purchased_at).toLocaleDateString(
+                          undefined,
+                          { year: "numeric", month: "short", day: "numeric" },
+                        )}
                       </p>
                     </div>
                     <Badge
-                      variant={pkg.payment_status === "paid" ? "default" : pkg.payment_status === "rejected" ? "destructive" : "secondary"}
+                      variant={
+                        pkg.payment_status === "paid"
+                          ? "default"
+                          : pkg.payment_status === "rejected"
+                            ? "destructive"
+                            : "secondary"
+                      }
                       className="shrink-0 capitalize"
                     >
                       {pkg.payment_status}
