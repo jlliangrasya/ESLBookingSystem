@@ -8,8 +8,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Pencil, Save, Eye, EyeOff, UserCircle, ArrowLeft } from "lucide-react";
+import { Pencil, Save, Eye, EyeOff, UserCircle, ArrowLeft, Package } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { TIMEZONES, setUserTimezone } from "@/utils/timezone";
+
+interface PackageHistory {
+  id: number;
+  package_name: string;
+  subject: string | null;
+  session_limit: number;
+  sessions_remaining: number;
+  price: number;
+  currency: string;
+  duration_minutes: number;
+  payment_status: "unpaid" | "paid" | "rejected";
+  purchased_at: string;
+}
 
 interface StudentProfile {
   name: string;
@@ -37,8 +51,13 @@ const StudentProfilePage = () => {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [packageHistory, setPackageHistory] = useState<PackageHistory[]>([]);
 
   useEffect(() => {
+    axios.get(`${base}/api/student/package-history`, { headers })
+      .then((res) => setPackageHistory(res.data))
+      .catch(console.error);
+
     axios.get(`${base}/api/student/profile`, { headers })
       .then((res) => {
         setProfile({
@@ -186,6 +205,43 @@ const StudentProfilePage = () => {
                 </Button>
               )}
             </div>
+          </CardContent>
+        </Card>
+        <Card className="glow-card border-0 rounded-2xl">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Package className="h-5 w-5 text-primary" />
+              Package History
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {packageHistory.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No packages availed yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {packageHistory.map((pkg) => (
+                  <div key={pkg.id} className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3">
+                    <div className="space-y-0.5">
+                      <p className="font-medium text-sm">{pkg.package_name}</p>
+                      {pkg.subject && <p className="text-xs text-muted-foreground">{pkg.subject}</p>}
+                      <p className="text-xs text-muted-foreground">
+                        {pkg.session_limit} sessions · {pkg.duration_minutes} min ·{" "}
+                        {pkg.currency} {Number(pkg.price).toLocaleString()}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Availed: {new Date(pkg.purchased_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                      </p>
+                    </div>
+                    <Badge
+                      variant={pkg.payment_status === "paid" ? "default" : pkg.payment_status === "rejected" ? "destructive" : "secondary"}
+                      className="shrink-0 capitalize"
+                    >
+                      {pkg.payment_status}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -151,6 +151,26 @@ router.post('/bookings/:id/mark-teacher-absent', authenticateToken, requireRole(
     }
 });
 
+// Get student's package history (all availed packages, newest first)
+router.get('/package-history', authenticateToken, requireRole('student'), async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const companyId = req.user.company_id;
+        const [rows] = await pool.query(
+            `SELECT sp.id, sp.payment_status, sp.sessions_remaining, sp.purchased_at,
+                    tp.package_name, tp.session_limit, tp.subject, tp.price, tp.currency, tp.duration_minutes
+             FROM student_packages sp
+             JOIN tutorial_packages tp ON sp.package_id = tp.id
+             WHERE sp.student_id = ? AND sp.company_id = ?
+             ORDER BY sp.purchased_at DESC`,
+            [userId, companyId]
+        );
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // Get student's own profile
 router.get('/profile', authenticateToken, requireRole('student'), async (req, res) => {
     try {
