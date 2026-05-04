@@ -20,6 +20,7 @@ import {
   UserX, Users, FileText, Heart,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly } from "@/utils/timezone";
+import ReportModal from "@/components/ReportModal";
 
 interface TeacherProfile {
   id: number;
@@ -123,6 +124,11 @@ const AdminTeacherProfilePage = () => {
 
   // Drilldown dialog
   const [drillKey, setDrillKey] = useState<DrilldownKey | null>(null);
+
+  // Report view modal
+  const [reportModal, setReportModal] = useState<{ open: boolean; bookingId: number; studentName: string }>({
+    open: false, bookingId: 0, studentName: "",
+  });
 
   // Edit dialog
   const [showEdit, setShowEdit] = useState(false);
@@ -705,7 +711,7 @@ const AdminTeacherProfilePage = () => {
                       </TableCell>
                       <TableCell>
                         {b.has_report
-                          ? <Badge className="bg-green-100 text-green-700 text-xs">✓ Reported</Badge>
+                          ? <Button size="sm" variant="outline" className="text-xs h-7 border-green-400 text-green-700 hover:bg-green-50" onClick={() => setReportModal({ open: true, bookingId: b.id, studentName: b.student_name })}>✓ View Report</Button>
                           : <span className="text-xs text-muted-foreground">No report</span>}
                       </TableCell>
                     </TableRow>
@@ -720,6 +726,16 @@ const AdminTeacherProfilePage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Report View Modal — admin read-only */}
+      <ReportModal
+        open={reportModal.open}
+        onClose={() => setReportModal(prev => ({ ...prev, open: false }))}
+        bookingId={reportModal.bookingId}
+        studentId={0}
+        studentName={reportModal.studentName}
+        readOnly
+      />
 
       {/* Reset Password Dialog */}
       <Dialog open={showResetPw} onOpenChange={(o) => { if (!o) setShowResetPw(false); }}>

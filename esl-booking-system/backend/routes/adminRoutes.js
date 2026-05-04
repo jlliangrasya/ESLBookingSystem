@@ -226,21 +226,25 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
       [id, companyId]
     );
 
-    // Completed bookings with report flag
+    // Completed bookings with report flag — one row per logical class (multi-slot deduped)
     const [completedBookings] = await pool.query(`
-      SELECT b.id, b.appointment_date, b.student_absent, b.teacher_absent,
+      SELECT MIN(b.id) AS id, MIN(b.appointment_date) AS appointment_date,
+             b.student_absent, b.teacher_absent,
              u.name AS student_name, tp.duration_minutes, sp.subject,
-             IF(cr.id IS NOT NULL, TRUE, FALSE) AS has_report
+             MAX(IF(cr.id IS NOT NULL, 1, 0)) AS has_report
       FROM bookings b
       JOIN student_packages sp ON b.student_package_id = sp.id
       JOIN users u ON sp.student_id = u.id
       JOIN tutorial_packages tp ON sp.package_id = tp.id
       LEFT JOIN class_reports cr ON cr.booking_id = b.id
       WHERE b.teacher_id = ? AND b.company_id = ? AND b.status = 'done'
-      ORDER BY b.appointment_date DESC
+      GROUP BY COALESCE(b.booking_group_id, CAST(b.id AS CHAR)),
+               b.student_absent, b.teacher_absent, sp.student_id, tp.duration_minutes, sp.subject
+      ORDER BY MIN(b.appointment_date) DESC
     `, [id, companyId]);
 
-    // KPI queries
+    // KPI queries — use DISTINCT on booking_group_id so multi-slot classes (50/75/100 min)
+    // count as one class regardless of how many slots they occupy.
     const today = new Date().toISOString().slice(0, 10);
     const [
       [[fiftyMinRow]],
@@ -251,7 +255,7 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
       [[thisMonthRow]],
     ] = await Promise.all([
       pool.query(`
-        SELECT COUNT(*) AS cnt FROM bookings b
+        SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR))) AS cnt FROM bookings b
         JOIN student_packages sp ON b.student_package_id = sp.id
         JOIN tutorial_packages tp ON sp.package_id = tp.id
         WHERE b.teacher_id = ? AND b.company_id = ? AND b.status = 'done'
@@ -259,7 +263,7 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
           AND YEARWEEK(b.appointment_date, 1) = YEARWEEK(?, 1)
       `, [id, companyId, today]),
       pool.query(`
-        SELECT COUNT(*) AS cnt FROM bookings b
+        SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR))) AS cnt FROM bookings b
         JOIN student_packages sp ON b.student_package_id = sp.id
         JOIN tutorial_packages tp ON sp.package_id = tp.id
         WHERE b.teacher_id = ? AND b.company_id = ? AND b.status = 'done'
@@ -267,19 +271,19 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
           AND YEARWEEK(b.appointment_date, 1) = YEARWEEK(?, 1)
       `, [id, companyId, today]),
       pool.query(`
-        SELECT COUNT(*) AS cnt FROM bookings
+        SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS cnt FROM bookings
         WHERE teacher_id = ? AND company_id = ? AND status = 'done'
       `, [id, companyId]),
       pool.query(`
-        SELECT COUNT(*) AS cnt FROM bookings
+        SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS cnt FROM bookings
         WHERE teacher_id = ? AND company_id = ? AND status = 'done' AND student_absent = TRUE
       `, [id, companyId]),
       pool.query(`
-        SELECT COUNT(*) AS cnt FROM bookings
+        SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS cnt FROM bookings
         WHERE teacher_id = ? AND company_id = ? AND status = 'done' AND student_absent = FALSE
       `, [id, companyId]),
       pool.query(`
-        SELECT COUNT(*) AS cnt FROM bookings
+        SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS cnt FROM bookings
         WHERE teacher_id = ? AND company_id = ? AND status = 'done'
           AND MONTH(appointment_date) = MONTH(?) AND YEAR(appointment_date) = YEAR(?)
       `, [id, companyId, today, today]),
@@ -946,7 +950,7 @@ router.get('/students/:id', authenticateToken, requireRole('company_admin'), asy
        WHERE b.company_id = ? AND b.student_package_id IN (
            SELECT id FROM student_packages WHERE student_id = ? AND company_id = ?
        )
-       ORDER BY b.appointment_date DESC`,
+       ORDER BY b.appointment_date ASC`,
       [companyId, id, companyId]
     );
 
@@ -1003,20 +1007,9 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
 
     await connection.beginTransaction();
 
-    // Auto-assign the only teacher if none specified and company has exactly one
-    if (!teacher_id) {
-      const [companyTeachers] = await connection.query(
-        "SELECT id FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE",
-        [companyId]
-      );
-      if (companyTeachers.length === 1) {
-        teacher_id = companyTeachers[0].id;
-      }
-    }
-
-    // Lock package row + get duration
+    // Lock package row + get duration + assigned teacher
     const [[sp]] = await connection.query(
-      `SELECT sp.id, sp.student_id, sp.sessions_remaining, sp.payment_status, tp.duration_minutes
+      `SELECT sp.id, sp.student_id, sp.sessions_remaining, sp.payment_status, sp.teacher_id AS package_teacher_id, tp.duration_minutes
        FROM student_packages sp JOIN tutorial_packages tp ON sp.package_id = tp.id
        WHERE sp.id = ? AND sp.company_id = ? FOR UPDATE`,
       [student_package_id, companyId]
@@ -1024,6 +1017,21 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
     if (!sp) { await connection.rollback(); return res.status(404).json({ message: 'Student package not found' }); }
     if (sp.payment_status !== 'paid') { await connection.rollback(); return res.status(403).json({ message: 'Package payment has not been confirmed yet.' }); }
     if (sp.sessions_remaining <= 0) { await connection.rollback(); return res.status(403).json({ message: 'No sessions remaining in this package.' }); }
+
+    // Auto-assign teacher: package's assigned teacher > only company teacher > null
+    if (!teacher_id) {
+      if (sp.package_teacher_id) {
+        teacher_id = sp.package_teacher_id;
+      } else {
+        const [companyTeachers] = await connection.query(
+          "SELECT id FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE",
+          [companyId]
+        );
+        if (companyTeachers.length === 1) {
+          teacher_id = companyTeachers[0].id;
+        }
+      }
+    }
 
     // Calculate consecutive slots needed based on duration
     const durationMinutes = sp.duration_minutes || 25;

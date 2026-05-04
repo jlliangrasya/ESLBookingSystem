@@ -70,6 +70,7 @@ interface BookingRecord {
 }
 
 function groupBookings(rows: BookingRecord[]): BookingRecord[] {
+  // rows arrive ASC so the earliest slot is seen first — that becomes the representative row
   const groups = new Map<string, BookingRecord>();
   for (const row of rows) {
     const key = row.booking_group_id || `solo_${row.id}`;
@@ -79,7 +80,8 @@ function groupBookings(rows: BookingRecord[]): BookingRecord[] {
       groups.get(key)!.slot_count = (groups.get(key)!.slot_count ?? 1) + 1;
     }
   }
-  return Array.from(groups.values());
+  // Reverse so newest classes appear at the top of the list
+  return Array.from(groups.values()).reverse();
 }
 
 interface Teacher {

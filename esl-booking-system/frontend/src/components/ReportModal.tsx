@@ -19,6 +19,7 @@ interface ReportModalProps {
   bookingId: number;
   studentId: number;
   studentName: string;
+  readOnly?: boolean;
 }
 
 const ReportModal: React.FC<ReportModalProps> = ({
@@ -27,6 +28,7 @@ const ReportModal: React.FC<ReportModalProps> = ({
   bookingId,
   studentId,
   studentName,
+  readOnly = false,
 }) => {
   const [newWords, setNewWords] = useState("");
   const [sentences, setSentences] = useState("");
@@ -107,7 +109,7 @@ const ReportModal: React.FC<ReportModalProps> = ({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {isEditing ? "Edit Report" : "Class Report"} — {studentName}
+            {readOnly ? "Class Report" : isEditing ? "Edit Report" : "Class Report"} — {studentName}
           </DialogTitle>
         </DialogHeader>
 
@@ -141,8 +143,9 @@ const ReportModal: React.FC<ReportModalProps> = ({
                   rows={2}
                   placeholder="e.g. persevere, eloquent, ambiguous..."
                   value={newWords}
-                  onChange={(e) => setNewWords(e.target.value)}
+                  onChange={(e) => !readOnly && setNewWords(e.target.value)}
                   className="resize-none"
+                  readOnly={readOnly}
                 />
               </div>
 
@@ -152,8 +155,9 @@ const ReportModal: React.FC<ReportModalProps> = ({
                   rows={3}
                   placeholder="Sample sentences used in class..."
                   value={sentences}
-                  onChange={(e) => setSentences(e.target.value)}
+                  onChange={(e) => !readOnly && setSentences(e.target.value)}
                   className="resize-none"
+                  readOnly={readOnly}
                 />
               </div>
 
@@ -163,8 +167,9 @@ const ReportModal: React.FC<ReportModalProps> = ({
                   rows={3}
                   placeholder="Topic covered, areas practiced..."
                   value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  onChange={(e) => !readOnly && setNotes(e.target.value)}
                   className="resize-none"
+                  readOnly={readOnly}
                 />
               </div>
 
@@ -174,8 +179,9 @@ const ReportModal: React.FC<ReportModalProps> = ({
                   rows={2}
                   placeholder="Overall performance and feedback..."
                   value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
+                  onChange={(e) => !readOnly && setRemarks(e.target.value)}
                   className="resize-none"
+                  readOnly={readOnly}
                 />
               </div>
             </>
@@ -184,20 +190,22 @@ const ReportModal: React.FC<ReportModalProps> = ({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isLoading || isFetching}>
-            Cancel
+            {readOnly ? "Close" : "Cancel"}
           </Button>
-          <Button onClick={handleSubmit} disabled={isLoading || isFetching || success}>
-            {isLoading ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {isEditing ? "Updating..." : "Submitting..."}
-              </>
-            ) : isEditing ? (
-              "Update Report"
-            ) : (
-              "Submit Report"
-            )}
-          </Button>
+          {!readOnly && (
+            <Button onClick={handleSubmit} disabled={isLoading || isFetching || success}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  {isEditing ? "Updating..." : "Submitting..."}
+                </>
+              ) : isEditing ? (
+                "Update Report"
+              ) : (
+                "Submit Report"
+              )}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
