@@ -9,11 +9,23 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import {
-  Pencil, Save, Eye, EyeOff, ArrowLeft, Package, X,
-  CheckCircle2, CalendarClock, Layers,
+  Pencil,
+  Save,
+  Eye,
+  EyeOff,
+  ArrowLeft,
+  Package,
+  X,
+  CheckCircle2,
+  CalendarClock,
+  Layers,
 } from "lucide-react";
 import { TIMEZONES, setUserTimezone } from "@/utils/timezone";
 
@@ -48,7 +60,11 @@ const StudentProfilePage = () => {
   const base = import.meta.env.VITE_API_URL;
 
   const [profile, setProfile] = useState<StudentProfile>({
-    name: "", email: "", guardian_name: "", nationality: "", age: "",
+    name: "",
+    email: "",
+    guardian_name: "",
+    nationality: "",
+    age: "",
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   });
   const [password, setPassword] = useState("");
@@ -58,12 +74,23 @@ const StudentProfilePage = () => {
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [packageHistory, setPackageHistory] = useState<PackageHistory[]>([]);
-  const [stats, setStats] = useState({ completed_count: 0, upcoming_count: 0, sessions_remaining: 0 });
+  const [stats, setStats] = useState({
+    completed_count: 0,
+    upcoming_count: 0,
+    sessions_remaining: 0,
+  });
 
   useEffect(() => {
-    axios.get(`${base}/api/student/stats`, { headers }).then((r) => setStats(r.data)).catch(console.error);
-    axios.get(`${base}/api/student/package-history`, { headers }).then((r) => setPackageHistory(r.data)).catch(console.error);
-    axios.get(`${base}/api/student/profile`, { headers })
+    axios
+      .get(`${base}/api/student/stats`, { headers })
+      .then((r) => setStats(r.data))
+      .catch(console.error);
+    axios
+      .get(`${base}/api/student/package-history`, { headers })
+      .then((r) => setPackageHistory(r.data))
+      .catch(console.error);
+    axios
+      .get(`${base}/api/student/profile`, { headers })
       .then((r) => {
         setProfile({
           name: r.data.name || "",
@@ -71,21 +98,37 @@ const StudentProfilePage = () => {
           guardian_name: r.data.guardian_name || "",
           nationality: r.data.nationality || "",
           age: r.data.age?.toString() || "",
-          timezone: r.data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+          timezone:
+            r.data.timezone ||
+            Intl.DateTimeFormat().resolvedOptions().timeZone ||
+            "UTC",
           created_at: r.data.created_at,
         });
       })
       .catch(console.error);
   }, []);
 
-  const handleEdit = () => { setIsEditing(true); setPassword(""); setSaveMsg(null); setSaveError(null); };
-  const handleCancel = () => { setIsEditing(false); setPassword(""); setSaveMsg(null); setSaveError(null); };
+  const handleEdit = () => {
+    setIsEditing(true);
+    setPassword("");
+    setSaveMsg(null);
+    setSaveError(null);
+  };
+  const handleCancel = () => {
+    setIsEditing(false);
+    setPassword("");
+    setSaveMsg(null);
+    setSaveError(null);
+  };
 
   const handleSave = async () => {
-    setSaving(true); setSaveMsg(null); setSaveError(null);
+    setSaving(true);
+    setSaveMsg(null);
+    setSaveError(null);
     try {
       const payload: Record<string, string | number | null> = {
-        name: profile.name, email: profile.email,
+        name: profile.name,
+        email: profile.email,
         guardian_name: profile.guardian_name || null,
         nationality: profile.nationality || null,
         age: profile.age ? Number(profile.age) : null,
@@ -99,24 +142,43 @@ const StudentProfilePage = () => {
       setPassword("");
     } catch (err: unknown) {
       setSaveError(
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to save"
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to save",
       );
     } finally {
       setSaving(false);
     }
   };
 
-  const initials = profile.name.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+  const initials = profile.name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join("");
   const memberSince = profile.created_at
-    ? new Date(profile.created_at).toLocaleDateString(undefined, { year: "numeric", month: "long" })
+    ? new Date(profile.created_at).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "long",
+      })
     : null;
 
-  const field = (id: string, label: string, value: string, key: keyof StudentProfile, type = "text") => (
+  const field = (
+    id: string,
+    label: string,
+    value: string,
+    key: keyof StudentProfile,
+    type = "text",
+  ) => (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} type={type} value={value}
+      <Input
+        id={id}
+        type={type}
+        value={value}
         onChange={(e) => setProfile((p) => ({ ...p, [key]: e.target.value }))}
-        disabled={!isEditing} />
+        disabled={!isEditing}
+      />
     </div>
   );
 
@@ -130,11 +192,10 @@ const StudentProfilePage = () => {
       </div>
 
       {/* Full-width banner */}
-      <div className="brand-gradient h-36 w-full" />
+      <div className="brand-gradient h-24 w-full" />
 
       {/* Page body */}
       <div className="max-w-5xl mx-auto px-6 pb-12">
-
         {/* Avatar — overlaps bottom of banner */}
         <div className="-mt-10 mb-3">
           <div className="h-20 w-20 rounded-full brand-gradient flex items-center justify-center text-white text-2xl font-bold border-4 border-background shadow-lg select-none">
@@ -144,42 +205,63 @@ const StudentProfilePage = () => {
 
         {/* Identity */}
         <div className="mb-1">
-          <h2 className="text-xl font-bold leading-tight">{profile.name || "—"}</h2>
+          <h2 className="text-xl font-bold leading-tight">
+            {profile.name || "—"}
+          </h2>
           <p className="text-sm text-muted-foreground">{profile.email}</p>
-          {memberSince && <p className="text-xs text-muted-foreground mt-0.5">Member since {memberSince}</p>}
+          {memberSince && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Member since {memberSince}
+            </p>
+          )}
         </div>
 
-        <Button variant="ghost" size="sm" className="gap-2 -ml-2 mb-6" onClick={() => navigate("/studentdashboard")}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-2 -ml-2 mb-6"
+          onClick={() => navigate("/studentdashboard")}
+        >
           <ArrowLeft className="h-4 w-4" /> {t("profile.backToDashboard")}
         </Button>
 
         {/* Two-column layout */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-5 items-start">
-
           {/* LEFT — stats + form */}
           <div className="space-y-5">
-
             {/* Stats row */}
             <div className="grid grid-cols-3 gap-3">
               <Card className="glow-card border-0 rounded-2xl">
                 <CardContent className="flex flex-col items-center justify-center py-5 gap-1">
                   <CheckCircle2 className="h-5 w-5 text-primary mb-0.5" />
-                  <span className="text-2xl font-bold">{stats.completed_count}</span>
-                  <span className="text-xs text-muted-foreground text-center leading-tight">Sessions Completed</span>
+                  <span className="text-2xl font-bold">
+                    {stats.completed_count}
+                  </span>
+                  <span className="text-xs text-muted-foreground text-center leading-tight">
+                    Sessions Completed
+                  </span>
                 </CardContent>
               </Card>
               <Card className="glow-card border-0 rounded-2xl">
                 <CardContent className="flex flex-col items-center justify-center py-5 gap-1">
                   <CalendarClock className="h-5 w-5 text-primary mb-0.5" />
-                  <span className="text-2xl font-bold">{stats.upcoming_count}</span>
-                  <span className="text-xs text-muted-foreground text-center leading-tight">Upcoming Classes</span>
+                  <span className="text-2xl font-bold">
+                    {stats.upcoming_count}
+                  </span>
+                  <span className="text-xs text-muted-foreground text-center leading-tight">
+                    Upcoming Classes
+                  </span>
                 </CardContent>
               </Card>
               <Card className="glow-card border-0 rounded-2xl">
                 <CardContent className="flex flex-col items-center justify-center py-5 gap-1">
                   <Layers className="h-5 w-5 text-primary mb-0.5" />
-                  <span className="text-2xl font-bold">{stats.sessions_remaining}</span>
-                  <span className="text-xs text-muted-foreground text-center leading-tight">Sessions Remaining</span>
+                  <span className="text-2xl font-bold">
+                    {stats.sessions_remaining}
+                  </span>
+                  <span className="text-xs text-muted-foreground text-center leading-tight">
+                    Sessions Remaining
+                  </span>
                 </CardContent>
               </Card>
             </div>
@@ -187,17 +269,35 @@ const StudentProfilePage = () => {
             {/* Personal info form */}
             <Card className="glow-card border-0 rounded-2xl">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-base">Personal Information</CardTitle>
+                <CardTitle className="text-base">
+                  Personal Information
+                </CardTitle>
                 {!isEditing ? (
-                  <Button variant="outline" size="sm" onClick={handleEdit} className="gap-1.5">
-                    <Pencil className="h-3.5 w-3.5" /> {t("profile.editProfile")}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleEdit}
+                    className="gap-1.5"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />{" "}
+                    {t("profile.editProfile")}
                   </Button>
                 ) : (
                   <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" onClick={handleCancel} className="gap-1.5">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleCancel}
+                      className="gap-1.5"
+                    >
                       <X className="h-3.5 w-3.5" /> Cancel
                     </Button>
-                    <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1.5">
+                    <Button
+                      size="sm"
+                      onClick={handleSave}
+                      disabled={saving}
+                      className="gap-1.5"
+                    >
                       <Save className="h-3.5 w-3.5" />
                       {saving ? t("profile.saving") : t("profile.save")}
                     </Button>
@@ -205,24 +305,60 @@ const StudentProfilePage = () => {
                 )}
               </CardHeader>
               <CardContent className="space-y-4">
-                {saveMsg && <p className="text-sm text-green-600 font-medium">{saveMsg}</p>}
-                {saveError && <p className="text-sm text-destructive">{saveError}</p>}
+                {saveMsg && (
+                  <p className="text-sm text-green-600 font-medium">
+                    {saveMsg}
+                  </p>
+                )}
+                {saveError && (
+                  <p className="text-sm text-destructive">{saveError}</p>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {field("s-name", t("profile.fullName"), profile.name, "name")}
-                  {field("s-email", t("profile.email"), profile.email, "email", "email")}
-                  {field("s-guardian", t("profile.guardianName"), profile.guardian_name, "guardian_name")}
-                  {field("s-nationality", t("profile.nationality"), profile.nationality, "nationality")}
-                  {field("s-age", t("profile.age"), profile.age, "age", "number")}
+                  {field(
+                    "s-email",
+                    t("profile.email"),
+                    profile.email,
+                    "email",
+                    "email",
+                  )}
+                  {field(
+                    "s-guardian",
+                    t("profile.guardianName"),
+                    profile.guardian_name,
+                    "guardian_name",
+                  )}
+                  {field(
+                    "s-nationality",
+                    t("profile.nationality"),
+                    profile.nationality,
+                    "nationality",
+                  )}
+                  {field(
+                    "s-age",
+                    t("profile.age"),
+                    profile.age,
+                    "age",
+                    "number",
+                  )}
                   <div className="space-y-1.5">
                     <Label>{t("profile.timezone")}</Label>
-                    <Select value={profile.timezone}
-                      onValueChange={(v) => setProfile((p) => ({ ...p, timezone: v }))}
-                      disabled={!isEditing}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                    <Select
+                      value={profile.timezone}
+                      onValueChange={(v) =>
+                        setProfile((p) => ({ ...p, timezone: v }))
+                      }
+                      disabled={!isEditing}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent className="max-h-60">
                         {TIMEZONES.map((tz) => (
-                          <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+                          <SelectItem key={tz.value} value={tz.value}>
+                            {tz.label}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -233,16 +369,30 @@ const StudentProfilePage = () => {
                   <div className="space-y-1.5">
                     <Label htmlFor="s-password">
                       {t("profile.password")}{" "}
-                      <span className="text-muted-foreground text-xs">({t("profile.passwordHint")})</span>
+                      <span className="text-muted-foreground text-xs">
+                        ({t("profile.passwordHint")})
+                      </span>
                     </Label>
                     <div className="relative max-w-sm">
-                      <Input id="s-password" type={showPassword ? "text" : "password"} value={password}
+                      <Input
+                        id="s-password"
+                        type={showPassword ? "text" : "password"}
+                        value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Enter new password" className="pr-10" />
-                      <button type="button" tabIndex={-1}
+                        placeholder="Enter new password"
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        tabIndex={-1}
                         onClick={() => setShowPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
                       </button>
                     </div>
                   </div>
@@ -262,30 +412,49 @@ const StudentProfilePage = () => {
               </CardHeader>
               <CardContent className="overflow-y-auto max-h-[65vh] pr-1">
                 {packageHistory.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No packages availed yet.</p>
+                  <p className="text-sm text-muted-foreground">
+                    No packages availed yet.
+                  </p>
                 ) : (
                   <div className="space-y-3">
                     {packageHistory.map((pkg) => (
-                      <div key={pkg.id} className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3">
+                      <div
+                        key={pkg.id}
+                        className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3"
+                      >
                         <div className="space-y-0.5 min-w-0">
-                          <p className="font-medium text-sm truncate">{pkg.package_name}</p>
-                          {pkg.subject && <p className="text-xs text-muted-foreground">{pkg.subject}</p>}
+                          <p className="font-medium text-sm truncate">
+                            {pkg.package_name}
+                          </p>
+                          {pkg.subject && (
+                            <p className="text-xs text-muted-foreground">
+                              {pkg.subject}
+                            </p>
+                          )}
                           <p className="text-xs text-muted-foreground">
-                            {pkg.session_limit} sessions · {pkg.duration_minutes} min ·{" "}
-                            {pkg.currency} {Number(pkg.price).toLocaleString()}
+                            {pkg.session_limit} sessions ·{" "}
+                            {pkg.duration_minutes} min · {pkg.currency}{" "}
+                            {Number(pkg.price).toLocaleString()}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             Availed:{" "}
-                            {new Date(pkg.purchased_at).toLocaleDateString(undefined, {
-                              year: "numeric", month: "short", day: "numeric",
-                            })}
+                            {new Date(pkg.purchased_at).toLocaleDateString(
+                              undefined,
+                              {
+                                year: "numeric",
+                                month: "short",
+                                day: "numeric",
+                              },
+                            )}
                           </p>
                         </div>
                         <Badge
                           variant={
-                            pkg.payment_status === "paid" ? "default"
-                            : pkg.payment_status === "rejected" ? "destructive"
-                            : "secondary"
+                            pkg.payment_status === "paid"
+                              ? "default"
+                              : pkg.payment_status === "rejected"
+                                ? "destructive"
+                                : "secondary"
                           }
                           className="shrink-0 capitalize"
                         >
@@ -298,7 +467,6 @@ const StudentProfilePage = () => {
               </CardContent>
             </Card>
           </div>
-
         </div>
       </div>
     </div>
