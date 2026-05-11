@@ -230,7 +230,7 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
     const [completedBookings] = await pool.query(`
       SELECT MIN(b.id) AS id, MIN(b.appointment_date) AS appointment_date,
              b.student_absent, b.teacher_absent,
-             u.name AS student_name, tp.duration_minutes, sp.subject,
+             MIN(u.name) AS student_name, tp.duration_minutes, sp.subject,
              MAX(IF(cr.id IS NOT NULL, 1, 0)) AS has_report
       FROM bookings b
       JOIN student_packages sp ON b.student_package_id = sp.id
@@ -310,7 +310,8 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
       },
     });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    console.error('[GET /teachers/:id]', err);
+    res.status(500).json({ message: 'Server error', detail: err.message });
   }
 });
 
