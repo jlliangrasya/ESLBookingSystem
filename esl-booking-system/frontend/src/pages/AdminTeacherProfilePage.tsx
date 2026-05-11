@@ -129,6 +129,7 @@ const AdminTeacherProfilePage = () => {
   const [rangeFrom, setRangeFrom] = useState("");
   const [rangeTo, setRangeTo] = useState("");
   const [appliedRange, setAppliedRange] = useState<{ from: string; to: string } | null>(null);
+  const [rangeDrillKey, setRangeDrillKey] = useState<"fifty" | "twentyFive" | "absences" | null>(null);
 
   // Report view modal
   const [reportModal, setReportModal] = useState<{ open: boolean; bookingId: number; studentName: string }>({
@@ -490,43 +491,116 @@ const AdminTeacherProfilePage = () => {
             const d = new Date(b.appointment_date);
             return d >= from && d <= to;
           });
-          const fifty = inRange.filter(b => !b.student_absent && b.duration_minutes === 50).length;
-          const twentyFive = inRange.filter(b => !b.student_absent && b.duration_minutes === 25).length;
-          const absences = inRange.filter(b => b.student_absent).length;
-          const label = `${appliedRange.from} – ${appliedRange.to}`;
+          const fiftyList = inRange.filter(b => !b.student_absent && b.duration_minutes === 50);
+          const twentyFiveList = inRange.filter(b => !b.student_absent && b.duration_minutes === 25);
+          const absencesList = inRange.filter(b => b.student_absent);
+          const label = `${format(from, "MMM dd, yyyy")} – ${format(to, "MMM dd, yyyy")}`;
+          const rangeDrillTitles = {
+            fifty: "50-min Completed Classes",
+            twentyFive: "25-min Completed Classes",
+            absences: "Absences",
+          };
+          const rangeDrillList = rangeDrillKey === "fifty" ? fiftyList : rangeDrillKey === "twentyFive" ? twentyFiveList : rangeDrillKey === "absences" ? absencesList : [];
           return (
-            <Card className="glow-card border-0 rounded-2xl border-l-4 border-l-primary">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <CalendarDays className="h-5 w-5 text-primary" /> Custom Range Results
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">{label}</p>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="border rounded-xl p-3 bg-white">
-                    <p className="text-xl font-bold text-indigo-600">{fifty}</p>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                      <Timer className="h-3.5 w-3.5" /> 50-min Completed
-                    </p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Student present</p>
+            <>
+              <Card className="glow-card border-0 rounded-2xl border-l-4 border-l-primary">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <CalendarDays className="h-5 w-5 text-primary" /> Custom Range Results
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-3 gap-3">
+                    <button
+                      onClick={() => setRangeDrillKey("fifty")}
+                      className="text-left border rounded-xl p-3 bg-white hover:bg-indigo-50 hover:border-indigo-300 transition-colors cursor-pointer"
+                    >
+                      <p className="text-xl font-bold text-indigo-600">{fiftyList.length}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <Timer className="h-3.5 w-3.5" /> 50-min Completed
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Student present</p>
+                    </button>
+                    <button
+                      onClick={() => setRangeDrillKey("twentyFive")}
+                      className="text-left border rounded-xl p-3 bg-white hover:bg-violet-50 hover:border-violet-300 transition-colors cursor-pointer"
+                    >
+                      <p className="text-xl font-bold text-violet-600">{twentyFiveList.length}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <Timer className="h-3.5 w-3.5" /> 25-min Completed
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Student present</p>
+                    </button>
+                    <button
+                      onClick={() => setRangeDrillKey("absences")}
+                      className="text-left border rounded-xl p-3 bg-white hover:bg-red-50 hover:border-red-300 transition-colors cursor-pointer"
+                    >
+                      <p className="text-xl font-bold text-red-500">{absencesList.length}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <UserX className="h-3.5 w-3.5" /> Absences
+                      </p>
+                    </button>
                   </div>
-                  <div className="border rounded-xl p-3 bg-white">
-                    <p className="text-xl font-bold text-violet-600">{twentyFive}</p>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                      <Timer className="h-3.5 w-3.5" /> 25-min Completed
-                    </p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Student present</p>
+                </CardContent>
+              </Card>
+
+              {/* Range drilldown dialog */}
+              <Dialog open={!!rangeDrillKey} onOpenChange={(o) => { if (!o) setRangeDrillKey(null); }}>
+                <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
+                  <DialogHeader>
+                    <DialogTitle>{rangeDrillKey ? rangeDrillTitles[rangeDrillKey] : ""}</DialogTitle>
+                    <p className="text-xs text-muted-foreground">{label}</p>
+                  </DialogHeader>
+                  <div className="overflow-y-auto flex-1">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date & Time</TableHead>
+                          <TableHead>Student</TableHead>
+                          <TableHead>Duration</TableHead>
+                          <TableHead>Attendance</TableHead>
+                          <TableHead>Report</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {rangeDrillList.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center text-muted-foreground text-sm py-8">
+                              No records found
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          rangeDrillList.map(b => (
+                            <TableRow key={b.id}>
+                              <TableCell className="text-sm">{fmtDate(b.appointment_date, "MMM d, yyyy h:mm a")}</TableCell>
+                              <TableCell className="text-sm font-medium">{b.student_name}</TableCell>
+                              <TableCell className="text-sm">{b.duration_minutes} min{b.subject ? ` · ${b.subject}` : ""}</TableCell>
+                              <TableCell>
+                                {b.student_absent
+                                  ? <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">Student Absent</span>
+                                  : b.teacher_absent
+                                  ? <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">Teacher Absent</span>
+                                  : <span className="text-xs text-green-700">Present</span>}
+                              </TableCell>
+                              <TableCell>
+                                {b.has_report
+                                  ? <Button size="sm" variant="outline" className="text-xs h-7 border-green-400 text-green-700 hover:bg-green-50" onClick={() => setReportModal({ open: true, bookingId: b.id, studentName: b.student_name })}>✓ View Report</Button>
+                                  : <span className="text-xs text-muted-foreground">No report</span>}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
                   </div>
-                  <div className="border rounded-xl p-3 bg-white">
-                    <p className="text-xl font-bold text-red-500">{absences}</p>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                      <UserX className="h-3.5 w-3.5" /> Absences
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                  <DialogFooter className="pt-2 border-t">
+                    <span className="text-xs text-muted-foreground mr-auto">{rangeDrillList.length} record{rangeDrillList.length !== 1 ? "s" : ""}</span>
+                    <Button variant="outline" onClick={() => setRangeDrillKey(null)}>Close</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </>
           );
         })()}
 
