@@ -17,7 +17,7 @@ import {
 import {
   ArrowLeft, UserCircle, CalendarDays, Loader2, Pencil, Save, Eye, EyeOff,
   BookOpen, KeyRound, ChevronLeft, ChevronRight, Timer, CheckCircle2,
-  UserX, Users, FileText, Heart,
+  UserX, Users, FileText, Heart, Search,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly } from "@/utils/timezone";
 import ReportModal from "@/components/ReportModal";
@@ -124,6 +124,11 @@ const AdminTeacherProfilePage = () => {
 
   // Drilldown dialog
   const [drillKey, setDrillKey] = useState<DrilldownKey | null>(null);
+
+  // Custom date range for Performance Overview
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
+  const [appliedRange, setAppliedRange] = useState<{ from: string; to: string } | null>(null);
 
   // Report view modal
   const [reportModal, setReportModal] = useState<{ open: boolean; bookingId: number; studentName: string }>({
@@ -358,7 +363,7 @@ const AdminTeacherProfilePage = () => {
               </CardTitle>
               <p className="text-xs text-muted-foreground">Click any card to see the class list</p>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-4">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {/* 50-min this week */}
                 <button
@@ -428,9 +433,102 @@ const AdminTeacherProfilePage = () => {
                   </p>
                 </button>
               </div>
+
+              {/* Date range picker */}
+              <div className="border rounded-xl p-3 bg-gray-50 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                  <Search className="h-3.5 w-3.5" /> Custom Date Range
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">From</Label>
+                    <Input
+                      type="date"
+                      value={rangeFrom}
+                      onChange={(e) => setRangeFrom(e.target.value)}
+                      className="h-8 text-xs w-36"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">To</Label>
+                    <Input
+                      type="date"
+                      value={rangeTo}
+                      onChange={(e) => setRangeTo(e.target.value)}
+                      className="h-8 text-xs w-36"
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs"
+                    disabled={!rangeFrom || !rangeTo || rangeFrom > rangeTo}
+                    onClick={() => setAppliedRange({ from: rangeFrom, to: rangeTo })}
+                  >
+                    Apply
+                  </Button>
+                  {appliedRange && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 text-xs text-muted-foreground"
+                      onClick={() => { setAppliedRange(null); setRangeFrom(""); setRangeTo(""); }}
+                    >
+                      Clear
+                    </Button>
+                  )}
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}
+
+        {/* Custom date range results */}
+        {appliedRange && (() => {
+          const from = new Date(appliedRange.from + "T00:00:00");
+          const to = new Date(appliedRange.to + "T23:59:59");
+          const inRange = completedBookings.filter(b => {
+            const d = new Date(b.appointment_date);
+            return d >= from && d <= to;
+          });
+          const fifty = inRange.filter(b => !b.student_absent && b.duration_minutes === 50).length;
+          const twentyFive = inRange.filter(b => !b.student_absent && b.duration_minutes === 25).length;
+          const absences = inRange.filter(b => b.student_absent).length;
+          const label = `${appliedRange.from} – ${appliedRange.to}`;
+          return (
+            <Card className="glow-card border-0 rounded-2xl border-l-4 border-l-primary">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <CalendarDays className="h-5 w-5 text-primary" /> Custom Range Results
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">{label}</p>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="border rounded-xl p-3 bg-white">
+                    <p className="text-xl font-bold text-indigo-600">{fifty}</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                      <Timer className="h-3.5 w-3.5" /> 50-min Completed
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Student present</p>
+                  </div>
+                  <div className="border rounded-xl p-3 bg-white">
+                    <p className="text-xl font-bold text-violet-600">{twentyFive}</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                      <Timer className="h-3.5 w-3.5" /> 25-min Completed
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Student present</p>
+                  </div>
+                  <div className="border rounded-xl p-3 bg-white">
+                    <p className="text-xl font-bold text-red-500">{absences}</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                      <UserX className="h-3.5 w-3.5" /> Absences
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* Health */}
         {health && (
