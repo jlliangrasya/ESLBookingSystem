@@ -23,6 +23,7 @@ interface Booking {
   meeting_link?: string | null;
   teacher_absent?: boolean;
   student_absent?: boolean;
+  recurring_schedule_id?: number | null;
 }
 
 const TimeslotPage = () => {
@@ -40,6 +41,7 @@ const TimeslotPage = () => {
   const [copiedLinkId, setCopiedLinkId] = useState<number | null>(null);
   const [absentLoadingId, setAbsentLoadingId] = useState<number | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [recurringCancelBooking, setRecurringCancelBooking] = useState<Booking | null>(null);
 
   // Teacher-aware scheduling
   const [effectiveTeacherId, setEffectiveTeacherId] = useState<number | null>(null);
@@ -174,15 +176,24 @@ const TimeslotPage = () => {
     setShowClassModal(true);
   };
 
-  const handleCancelBooking = async (bookingId: number) => {
+  const handleInitiateCancel = (booking: Booking) => {
+    if (booking.recurring_schedule_id) {
+      setRecurringCancelBooking(booking);
+    } else {
+      handleCancelBooking(booking.id, false);
+    }
+  };
+
+  const handleCancelBooking = async (bookingId: number, cancelAll: boolean) => {
     setCancellingId(bookingId);
+    setRecurringCancelBooking(null);
     try {
       const token = localStorage.getItem("token");
       if (!token) return;
-      await axios.delete(
-        `${import.meta.env.VITE_API_URL}/api/bookings/${bookingId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const url = cancelAll
+        ? `${import.meta.env.VITE_API_URL}/api/bookings/${bookingId}?cancelAll=true`
+        : `${import.meta.env.VITE_API_URL}/api/bookings/${bookingId}`;
+      await axios.delete(url, { headers: { Authorization: `Bearer ${token}` } });
       setBookedSlots((prev) => {
         const updated = { ...prev };
         Object.keys(updated).forEach((slotTime) => {
@@ -543,7 +554,7 @@ const TimeslotPage = () => {
                         variant="outline"
                         className="text-xs h-7 border-destructive text-destructive hover:bg-red-50"
                         disabled={cancellingId === b.id}
-                        onClick={() => handleCancelBooking(b.id)}
+                        onClick={() => handleInitiateCancel(b)}
                       >
                         {cancellingId === b.id ? "Cancelling..." : "Cancel Class"}
                       </Button>
@@ -555,6 +566,30 @@ const TimeslotPage = () => {
           </div>
         </DialogContent>
       </Dialog>
+      {/* Recurring Cancel Choice Modal */}
+      {recurringCancelBooking && (
+        <Dialog open onOpenChange={o => { if (!o) setRecurringCancelBooking(null); }}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader><DialogTitle>Cancel Class</DialogTitle></DialogHeader>
+            <p className="text-sm text-muted-foreground py-2">
+              This class is part of a recurring schedule. What would you like to cancel?
+            </p>
+            <div className="flex flex-col gap-2 pt-1">
+              <Button variant="outline" className="justify-start"
+                disabled={cancellingId === recurringCancelBooking.id}
+                onClick={() => handleCancelBooking(recurringCancelBooking.id, false)}>
+                {cancellingId === recurringCancelBooking.id ? "Cancelling..." : "Cancel this session only"}
+              </Button>
+              <Button variant="destructive" className="justify-start"
+                disabled={cancellingId === recurringCancelBooking.id}
+                onClick={() => handleCancelBooking(recurringCancelBooking.id, true)}>
+                {cancellingId === recurringCancelBooking.id ? "Cancelling..." : "Cancel all upcoming sessions in this series"}
+              </Button>
+              <Button variant="ghost" onClick={() => setRecurringCancelBooking(null)}>No, Keep It</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
       </div>
     </div>
   );

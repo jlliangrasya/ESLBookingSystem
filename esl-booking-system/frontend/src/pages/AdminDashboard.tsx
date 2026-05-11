@@ -76,6 +76,7 @@ interface Booking {
   teacher_name: string | null;
   created_at: string;
   booking_group_id: string | null;
+  recurring_schedule_id: number | null;
   slot_count?: number;
 }
 
@@ -142,6 +143,8 @@ const AdminDashboard = () => {
   }
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [teacherCount, setTeacherCount] = useState<number | null>(null);
+
+  const [recurringCancelBooking, setRecurringCancelBooking] = useState<Booking | null>(null);
 
   // Teacher conflict dialog (Issue #5)
   const [teacherConflict, setTeacherConflict] = useState<{
@@ -256,14 +259,22 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleCancelBooking = async (bookingId: number) => {
+  const handleCancelBooking = (booking: Booking) => {
+    if (booking.recurring_schedule_id) {
+      setRecurringCancelBooking(booking);
+    } else {
+      doAdminCancel(booking.id, false);
+    }
+  };
+
+  const doAdminCancel = async (bookingId: number, cancelAll: boolean) => {
+    setRecurringCancelBooking(null);
     try {
       const token = localStorage.getItem("token");
-      await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/bookings/cancel/${bookingId}`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+      const url = cancelAll
+        ? `${import.meta.env.VITE_API_URL}/api/bookings/cancel/${bookingId}?cancelAll=true`
+        : `${import.meta.env.VITE_API_URL}/api/bookings/cancel/${bookingId}`;
+      await axios.post(url, {}, { headers: { Authorization: `Bearer ${token}` } });
       fetchDashboardData();
     } catch (error) {
       console.error("Error cancelling class:", error);
@@ -653,7 +664,7 @@ const AdminDashboard = () => {
                             size="sm"
                             variant="destructive"
                             className="h-7 px-2 text-xs"
-                            onClick={() => handleCancelBooking(b.id)}
+                            onClick={() => handleCancelBooking(b)}
                           >
                             Cancel
                           </Button>
@@ -853,6 +864,35 @@ const AdminDashboard = () => {
                 </div>
               </div>
             ))}
+        </DialogContent>
+      </Dialog>
+
+      {/* Recurring Cancel Choice Dialog */}
+      <Dialog open={!!recurringCancelBooking} onOpenChange={(o) => { if (!o) setRecurringCancelBooking(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Cancel Class</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">
+            This class is part of a recurring schedule. What would you like to cancel?
+          </p>
+          <div className="flex flex-col gap-2 pt-1">
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={() => recurringCancelBooking && doAdminCancel(recurringCancelBooking.id, false)}
+            >
+              Cancel this session only
+            </Button>
+            <Button
+              variant="destructive"
+              className="justify-start"
+              onClick={() => recurringCancelBooking && doAdminCancel(recurringCancelBooking.id, true)}
+            >
+              Cancel all upcoming sessions in this series
+            </Button>
+            <Button variant="ghost" onClick={() => setRecurringCancelBooking(null)}>Keep it</Button>
+          </div>
         </DialogContent>
       </Dialog>
 

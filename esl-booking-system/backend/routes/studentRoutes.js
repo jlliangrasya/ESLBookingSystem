@@ -41,7 +41,7 @@ router.get('/dashboard', authenticateToken, requireRole('student'), async (req, 
         // Fetch bookings from ALL student packages for this student
         const [bookingRows] = await pool.query(
             `SELECT b.id, b.appointment_date, b.status, b.class_mode, b.meeting_link,
-                    b.teacher_absent, b.student_absent,
+                    b.teacher_absent, b.student_absent, b.recurring_schedule_id,
                     u.name AS teacher_name
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
@@ -66,6 +66,7 @@ router.get('/dashboard', authenticateToken, requireRole('student'), async (req, 
                 meeting_link: booking.meeting_link || null,
                 teacher_absent: !!booking.teacher_absent,
                 student_absent: !!booking.student_absent,
+                recurring_schedule_id: booking.recurring_schedule_id || null,
             };
         });
 

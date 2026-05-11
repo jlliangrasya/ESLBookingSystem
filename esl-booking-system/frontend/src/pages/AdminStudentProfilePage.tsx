@@ -66,6 +66,7 @@ interface BookingRecord {
   teacher_name: string | null;
   has_report: boolean;
   booking_group_id: string | null;
+  recurring_schedule_id: number | null;
   slot_count?: number;
 }
 
@@ -128,6 +129,7 @@ const AdminStudentProfilePage = () => {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [recurringCancelBooking, setRecurringCancelBooking] = useState<BookingRecord | null>(null);
 
   // Deactivate/reactivate student
   const [deactivateLoading, setDeactivateLoading] = useState(false);
@@ -480,10 +482,22 @@ const AdminStudentProfilePage = () => {
 
   useEffect(() => { fetchData(); }, [id]);
 
-  const handleCancelBooking = async (bookingId: number) => {
+  const handleInitiateCancel = (booking: BookingRecord) => {
+    if (booking.recurring_schedule_id) {
+      setRecurringCancelBooking(booking);
+    } else {
+      doCancel(booking.id, false);
+    }
+  };
+
+  const doCancel = async (bookingId: number, cancelAll: boolean) => {
     setCancellingId(bookingId);
+    setRecurringCancelBooking(null);
     try {
-      await axios.post(`${base}/api/bookings/cancel/${bookingId}`, {}, { headers });
+      const url = cancelAll
+        ? `${base}/api/bookings/cancel/${bookingId}?cancelAll=true`
+        : `${base}/api/bookings/cancel/${bookingId}`;
+      await axios.post(url, {}, { headers });
       fetchData();
     } catch (err) {
       console.error("Error cancelling booking:", err);
@@ -886,7 +900,7 @@ const AdminStudentProfilePage = () => {
                             variant="ghost"
                             className="text-xs h-7 text-destructive hover:text-destructive"
                             disabled={cancellingId === b.id}
-                            onClick={() => handleCancelBooking(b.id)}
+                            onClick={() => handleInitiateCancel(b)}
                           >
                             {cancellingId === b.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Cancel"}
                           </Button>
@@ -1501,6 +1515,30 @@ const AdminStudentProfilePage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Recurring Cancel Choice Dialog */}
+      {recurringCancelBooking && (
+        <Dialog open onOpenChange={o => { if (!o) setRecurringCancelBooking(null); }}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader><DialogTitle>Cancel Class</DialogTitle></DialogHeader>
+            <p className="text-sm text-muted-foreground py-2">
+              This class is part of a recurring schedule. What would you like to cancel?
+            </p>
+            <div className="flex flex-col gap-2 pt-1">
+              <Button variant="outline" className="justify-start"
+                disabled={cancellingId === recurringCancelBooking.id}
+                onClick={() => doCancel(recurringCancelBooking.id, false)}>
+                {cancellingId === recurringCancelBooking.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Cancel this session only"}
+              </Button>
+              <Button variant="destructive" className="justify-start"
+                disabled={cancellingId === recurringCancelBooking.id}
+                onClick={() => doCancel(recurringCancelBooking.id, true)}>
+                {cancellingId === recurringCancelBooking.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Cancel all upcoming sessions in this series"}
+              </Button>
+              <Button variant="ghost" onClick={() => setRecurringCancelBooking(null)}>Keep it</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 };
