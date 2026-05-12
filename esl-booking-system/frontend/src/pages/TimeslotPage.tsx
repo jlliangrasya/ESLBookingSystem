@@ -202,6 +202,7 @@ const TimeslotPage = () => {
         return updated;
       });
       setShowClassModal(false);
+      fetchTeacherSlots();
     } catch (error) {
       console.error("Error deleting booking:", error);
     } finally {

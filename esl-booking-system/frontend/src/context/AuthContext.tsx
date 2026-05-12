@@ -10,6 +10,7 @@ export interface User {
   name: string;
   role: UserRole;
   company_id: number | null;
+  company_name?: string | null;
   timezone?: string;
   is_owner?: boolean;
 }

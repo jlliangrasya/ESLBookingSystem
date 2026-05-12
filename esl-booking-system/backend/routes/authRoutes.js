@@ -149,11 +149,13 @@ router.post('/login', async (req, res) => {
         // For non-super_admin, verify company is active
         let trialExpired = false;
         let companyStatus = 'active';
+        let companyName = null;
         if (user.role !== 'super_admin' && user.company_id) {
             const [[company]] = await pool.query(
-                'SELECT status, trial_ends_at FROM companies WHERE id = ?',
+                'SELECT status, trial_ends_at, company_name FROM companies WHERE id = ?',
                 [user.company_id]
             );
+            if (company) companyName = company.company_name || null;
             if (company && company.status === 'locked') {
                 // Allow login but flag — frontend redirects to locked page
                 companyStatus = 'locked';
@@ -184,6 +186,7 @@ router.post('/login', async (req, res) => {
                 name: user.name,
                 role: user.role,
                 company_id: user.company_id,
+                company_name: companyName,
                 timezone: user.timezone || 'UTC',
                 is_owner: user.is_owner ?? false,
             },
