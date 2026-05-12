@@ -239,6 +239,8 @@
     "personalInfo": "Personal Information",
     "studentRecords": "Student Records",
     "noPackages": "No packages availed yet.",
+    "noRecordsForMonth": "No records for this month.",
+    "filterAllMonths": "All months",
     "sessions": "sessions",
     "min": "min",
     "availed": "Availed",

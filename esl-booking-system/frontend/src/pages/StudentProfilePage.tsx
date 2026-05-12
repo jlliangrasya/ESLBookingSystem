@@ -198,13 +198,50 @@ const StudentProfilePage = () => {
     </div>
   );
 
-  // Build a unified timeline: packages + adjustments, sorted newest first
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
+
+  // Group adjustments by package id (already sorted newest-first by API)
   const adjustmentsByPackage: Record<number, SessionAdjustment[]> = {};
   for (const adj of adjustments) {
     if (!adjustmentsByPackage[adj.student_package_id])
       adjustmentsByPackage[adj.student_package_id] = [];
     adjustmentsByPackage[adj.student_package_id].push(adj);
   }
+
+  // Collect all unique "YYYY-MM" months from packages + adjustments
+  const monthSet = new Set<string>();
+  for (const pkg of packageHistory)
+    monthSet.add(pkg.purchased_at.slice(0, 7));
+  for (const adj of adjustments)
+    monthSet.add(adj.created_at.slice(0, 7));
+  const monthOptions = Array.from(monthSet).sort((a, b) => b.localeCompare(a));
+
+  // Filter packages: show a package if its purchase month matches OR any of its
+  // adjustments fall in the selected month
+  const filteredPackages =
+    selectedMonth === "all"
+      ? packageHistory
+      : packageHistory.filter((pkg) => {
+          if (pkg.purchased_at.slice(0, 7) === selectedMonth) return true;
+          return (adjustmentsByPackage[pkg.id] ?? []).some(
+            (adj) => adj.created_at.slice(0, 7) === selectedMonth,
+          );
+        });
+
+  // When a month is selected, also filter the adjustments shown under each package
+  const visibleAdjustments = (pkgId: number) => {
+    const adjs = adjustmentsByPackage[pkgId] ?? [];
+    if (selectedMonth === "all") return adjs;
+    return adjs.filter((adj) => adj.created_at.slice(0, 7) === selectedMonth);
+  };
+
+  const formatMonthLabel = (ym: string) => {
+    const [y, m] = ym.split("-");
+    return new Date(Number(y), Number(m) - 1).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+    });
+  };
 
   return (
     <div className="min-h-screen brand-gradient-subtle">
@@ -433,15 +470,35 @@ const StudentProfilePage = () => {
                   <Package className="h-4 w-4 text-primary" />
                   {t("profile.studentRecords")}
                 </CardTitle>
+                {/* Month/Year filter */}
+                {monthOptions.length > 0 && (
+                  <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                    <SelectTrigger className="mt-2 h-8 text-xs">
+                      <SelectValue placeholder={t("profile.filterAllMonths")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">
+                        {t("profile.filterAllMonths")}
+                      </SelectItem>
+                      {monthOptions.map((ym) => (
+                        <SelectItem key={ym} value={ym}>
+                          {formatMonthLabel(ym)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </CardHeader>
               <CardContent className="overflow-y-auto max-h-[65vh] pr-1">
-                {packageHistory.length === 0 ? (
+                {filteredPackages.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    {t("profile.noPackages")}
+                    {packageHistory.length === 0
+                      ? t("profile.noPackages")
+                      : t("profile.noRecordsForMonth")}
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    {packageHistory.map((pkg) => (
+                    {filteredPackages.map((pkg) => (
                       <div key={pkg.id} className="space-y-2">
                         {/* Package card */}
                         <div className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3">
@@ -487,7 +544,7 @@ const StudentProfilePage = () => {
                         </div>
 
                         {/* Adjustments for this package */}
-                        {(adjustmentsByPackage[pkg.id] ?? []).map((adj) => (
+                        {visibleAdjustments(pkg.id).map((adj) => (
                           <div
                             key={adj.id}
                             className="ml-3 flex items-start gap-2.5 rounded-lg border border-dashed px-3 py-2.5"

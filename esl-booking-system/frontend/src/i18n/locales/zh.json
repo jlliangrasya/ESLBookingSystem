@@ -239,6 +239,8 @@
     "personalInfo": "个人信息",
     "studentRecords": "学习记录",
     "noPackages": "尚未购买课程包。",
+    "noRecordsForMonth": "本月暂无记录。",
+    "filterAllMonths": "全部月份",
     "sessions": "节课",
     "min": "分钟",
     "availed": "购买日期",
