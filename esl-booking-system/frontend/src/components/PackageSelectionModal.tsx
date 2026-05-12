@@ -287,7 +287,7 @@ const PackageSelectionModal: React.FC<Props> = ({
               </div>
 
               {/* Teacher picker */}
-              {allowPickTeacher && teachers.length > 0 && (
+              {allowPickTeacher && teachers.length > 0 ? (
                 <div className="space-y-1.5">
                   <Label className="text-sm font-medium">{t("student.preferredTeacher")}</Label>
                   <Select value={selectedTeacherId} onValueChange={setSelectedTeacherId}>
@@ -301,7 +301,7 @@ const PackageSelectionModal: React.FC<Props> = ({
                     </SelectContent>
                   </Select>
                 </div>
-              )}
+              ) : null}
             </div>
 
             <DialogFooter>

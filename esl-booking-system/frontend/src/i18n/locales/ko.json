@@ -228,10 +228,33 @@
     "timezone": "시간대",
     "password": "비밀번호",
     "passwordHint": "변경하지 않으려면 비워두세요",
+    "newPasswordPlaceholder": "새 비밀번호를 입력하세요",
     "editProfile": "프로필 수정",
+    "cancel": "취소",
     "save": "저장",
     "saving": "저장 중...",
     "updateSuccess": "프로필이 업데이트되었습니다!",
-    "updateFailed": "프로필 업데이트에 실패했습니다."
+    "updateFailed": "프로필 업데이트에 실패했습니다.",
+    "memberSince": "가입일: {{date}}",
+    "personalInfo": "개인 정보",
+    "studentRecords": "학습 기록",
+    "noPackages": "아직 수강 패키지가 없습니다.",
+    "sessions": "회",
+    "min": "분",
+    "availed": "구매일",
+    "statsCompleted": "완료된 수업",
+    "statsUpcoming": "예정된 수업",
+    "statsRemaining": "남은 수업",
+    "paymentStatus": {
+      "paid": "결제 완료",
+      "unpaid": "미결제",
+      "rejected": "거절됨"
+    },
+    "adjustment": {
+      "added": "+{{count}}회 추가됨",
+      "deducted": "-{{count}}회 차감됨",
+      "reason": "사유",
+      "by": "처리자"
+    }
   }
 }

@@ -59,6 +59,7 @@ interface CompanySettings {
   cancellation_hours: number;
   cancellation_penalty_enabled: boolean;
   payment_method: "encasher" | "communication_platform" | null;
+  show_class_adjustments: boolean;
 }
 
 const CURRENCIES: { code: string; symbol: string; name: string }[] = [
@@ -103,6 +104,7 @@ const PackageSetupPage = () => {
     cancellation_hours: 1,
     cancellation_penalty_enabled: false,
     payment_method: null,
+    show_class_adjustments: true,
   });
   const [loading, setLoading] = useState(true);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -254,6 +256,7 @@ const PackageSetupPage = () => {
           cancellation_hours: settings.cancellation_hours,
           cancellation_penalty_enabled: settings.cancellation_penalty_enabled,
           payment_method: settings.payment_method,
+          show_class_adjustments: settings.show_class_adjustments,
         },
         { headers },
       );
@@ -421,6 +424,30 @@ const PackageSetupPage = () => {
                   setSettings((prev) => ({
                     ...prev,
                     allow_student_pick_teacher: v,
+                  }))
+                }
+              />
+            </div>
+
+            {/* Class adjustment visibility toggle */}
+            <div className="flex items-center justify-between border rounded-lg p-4">
+              <div>
+                <p className="font-medium text-sm">
+                  Class adjustment visibility
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  When enabled, students can see any session additions or
+                  deductions made by the admin in their Student Records, along
+                  with the reason provided. When disabled, only their availed
+                  packages are shown.
+                </p>
+              </div>
+              <Switch
+                checked={settings.show_class_adjustments}
+                onCheckedChange={(v) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    show_class_adjustments: v,
                   }))
                 }
               />

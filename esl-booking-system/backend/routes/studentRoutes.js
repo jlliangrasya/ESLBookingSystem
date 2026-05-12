@@ -196,6 +196,37 @@ router.get('/stats', authenticateToken, requireRole('student'), async (req, res)
     }
 });
 
+// Get class adjustments for the student's packages (only when show_class_adjustments is enabled)
+router.get('/package-adjustments', authenticateToken, requireRole('student'), async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const companyId = req.user.company_id;
+
+        const [[company]] = await pool.query(
+            'SELECT show_class_adjustments FROM companies WHERE id = ?',
+            [companyId]
+        );
+
+        if (!company || !company.show_class_adjustments) {
+            return res.json([]);
+        }
+
+        const [rows] = await pool.query(
+            `SELECT sa.id, sa.student_package_id, sa.adjustment, sa.remarks, sa.created_at,
+                    u.name AS adjusted_by_name
+             FROM session_adjustments sa
+             JOIN users u ON sa.adjusted_by = u.id
+             JOIN student_packages sp ON sa.student_package_id = sp.id
+             WHERE sp.student_id = ? AND sa.company_id = ?
+             ORDER BY sa.created_at DESC`,
+            [userId, companyId]
+        );
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // Get student's package history (all availed packages, newest first)
 router.get('/package-history', authenticateToken, requireRole('student'), async (req, res) => {
     try {

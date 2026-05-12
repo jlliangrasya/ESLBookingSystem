@@ -26,6 +26,8 @@ import {
   CheckCircle2,
   CalendarClock,
   Layers,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import { TIMEZONES, setUserTimezone } from "@/utils/timezone";
 
@@ -40,6 +42,15 @@ interface PackageHistory {
   duration_minutes: number;
   payment_status: "unpaid" | "paid" | "rejected";
   purchased_at: string;
+}
+
+interface SessionAdjustment {
+  id: number;
+  student_package_id: number;
+  adjustment: number;
+  remarks: string;
+  created_at: string;
+  adjusted_by_name: string;
 }
 
 interface StudentProfile {
@@ -74,6 +85,7 @@ const StudentProfilePage = () => {
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [packageHistory, setPackageHistory] = useState<PackageHistory[]>([]);
+  const [adjustments, setAdjustments] = useState<SessionAdjustment[]>([]);
   const [stats, setStats] = useState({
     completed_count: 0,
     upcoming_count: 0,
@@ -88,6 +100,10 @@ const StudentProfilePage = () => {
     axios
       .get(`${base}/api/student/package-history`, { headers })
       .then((r) => setPackageHistory(r.data))
+      .catch(console.error);
+    axios
+      .get(`${base}/api/student/package-adjustments`, { headers })
+      .then((r) => setAdjustments(r.data))
       .catch(console.error);
     axios
       .get(`${base}/api/student/profile`, { headers })
@@ -143,7 +159,7 @@ const StudentProfilePage = () => {
     } catch (err: unknown) {
       setSaveError(
         (err as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message || "Failed to save",
+          ?.message || t("profile.updateFailed"),
       );
     } finally {
       setSaving(false);
@@ -182,6 +198,14 @@ const StudentProfilePage = () => {
     </div>
   );
 
+  // Build a unified timeline: packages + adjustments, sorted newest first
+  const adjustmentsByPackage: Record<number, SessionAdjustment[]> = {};
+  for (const adj of adjustments) {
+    if (!adjustmentsByPackage[adj.student_package_id])
+      adjustmentsByPackage[adj.student_package_id] = [];
+    adjustmentsByPackage[adj.student_package_id].push(adj);
+  }
+
   return (
     <div className="min-h-screen brand-gradient-subtle">
       {/* Navbar */}
@@ -211,7 +235,7 @@ const StudentProfilePage = () => {
           <p className="text-sm text-muted-foreground">{profile.email}</p>
           {memberSince && (
             <p className="text-xs text-muted-foreground mt-0.5">
-              Member since {memberSince}
+              {t("profile.memberSince", { date: memberSince })}
             </p>
           )}
         </div>
@@ -238,7 +262,7 @@ const StudentProfilePage = () => {
                     {stats.completed_count}
                   </span>
                   <span className="text-xs text-muted-foreground text-center leading-tight">
-                    Sessions Completed
+                    {t("profile.statsCompleted")}
                   </span>
                 </CardContent>
               </Card>
@@ -249,7 +273,7 @@ const StudentProfilePage = () => {
                     {stats.upcoming_count}
                   </span>
                   <span className="text-xs text-muted-foreground text-center leading-tight">
-                    Upcoming Classes
+                    {t("profile.statsUpcoming")}
                   </span>
                 </CardContent>
               </Card>
@@ -260,7 +284,7 @@ const StudentProfilePage = () => {
                     {stats.sessions_remaining}
                   </span>
                   <span className="text-xs text-muted-foreground text-center leading-tight">
-                    Sessions Remaining
+                    {t("profile.statsRemaining")}
                   </span>
                 </CardContent>
               </Card>
@@ -270,7 +294,7 @@ const StudentProfilePage = () => {
             <Card className="glow-card border-0 rounded-2xl">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-base">
-                  Personal Information
+                  {t("profile.personalInfo")}
                 </CardTitle>
                 {!isEditing ? (
                   <Button
@@ -290,7 +314,7 @@ const StudentProfilePage = () => {
                       onClick={handleCancel}
                       className="gap-1.5"
                     >
-                      <X className="h-3.5 w-3.5" /> Cancel
+                      <X className="h-3.5 w-3.5" /> {t("profile.cancel")}
                     </Button>
                     <Button
                       size="sm"
@@ -379,7 +403,7 @@ const StudentProfilePage = () => {
                         type={showPassword ? "text" : "password"}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Enter new password"
+                        placeholder={t("profile.newPasswordPlaceholder")}
                         className="pr-10"
                       />
                       <button
@@ -407,59 +431,102 @@ const StudentProfilePage = () => {
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Package className="h-4 w-4 text-primary" />
-                  Student Records
+                  {t("profile.studentRecords")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="overflow-y-auto max-h-[65vh] pr-1">
                 {packageHistory.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No packages availed yet.
+                    {t("profile.noPackages")}
                   </p>
                 ) : (
                   <div className="space-y-3">
                     {packageHistory.map((pkg) => (
-                      <div
-                        key={pkg.id}
-                        className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3"
-                      >
-                        <div className="space-y-0.5 min-w-0">
-                          <p className="font-medium text-sm truncate">
-                            {pkg.package_name}
-                          </p>
-                          {pkg.subject && (
-                            <p className="text-xs text-muted-foreground">
-                              {pkg.subject}
+                      <div key={pkg.id} className="space-y-2">
+                        {/* Package card */}
+                        <div className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3">
+                          <div className="space-y-0.5 min-w-0">
+                            <p className="font-medium text-sm truncate">
+                              {pkg.package_name}
                             </p>
-                          )}
-                          <p className="text-xs text-muted-foreground">
-                            {pkg.session_limit} sessions ·{" "}
-                            {pkg.duration_minutes} min · {pkg.currency}{" "}
-                            {Number(pkg.price).toLocaleString()}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Availed:{" "}
-                            {new Date(pkg.purchased_at).toLocaleDateString(
-                              undefined,
-                              {
-                                year: "numeric",
-                                month: "short",
-                                day: "numeric",
-                              },
+                            {pkg.subject && (
+                              <p className="text-xs text-muted-foreground">
+                                {pkg.subject}
+                              </p>
                             )}
-                          </p>
+                            <p className="text-xs text-muted-foreground">
+                              {pkg.session_limit} {t("profile.sessions")} ·{" "}
+                              {pkg.duration_minutes} {t("profile.min")} ·{" "}
+                              {pkg.currency}{" "}
+                              {Number(pkg.price).toLocaleString()}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {t("profile.availed")}:{" "}
+                              {new Date(pkg.purchased_at).toLocaleDateString(
+                                undefined,
+                                {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                },
+                              )}
+                            </p>
+                          </div>
+                          <Badge
+                            variant={
+                              pkg.payment_status === "paid"
+                                ? "default"
+                                : pkg.payment_status === "rejected"
+                                  ? "destructive"
+                                  : "secondary"
+                            }
+                            className="shrink-0 capitalize"
+                          >
+                            {t(`profile.paymentStatus.${pkg.payment_status}`)}
+                          </Badge>
                         </div>
-                        <Badge
-                          variant={
-                            pkg.payment_status === "paid"
-                              ? "default"
-                              : pkg.payment_status === "rejected"
-                                ? "destructive"
-                                : "secondary"
-                          }
-                          className="shrink-0 capitalize"
-                        >
-                          {pkg.payment_status}
-                        </Badge>
+
+                        {/* Adjustments for this package */}
+                        {(adjustmentsByPackage[pkg.id] ?? []).map((adj) => (
+                          <div
+                            key={adj.id}
+                            className="ml-3 flex items-start gap-2.5 rounded-lg border border-dashed px-3 py-2.5"
+                          >
+                            <div className="mt-0.5 shrink-0">
+                              {adj.adjustment > 0 ? (
+                                <TrendingUp className="h-3.5 w-3.5 text-green-500" />
+                              ) : (
+                                <TrendingDown className="h-3.5 w-3.5 text-destructive" />
+                              )}
+                            </div>
+                            <div className="space-y-0.5 min-w-0">
+                              <p className="text-xs font-medium">
+                                {adj.adjustment > 0
+                                  ? t("profile.adjustment.added", {
+                                      count: adj.adjustment,
+                                    })
+                                  : t("profile.adjustment.deducted", {
+                                      count: Math.abs(adj.adjustment),
+                                    })}
+                              </p>
+                              <p className="text-xs text-muted-foreground wrap-break-word">
+                                {t("profile.adjustment.reason")}: {adj.remarks}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {t("profile.adjustment.by")}:{" "}
+                                {adj.adjusted_by_name} ·{" "}
+                                {new Date(adj.created_at).toLocaleDateString(
+                                  undefined,
+                                  {
+                                    year: "numeric",
+                                    month: "short",
+                                    day: "numeric",
+                                  },
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     ))}
                   </div>
