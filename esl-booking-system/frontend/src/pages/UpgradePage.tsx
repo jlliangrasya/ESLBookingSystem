@@ -24,6 +24,7 @@ import {
   Clock,
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
+import qrCode from "@/assets/superadmin_qrcode.jpg";
 
 interface Plan {
   id: number;
@@ -328,11 +329,11 @@ const UpgradePage = () => {
                 <p className="text-sm font-semibold text-gray-700">
                   Scan to Pay
                 </p>
-                <div className="w-40 h-40 mx-auto bg-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-xs border-2 border-dashed border-gray-300">
-                  QR Code
-                  <br />
-                  (Coming Soon)
-                </div>
+                <img
+                  src={qrCode}
+                  alt="InstaPay QR Code"
+                  className="w-40 h-40 mx-auto rounded-lg object-contain"
+                />
                 <p className="text-xs text-muted-foreground">
                   After payment, send your receipt screenshot to{" "}
                   <span className="font-medium text-primary">
