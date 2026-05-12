@@ -332,7 +332,7 @@ const UpgradePage = () => {
                 <img
                   src={qrCode}
                   alt="InstaPay QR Code"
-                  className="w-40 h-40 mx-auto rounded-lg object-contain"
+                  className="w-120 h-120 mx-auto rounded-lg object-contain"
                 />
                 <p className="text-xs text-muted-foreground">
                   After payment, send your receipt screenshot to{" "}
