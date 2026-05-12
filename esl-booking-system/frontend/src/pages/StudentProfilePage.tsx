@@ -53,6 +53,10 @@ interface SessionAdjustment {
   adjusted_by_name: string;
 }
 
+type TimelineItem =
+  | { kind: "package"; date: string; data: PackageHistory }
+  | { kind: "adjustment"; date: string; data: SessionAdjustment };
+
 interface StudentProfile {
   name: string;
   email: string;
@@ -62,6 +66,8 @@ interface StudentProfile {
   timezone: string;
   created_at?: string;
 }
+
+const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 const StudentProfilePage = () => {
   const { t } = useTranslation();
@@ -91,6 +97,8 @@ const StudentProfilePage = () => {
     upcoming_count: 0,
     sessions_remaining: 0,
   });
+  const [selectedYear, setSelectedYear] = useState<string>("all");
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
 
   useEffect(() => {
     axios
@@ -198,50 +206,36 @@ const StudentProfilePage = () => {
     </div>
   );
 
-  const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  // Build a flat timeline of packages + adjustments sorted newest-first
+  const timeline: TimelineItem[] = [
+    ...packageHistory.map((pkg) => ({
+      kind: "package" as const,
+      date: pkg.purchased_at,
+      data: pkg,
+    })),
+    ...adjustments.map((adj) => ({
+      kind: "adjustment" as const,
+      date: adj.created_at,
+      data: adj,
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  // Group adjustments by package id (already sorted newest-first by API)
-  const adjustmentsByPackage: Record<number, SessionAdjustment[]> = {};
-  for (const adj of adjustments) {
-    if (!adjustmentsByPackage[adj.student_package_id])
-      adjustmentsByPackage[adj.student_package_id] = [];
-    adjustmentsByPackage[adj.student_package_id].push(adj);
-  }
+  // Collect unique years from the full timeline, newest-first
+  const yearSet = new Set<string>();
+  for (const item of timeline) yearSet.add(item.date.slice(0, 4));
+  const yearOptions = Array.from(yearSet).sort((a, b) => b.localeCompare(a));
 
-  // Collect all unique "YYYY-MM" months from packages + adjustments
-  const monthSet = new Set<string>();
-  for (const pkg of packageHistory)
-    monthSet.add(pkg.purchased_at.slice(0, 7));
-  for (const adj of adjustments)
-    monthSet.add(adj.created_at.slice(0, 7));
-  const monthOptions = Array.from(monthSet).sort((a, b) => b.localeCompare(a));
+  // Filter timeline by selected year + month
+  const filteredTimeline = timeline.filter((item) => {
+    const [y, m] = item.date.slice(0, 7).split("-");
+    if (selectedYear !== "all" && y !== selectedYear) return false;
+    if (selectedMonth !== "all" && m !== selectedMonth.padStart(2, "0"))
+      return false;
+    return true;
+  });
 
-  // Filter packages: show a package if its purchase month matches OR any of its
-  // adjustments fall in the selected month
-  const filteredPackages =
-    selectedMonth === "all"
-      ? packageHistory
-      : packageHistory.filter((pkg) => {
-          if (pkg.purchased_at.slice(0, 7) === selectedMonth) return true;
-          return (adjustmentsByPackage[pkg.id] ?? []).some(
-            (adj) => adj.created_at.slice(0, 7) === selectedMonth,
-          );
-        });
-
-  // When a month is selected, also filter the adjustments shown under each package
-  const visibleAdjustments = (pkgId: number) => {
-    const adjs = adjustmentsByPackage[pkgId] ?? [];
-    if (selectedMonth === "all") return adjs;
-    return adjs.filter((adj) => adj.created_at.slice(0, 7) === selectedMonth);
-  };
-
-  const formatMonthLabel = (ym: string) => {
-    const [y, m] = ym.split("-");
-    return new Date(Number(y), Number(m) - 1).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "long",
-    });
-  };
+  const monthName = (num: number) =>
+    new Date(2000, num - 1).toLocaleDateString(undefined, { month: "long" });
 
   return (
     <div className="min-h-screen brand-gradient-subtle">
@@ -257,24 +251,25 @@ const StudentProfilePage = () => {
 
       {/* Page body */}
       <div className="max-w-5xl mx-auto px-6 pb-12">
-        {/* Avatar — overlaps bottom of banner */}
-        <div className="-mt-10 mb-3">
-          <div className="h-20 w-20 rounded-full brand-gradient flex items-center justify-center text-white text-2xl font-bold border-4 border-background shadow-lg select-none">
+        {/* Avatar row — avatar left, identity info right, both overlap banner */}
+        <div className="-mt-10 mb-6 flex items-end justify-between gap-4">
+          {/* Avatar */}
+          <div className="h-20 w-20 shrink-0 rounded-full brand-gradient flex items-center justify-center text-white text-2xl font-bold border-4 border-background shadow-lg select-none">
             {initials || "S"}
           </div>
-        </div>
 
-        {/* Identity */}
-        <div className="mb-1">
-          <h2 className="text-xl font-bold leading-tight">
-            {profile.name || "—"}
-          </h2>
-          <p className="text-sm text-muted-foreground">{profile.email}</p>
-          {memberSince && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {t("profile.memberSince", { date: memberSince })}
-            </p>
-          )}
+          {/* Identity — right-aligned, sits at bottom of banner overlap */}
+          <div className="text-right pb-1">
+            <h2 className="text-xl font-bold leading-tight">
+              {profile.name || "—"}
+            </h2>
+            <p className="text-sm text-muted-foreground">{profile.email}</p>
+            {memberSince && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {t("profile.memberSince", { date: memberSince })}
+              </p>
+            )}
+          </div>
         </div>
 
         <Button
@@ -465,114 +460,96 @@ const StudentProfilePage = () => {
           {/* RIGHT — Student Records, sticky + scrollable */}
           <div className="sticky top-4">
             <Card className="glow-card border-0 rounded-2xl">
-              <CardHeader className="pb-2">
+              <CardHeader className="pb-2 space-y-2">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Package className="h-4 w-4 text-primary" />
                   {t("profile.studentRecords")}
                 </CardTitle>
-                {/* Month/Year filter */}
-                {monthOptions.length > 0 && (
-                  <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                    <SelectTrigger className="mt-2 h-8 text-xs">
-                      <SelectValue placeholder={t("profile.filterAllMonths")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">
-                        {t("profile.filterAllMonths")}
-                      </SelectItem>
-                      {monthOptions.map((ym) => (
-                        <SelectItem key={ym} value={ym}>
-                          {formatMonthLabel(ym)}
+
+                {/* Year + Month filters */}
+                {timeline.length > 0 && (
+                  <div className="flex gap-2">
+                    <Select
+                      value={selectedYear}
+                      onValueChange={(v) => {
+                        setSelectedYear(v);
+                        setSelectedMonth("all");
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-xs flex-1">
+                        <SelectValue placeholder={t("profile.filterAllYears")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">
+                          {t("profile.filterAllYears")}
                         </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                        {yearOptions.map((y) => (
+                          <SelectItem key={y} value={y}>
+                            {y}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Select
+                      value={selectedMonth}
+                      onValueChange={setSelectedMonth}
+                    >
+                      <SelectTrigger className="h-8 text-xs flex-1">
+                        <SelectValue
+                          placeholder={t("profile.filterAllMonths")}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">
+                          {t("profile.filterAllMonths")}
+                        </SelectItem>
+                        {MONTHS.map((m) => (
+                          <SelectItem key={m} value={String(m)}>
+                            {monthName(m)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 )}
               </CardHeader>
+
               <CardContent className="overflow-y-auto max-h-[65vh] pr-1">
-                {filteredPackages.length === 0 ? (
+                {filteredTimeline.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    {packageHistory.length === 0
+                    {timeline.length === 0
                       ? t("profile.noPackages")
                       : t("profile.noRecordsForMonth")}
                   </p>
                 ) : (
-                  <div className="space-y-3">
-                    {filteredPackages.map((pkg) => (
-                      <div key={pkg.id} className="space-y-2">
-                        {/* Package card */}
-                        <div className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3">
-                          <div className="space-y-0.5 min-w-0">
-                            <p className="font-medium text-sm truncate">
-                              {pkg.package_name}
-                            </p>
-                            {pkg.subject && (
-                              <p className="text-xs text-muted-foreground">
-                                {pkg.subject}
-                              </p>
-                            )}
-                            <p className="text-xs text-muted-foreground">
-                              {pkg.session_limit} {t("profile.sessions")} ·{" "}
-                              {pkg.duration_minutes} {t("profile.min")} ·{" "}
-                              {pkg.currency}{" "}
-                              {Number(pkg.price).toLocaleString()}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {t("profile.availed")}:{" "}
-                              {new Date(pkg.purchased_at).toLocaleDateString(
-                                undefined,
-                                {
-                                  year: "numeric",
-                                  month: "short",
-                                  day: "numeric",
-                                },
-                              )}
-                            </p>
-                          </div>
-                          <Badge
-                            variant={
-                              pkg.payment_status === "paid"
-                                ? "default"
-                                : pkg.payment_status === "rejected"
-                                  ? "destructive"
-                                  : "secondary"
-                            }
-                            className="shrink-0 capitalize"
-                          >
-                            {t(`profile.paymentStatus.${pkg.payment_status}`)}
-                          </Badge>
-                        </div>
-
-                        {/* Adjustments for this package */}
-                        {visibleAdjustments(pkg.id).map((adj) => (
+                  <div className="space-y-2">
+                    {filteredTimeline.map((item) => {
+                      if (item.kind === "package") {
+                        const pkg = item.data;
+                        return (
                           <div
-                            key={adj.id}
-                            className="ml-3 flex items-start gap-2.5 rounded-lg border border-dashed px-3 py-2.5"
+                            key={`pkg-${pkg.id}`}
+                            className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3"
                           >
-                            <div className="mt-0.5 shrink-0">
-                              {adj.adjustment > 0 ? (
-                                <TrendingUp className="h-3.5 w-3.5 text-green-500" />
-                              ) : (
-                                <TrendingDown className="h-3.5 w-3.5 text-destructive" />
-                              )}
-                            </div>
                             <div className="space-y-0.5 min-w-0">
-                              <p className="text-xs font-medium">
-                                {adj.adjustment > 0
-                                  ? t("profile.adjustment.added", {
-                                      count: adj.adjustment,
-                                    })
-                                  : t("profile.adjustment.deducted", {
-                                      count: Math.abs(adj.adjustment),
-                                    })}
+                              <p className="font-medium text-sm truncate">
+                                {pkg.package_name}
                               </p>
-                              <p className="text-xs text-muted-foreground wrap-break-word">
-                                {t("profile.adjustment.reason")}: {adj.remarks}
+                              {pkg.subject && (
+                                <p className="text-xs text-muted-foreground">
+                                  {pkg.subject}
+                                </p>
+                              )}
+                              <p className="text-xs text-muted-foreground">
+                                {pkg.session_limit} {t("profile.sessions")} ·{" "}
+                                {pkg.duration_minutes} {t("profile.min")} ·{" "}
+                                {pkg.currency}{" "}
+                                {Number(pkg.price).toLocaleString()}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {t("profile.adjustment.by")}:{" "}
-                                {adj.adjusted_by_name} ·{" "}
-                                {new Date(adj.created_at).toLocaleDateString(
+                                {t("profile.availed")}:{" "}
+                                {new Date(pkg.purchased_at).toLocaleDateString(
                                   undefined,
                                   {
                                     year: "numeric",
@@ -582,10 +559,66 @@ const StudentProfilePage = () => {
                                 )}
                               </p>
                             </div>
+                            <Badge
+                              variant={
+                                pkg.payment_status === "paid"
+                                  ? "default"
+                                  : pkg.payment_status === "rejected"
+                                    ? "destructive"
+                                    : "secondary"
+                              }
+                              className="shrink-0 capitalize"
+                            >
+                              {t(
+                                `profile.paymentStatus.${pkg.payment_status}`,
+                              )}
+                            </Badge>
                           </div>
-                        ))}
-                      </div>
-                    ))}
+                        );
+                      }
+
+                      const adj = item.data;
+                      return (
+                        <div
+                          key={`adj-${adj.id}`}
+                          className="flex items-start gap-2.5 rounded-lg border border-dashed px-3 py-2.5"
+                        >
+                          <div className="mt-0.5 shrink-0">
+                            {adj.adjustment > 0 ? (
+                              <TrendingUp className="h-3.5 w-3.5 text-green-500" />
+                            ) : (
+                              <TrendingDown className="h-3.5 w-3.5 text-destructive" />
+                            )}
+                          </div>
+                          <div className="space-y-0.5 min-w-0">
+                            <p className="text-xs font-medium">
+                              {adj.adjustment > 0
+                                ? t("profile.adjustment.added", {
+                                    count: adj.adjustment,
+                                  })
+                                : t("profile.adjustment.deducted", {
+                                    count: Math.abs(adj.adjustment),
+                                  })}
+                            </p>
+                            <p className="text-xs text-muted-foreground wrap-break-word">
+                              {t("profile.adjustment.reason")}: {adj.remarks}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {t("profile.adjustment.by")}:{" "}
+                              {adj.adjusted_by_name} ·{" "}
+                              {new Date(adj.created_at).toLocaleDateString(
+                                undefined,
+                                {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                },
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
