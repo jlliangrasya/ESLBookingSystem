@@ -257,7 +257,24 @@
       "added": "+{{count}} 节课时已添加",
       "deducted": "-{{count}} 节课时已扣除",
       "reason": "原因",
-      "by": "操作人"
+      "by": "操作人",
+      "presets": {
+        "add": {
+          "freeClass": "免费课程",
+          "teacherAbsent": "教师缺席",
+          "makeupClass": "补课",
+          "bonusSessions": "奖励课时",
+          "referralReward": "推荐奖励",
+          "other": "其他"
+        },
+        "deduct": {
+          "classUsed": "课程已使用",
+          "studentAbsent": "学生缺席",
+          "sessionConsumed": "课时已消耗",
+          "correctionOfCount": "次数修正",
+          "other": "其他"
+        }
+      }
     }
   }
 }

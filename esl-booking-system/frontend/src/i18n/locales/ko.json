@@ -257,7 +257,24 @@
       "added": "+{{count}}회 추가됨",
       "deducted": "-{{count}}회 차감됨",
       "reason": "사유",
-      "by": "처리자"
+      "by": "처리자",
+      "presets": {
+        "add": {
+          "freeClass": "무료 수업",
+          "teacherAbsent": "선생님 결석",
+          "makeupClass": "보충 수업",
+          "bonusSessions": "보너스 수업",
+          "referralReward": "추천 보상",
+          "other": "기타"
+        },
+        "deduct": {
+          "classUsed": "수업 이미 사용됨",
+          "studentAbsent": "학생 결석",
+          "sessionConsumed": "수업 소진",
+          "correctionOfCount": "횟수 수정",
+          "other": "기타"
+        }
+      }
     }
   }
 }

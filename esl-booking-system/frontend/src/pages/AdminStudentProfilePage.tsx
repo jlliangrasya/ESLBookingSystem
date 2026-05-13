@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
@@ -117,6 +118,7 @@ const statusColors: Record<string, string> = {
 };
 
 const AdminStudentProfilePage = () => {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
@@ -417,19 +419,19 @@ const AdminStudentProfilePage = () => {
   const [adjustSuccess, setAdjustSuccess] = useState<string | null>(null);
 
   const ADD_PRESETS = [
-    "Free Class",
-    "Teacher Absent",
-    "Makeup Class",
-    "Bonus Sessions",
-    "Referral Reward",
-    "Other",
+    { value: "Free Class",       label: t("profile.adjustment.presets.add.freeClass") },
+    { value: "Teacher Absent",   label: t("profile.adjustment.presets.add.teacherAbsent") },
+    { value: "Makeup Class",     label: t("profile.adjustment.presets.add.makeupClass") },
+    { value: "Bonus Sessions",   label: t("profile.adjustment.presets.add.bonusSessions") },
+    { value: "Referral Reward",  label: t("profile.adjustment.presets.add.referralReward") },
+    { value: "Other",            label: t("profile.adjustment.presets.add.other") },
   ];
   const DEDUCT_PRESETS = [
-    "Class Already Used",
-    "Student Absent",
-    "Session Consumed",
-    "Correction of Count",
-    "Other",
+    { value: "Class Already Used",   label: t("profile.adjustment.presets.deduct.classUsed") },
+    { value: "Student Absent",       label: t("profile.adjustment.presets.deduct.studentAbsent") },
+    { value: "Session Consumed",     label: t("profile.adjustment.presets.deduct.sessionConsumed") },
+    { value: "Correction of Count",  label: t("profile.adjustment.presets.deduct.correctionOfCount") },
+    { value: "Other",                label: t("profile.adjustment.presets.deduct.other") },
   ];
 
   // Session adjustment history
@@ -1344,7 +1346,7 @@ const AdminStudentProfilePage = () => {
                 </SelectTrigger>
                 <SelectContent>
                   {(showAdjust === "add" ? ADD_PRESETS : DEDUCT_PRESETS).map((preset) => (
-                    <SelectItem key={preset} value={preset}>{preset}</SelectItem>
+                    <SelectItem key={preset.value} value={preset.value}>{preset.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

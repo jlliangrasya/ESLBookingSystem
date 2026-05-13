@@ -257,7 +257,24 @@
       "added": "+{{count}} session(s) added",
       "deducted": "-{{count}} session(s) deducted",
       "reason": "Reason",
-      "by": "By"
+      "by": "By",
+      "presets": {
+        "add": {
+          "freeClass": "Free Class",
+          "teacherAbsent": "Teacher Absent",
+          "makeupClass": "Makeup Class",
+          "bonusSessions": "Bonus Sessions",
+          "referralReward": "Referral Reward",
+          "other": "Other"
+        },
+        "deduct": {
+          "classUsed": "Class Already Used",
+          "studentAbsent": "Student Absent",
+          "sessionConsumed": "Session Consumed",
+          "correctionOfCount": "Correction of Count",
+          "other": "Other"
+        }
+      }
     }
   }
 }
