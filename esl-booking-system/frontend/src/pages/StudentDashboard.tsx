@@ -112,7 +112,10 @@ const StudentDashboard = () => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [reports, setReports] = useState<Report[]>([]);
   const [expandedReport, setExpandedReport] = useState<number | null>(null);
-  const [reportMonth, setReportMonth] = useState<string>("all");
+  const [reportMonth, setReportMonth] = useState<number>(new Date().getMonth() + 1);
+  const [reportYear, setReportYear] = useState<number>(new Date().getFullYear());
+  const [absenceMonth, setAbsenceMonth] = useState<number>(new Date().getMonth() + 1);
+  const [absenceYear, setAbsenceYear] = useState<number>(new Date().getFullYear());
   const [reportPage, setReportPage] = useState(1);
   const [reportPageSize, setReportPageSize] = useState(20);
   const [absentLoadingId, setAbsentLoadingId] = useState<number | null>(null);
@@ -668,37 +671,49 @@ const StudentDashboard = () => {
 
       {/* My Reports */}
       {reports.length > 0 && (() => {
-        const monthOptions = [...new Set(reports.map(r => {
+        const reportYears = [...new Set(reports.map(r => {
           const d = new Date(r.appointment_date + (r.appointment_date.includes('T') ? '' : 'T00:00:00'));
-          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        }))].sort().reverse();
+          return d.getFullYear();
+        }))].sort((a, b) => b - a);
 
-        const filtered = reportMonth === "all" ? reports : reports.filter(r => {
+        const filtered = reports.filter(r => {
           const d = new Date(r.appointment_date + (r.appointment_date.includes('T') ? '' : 'T00:00:00'));
-          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === reportMonth;
+          return d.getFullYear() === reportYear && d.getMonth() + 1 === reportMonth;
         });
         const totalPages = Math.max(1, Math.ceil(filtered.length / reportPageSize));
         const paginated = filtered.slice((reportPage - 1) * reportPageSize, reportPage * reportPageSize);
 
+        const MONTHS = [
+          "January","February","March","April","May","June",
+          "July","August","September","October","November","December"
+        ];
+
         return (
           <div className="max-w-7xl mx-auto px-4 pb-10">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
                 <CardTitle className="text-base flex items-center gap-2">
                   <FileText className="h-4 w-4 text-primary" />
                   {t("student.myReports")}
                 </CardTitle>
-                <Select value={reportMonth} onValueChange={(v) => { setReportMonth(v); setReportPage(1); }}>
-                  <SelectTrigger className="w-40 h-8 text-xs"><SelectValue placeholder="All months" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All months</SelectItem>
-                    {monthOptions.map(m => {
-                      const [y, mo] = m.split('-');
-                      const label = new Date(Number(y), Number(mo) - 1).toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
-                      return <SelectItem key={m} value={m}>{label}</SelectItem>;
-                    })}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                  <Select value={String(reportMonth)} onValueChange={(v) => { setReportMonth(Number(v)); setReportPage(1); }}>
+                    <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {MONTHS.map((name, i) => (
+                        <SelectItem key={i + 1} value={String(i + 1)}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={String(reportYear)} onValueChange={(v) => { setReportYear(Number(v)); setReportPage(1); }}>
+                    <SelectTrigger className="w-24 h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {reportYears.map(y => (
+                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 {paginated.length === 0 ? (
@@ -734,51 +749,90 @@ const StudentDashboard = () => {
       })()}
 
       {/* Absence History */}
-      {absences.length > 0 && (
-        <div className="max-w-7xl mx-auto px-4 pb-10">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <UserX className="h-4 w-4 text-primary" />
-                {t("student.absenceHistory")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t("student.dateTime")}</TableHead>
-                    <TableHead>{t("student.teacher")}</TableHead>
-                    <TableHead>{t("student.reason")}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {absences.map((a) => (
-                    <TableRow key={a.id}>
-                      <TableCell className="text-sm">
-                        {fmtDate(a.appointment_date, "MMM d, yyyy h:mm a")}
-                      </TableCell>
-                      <TableCell className="text-sm">{a.teacher_name || "—"}</TableCell>
-                      <TableCell>
-                        {!!a.student_absent && (
-                          <span className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-700">
-                            {t("student.youAbsent")}
-                          </span>
-                        )}
-                        {!!a.teacher_absent && (
-                          <span className="text-xs px-2 py-1 rounded-full font-medium bg-red-100 text-red-700 ml-1">
-                            {t("student.teacherAbsent")}
-                          </span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      {absences.length > 0 && (() => {
+        const absenceYears = [...new Set(absences.map(a => {
+          const d = new Date(a.appointment_date + (a.appointment_date.includes('T') ? '' : 'T00:00:00'));
+          return d.getFullYear();
+        }))].sort((a, b) => b - a);
+
+        const filteredAbsences = absences.filter(a => {
+          const d = new Date(a.appointment_date + (a.appointment_date.includes('T') ? '' : 'T00:00:00'));
+          return d.getFullYear() === absenceYear && d.getMonth() + 1 === absenceMonth;
+        });
+
+        const MONTHS = [
+          "January","February","March","April","May","June",
+          "July","August","September","October","November","December"
+        ];
+
+        return (
+          <div className="max-w-7xl mx-auto px-4 pb-10">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <UserX className="h-4 w-4 text-primary" />
+                  {t("student.absenceHistory")}
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Select value={String(absenceMonth)} onValueChange={(v) => setAbsenceMonth(Number(v))}>
+                    <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {MONTHS.map((name, i) => (
+                        <SelectItem key={i + 1} value={String(i + 1)}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={String(absenceYear)} onValueChange={(v) => setAbsenceYear(Number(v))}>
+                    <SelectTrigger className="w-24 h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {absenceYears.map(y => (
+                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {filteredAbsences.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-6">No absences for this period.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t("student.dateTime")}</TableHead>
+                        <TableHead>{t("student.teacher")}</TableHead>
+                        <TableHead>{t("student.reason")}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredAbsences.map((a) => (
+                        <TableRow key={a.id}>
+                          <TableCell className="text-sm">
+                            {fmtDate(a.appointment_date, "MMM d, yyyy h:mm a")}
+                          </TableCell>
+                          <TableCell className="text-sm">{a.teacher_name || "—"}</TableCell>
+                          <TableCell>
+                            {!!a.student_absent && (
+                              <span className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-700">
+                                {t("student.youAbsent")}
+                              </span>
+                            )}
+                            {!!a.teacher_absent && (
+                              <span className="text-xs px-2 py-1 rounded-full font-medium bg-red-100 text-red-700 ml-1">
+                                {t("student.teacherAbsent")}
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
 
       {/* My Waitlist */}
       <div className="max-w-7xl mx-auto px-4 pb-10">

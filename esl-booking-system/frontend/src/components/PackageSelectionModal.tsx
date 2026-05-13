@@ -124,7 +124,7 @@ const PackageSelectionModal: React.FC<Props> = ({
 
   return (
     <Dialog open={show} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
             {step === "select" ? t("student.selectPackage") : t("student.paymentEnrollment")}

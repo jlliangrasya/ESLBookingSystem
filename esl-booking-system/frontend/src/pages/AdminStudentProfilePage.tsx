@@ -410,10 +410,27 @@ const AdminStudentProfilePage = () => {
   // Session adjustment dialog
   const [showAdjust, setShowAdjust] = useState<"add" | "deduct" | null>(null);
   const [adjustAmount, setAdjustAmount] = useState("1");
+  const [adjustRemarkPreset, setAdjustRemarkPreset] = useState("");
   const [adjustRemarks, setAdjustRemarks] = useState("");
   const [adjustLoading, setAdjustLoading] = useState(false);
   const [adjustError, setAdjustError] = useState<string | null>(null);
   const [adjustSuccess, setAdjustSuccess] = useState<string | null>(null);
+
+  const ADD_PRESETS = [
+    "Free Class",
+    "Teacher Absent",
+    "Makeup Class",
+    "Bonus Sessions",
+    "Referral Reward",
+    "Other",
+  ];
+  const DEDUCT_PRESETS = [
+    "Class Already Used",
+    "Student Absent",
+    "Session Consumed",
+    "Correction of Count",
+    "Other",
+  ];
 
   // Session adjustment history
   const [showAdjustHistory, setShowAdjustHistory] = useState(false);
@@ -711,7 +728,7 @@ const AdminStudentProfilePage = () => {
                       variant="ghost"
                       className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50"
                       title="Add sessions"
-                      onClick={() => { setShowAdjust("add"); setAdjustAmount("1"); setAdjustRemarks(""); setAdjustError(null); setAdjustSuccess(null); }}
+                      onClick={() => { setShowAdjust("add"); setAdjustAmount("1"); setAdjustRemarkPreset(""); setAdjustRemarks(""); setAdjustError(null); setAdjustSuccess(null); }}
                     >
                       <PlusCircle className="h-4 w-4" />
                     </Button>
@@ -720,7 +737,7 @@ const AdminStudentProfilePage = () => {
                       variant="ghost"
                       className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-50"
                       title="Deduct sessions"
-                      onClick={() => { setShowAdjust("deduct"); setAdjustAmount("1"); setAdjustRemarks(""); setAdjustError(null); setAdjustSuccess(null); }}
+                      onClick={() => { setShowAdjust("deduct"); setAdjustAmount("1"); setAdjustRemarkPreset(""); setAdjustRemarks(""); setAdjustError(null); setAdjustSuccess(null); }}
                     >
                       <MinusCircle className="h-4 w-4" />
                     </Button>
@@ -1288,7 +1305,7 @@ const AdminStudentProfilePage = () => {
       </Dialog>
 
       {/* Session Adjustment Dialog */}
-      <Dialog open={!!showAdjust} onOpenChange={(o) => { if (!o) { setShowAdjust(null); setAdjustSuccess(null); } }}>
+      <Dialog open={!!showAdjust} onOpenChange={(o) => { if (!o) { setShowAdjust(null); setAdjustRemarkPreset(""); setAdjustRemarks(""); setAdjustSuccess(null); } }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>
@@ -1313,15 +1330,32 @@ const AdminStudentProfilePage = () => {
             </div>
 
             <div className="space-y-1.5">
-              <Label>Remarks <span className="text-destructive">*</span></Label>
-              <Textarea
-                placeholder={showAdjust === "add"
-                  ? "e.g. Bonus sessions for referral, compensating for cancelled class..."
-                  : "e.g. Penalty for no-show, correction of incorrect session count..."}
-                value={adjustRemarks}
-                onChange={(e) => setAdjustRemarks(e.target.value)}
-                rows={3}
-              />
+              <Label>Reason <span className="text-destructive">*</span></Label>
+              <Select
+                value={adjustRemarkPreset}
+                onValueChange={(val) => {
+                  setAdjustRemarkPreset(val);
+                  if (val !== "Other") setAdjustRemarks(val);
+                  else setAdjustRemarks("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a reason..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {(showAdjust === "add" ? ADD_PRESETS : DEDUCT_PRESETS).map((preset) => (
+                    <SelectItem key={preset} value={preset}>{preset}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {adjustRemarkPreset === "Other" && (
+                <Textarea
+                  placeholder="Enter custom reason..."
+                  value={adjustRemarks}
+                  onChange={(e) => setAdjustRemarks(e.target.value)}
+                  rows={2}
+                />
+              )}
               <p className="text-xs text-muted-foreground">
                 This note will be included in the notification sent to the student.
               </p>
@@ -1440,7 +1474,7 @@ const AdminStudentProfilePage = () => {
 
       {/* Assign Package Dialog */}
       <Dialog open={showAssignPkg} onOpenChange={(o) => { if (!o) setShowAssignPkg(false); }}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Assign Package to Student</DialogTitle>
           </DialogHeader>

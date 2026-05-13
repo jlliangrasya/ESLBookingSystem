@@ -604,8 +604,6 @@ const StudentProfilePage = () => {
                               {t("profile.adjustment.reason")}: {adj.remarks}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {t("profile.adjustment.by")}:{" "}
-                              {adj.adjusted_by_name} ·{" "}
                               {new Date(adj.created_at).toLocaleDateString(
                                 undefined,
                                 {
