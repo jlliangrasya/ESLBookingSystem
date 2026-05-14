@@ -19,9 +19,35 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users, UserCheck, X, CheckCircle, AlertTriangle,
+  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users, UserCheck, X, CheckCircle, AlertTriangle, TrendingUp, TrendingDown,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly, localToMysql } from "@/utils/timezone";
+
+interface PackageHistory {
+  id: number;
+  package_name: string;
+  subject: string | null;
+  session_limit: number;
+  sessions_remaining: number;
+  price: number;
+  currency: string;
+  duration_minutes: number;
+  payment_status: "unpaid" | "paid" | "rejected";
+  purchased_at: string;
+}
+
+interface SessionAdjustment {
+  id: number;
+  student_package_id: number;
+  adjustment: number;
+  remarks: string;
+  created_at: string;
+  adjusted_by_name: string;
+}
+
+type RecordTimelineItem =
+  | { kind: "package"; date: string; data: PackageHistory }
+  | { kind: "adjustment"; date: string; data: SessionAdjustment };
 
 interface ClassReport {
   id: number;
@@ -130,6 +156,18 @@ const AdminStudentProfilePage = () => {
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const now = new Date();
+  const [historyMonth, setHistoryMonth] = useState(String(now.getMonth() + 1));
+  const [historyYear, setHistoryYear] = useState(String(now.getFullYear()));
+  const [historyStatus, setHistoryStatus] = useState("all");
+  const [historyAttendance, setHistoryAttendance] = useState("all");
+
+  // Student Record panel
+  const [packageHistory, setPackageHistory] = useState<PackageHistory[]>([]);
+  const [sessionAdjustments, setSessionAdjustments] = useState<SessionAdjustment[]>([]);
+  const [recordYear, setRecordYear] = useState("all");
+  const [recordMonth, setRecordMonth] = useState("all");
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [recurringCancelBooking, setRecurringCancelBooking] = useState<BookingRecord | null>(null);
 
@@ -484,14 +522,18 @@ const AdminStudentProfilePage = () => {
 
   const fetchData = async () => {
     try {
-      const [profileRes, teachersRes] = await Promise.all([
+      const [profileRes, teachersRes, pkgHistRes, adjRes] = await Promise.all([
         axios.get(`${base}/api/admin/students/${id}`, { headers }),
         axios.get(`${base}/api/admin/teachers`, { headers }),
+        axios.get(`${base}/api/admin/students/${id}/package-history`, { headers }),
+        axios.get(`${base}/api/admin/students/${id}/package-adjustments`, { headers }),
       ]);
       setStudent(profileRes.data.student);
       setActivePackage(profileRes.data.activePackage);
       setBookings(groupBookings(profileRes.data.bookings));
       setTeachers(teachersRes.data.map((t: Teacher) => ({ id: t.id, name: t.name })));
+      setPackageHistory(pkgHistRes.data);
+      setSessionAdjustments(adjRes.data);
     } catch (err) {
       console.error("Error fetching student profile:", err);
     } finally {
@@ -631,61 +673,177 @@ const AdminStudentProfilePage = () => {
           <ArrowLeft className="h-4 w-4" /> Back to Students
         </Button>
 
-        {/* Student Info */}
-        <Card className="glow-card border-0 rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5 text-primary" />
-              Student Profile
-            </CardTitle>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="gap-1" onClick={openEdit}>
-                <Pencil className="h-4 w-4" /> Edit
-              </Button>
-              <Button size="sm" variant="outline" className="gap-1"
-                onClick={() => { setShowResetPw(true); setResetPw(""); setResetPwMsg(null); }}>
-                <KeyRound className="h-4 w-4" /> Reset Password
-              </Button>
-              <Button
-                size="sm"
-                variant={student.is_active ? "destructive" : "default"}
-                className="gap-1"
-                onClick={handleToggleActive}
-                disabled={deactivateLoading}
-              >
-                {deactivateLoading
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : student.is_active ? "Deactivate" : "Reactivate"}
-              </Button>
+        {/* Student Info + Student Record side by side */}
+        {(() => {
+          const recordTimeline: RecordTimelineItem[] = [
+            ...packageHistory.map((pkg) => ({ kind: "package" as const, date: pkg.purchased_at, data: pkg })),
+            ...sessionAdjustments.map((adj) => ({ kind: "adjustment" as const, date: adj.created_at, data: adj })),
+          ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+          const recordYearOptions = Array.from(new Set(recordTimeline.map((i) => i.date.slice(0, 4)))).sort((a, b) => b.localeCompare(a));
+
+          const filteredRecordTimeline = recordTimeline.filter((item) => {
+            const [y, m] = item.date.slice(0, 7).split("-");
+            if (recordYear !== "all" && y !== recordYear) return false;
+            if (recordMonth !== "all" && m !== recordMonth.padStart(2, "0")) return false;
+            return true;
+          });
+
+          const monthName = (num: number) => new Date(2000, num - 1).toLocaleDateString(undefined, { month: "long" });
+
+          return (
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5 items-stretch">
+              {/* LEFT — Student Profile */}
+              <Card className="glow-card border-0 rounded-2xl">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <User className="h-5 w-5 text-primary" />
+                    Student Profile
+                  </CardTitle>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" className="gap-1" onClick={openEdit}>
+                      <Pencil className="h-4 w-4" /> Edit
+                    </Button>
+                    <Button size="sm" variant="outline" className="gap-1"
+                      onClick={() => { setShowResetPw(true); setResetPw(""); setResetPwMsg(null); }}>
+                      <KeyRound className="h-4 w-4" /> Reset Password
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={student.is_active ? "destructive" : "default"}
+                      className="gap-1"
+                      onClick={handleToggleActive}
+                      disabled={deactivateLoading}
+                    >
+                      {deactivateLoading
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : student.is_active ? "Deactivate" : "Reactivate"}
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Full Name</p>
+                    <p className="font-semibold">{student.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Email</p>
+                    <p className="font-medium">{student.email}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Guardian</p>
+                    <p className="font-medium">{student.guardian_name || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Nationality</p>
+                    <p className="font-medium">{student.nationality || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Age</p>
+                    <p className="font-medium">{student.age || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Enrolled</p>
+                    <p className="font-medium">{fmtDateOnly(student.created_at)}</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* RIGHT — Student Record */}
+              <Card className="glow-card border-0 rounded-2xl flex flex-col">
+                <CardHeader className="pb-2 space-y-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Package className="h-4 w-4 text-primary" />
+                    Student Record
+                  </CardTitle>
+                  {recordTimeline.length > 0 && (
+                    <div className="flex gap-2">
+                      <Select value={recordYear} onValueChange={(v) => { setRecordYear(v); setRecordMonth("all"); }}>
+                        <SelectTrigger className="h-8 text-xs flex-1">
+                          <SelectValue placeholder="All Years" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Years</SelectItem>
+                          {recordYearOptions.map((y) => (
+                            <SelectItem key={y} value={y}>{y}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={recordMonth} onValueChange={setRecordMonth}>
+                        <SelectTrigger className="h-8 text-xs flex-1">
+                          <SelectValue placeholder="All Months" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Months</SelectItem>
+                          {[1,2,3,4,5,6,7,8,9,10,11,12].map((m) => (
+                            <SelectItem key={m} value={String(m)}>{monthName(m)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </CardHeader>
+                <CardContent className="overflow-y-auto flex-1 max-h-85 pr-1">
+                  {filteredRecordTimeline.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      {recordTimeline.length === 0 ? "No records yet." : "No records for selected period."}
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {filteredRecordTimeline.map((item) => {
+                        if (item.kind === "package") {
+                          const pkg = item.data;
+                          return (
+                            <div key={`pkg-${pkg.id}`} className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3">
+                              <div className="space-y-0.5 min-w-0">
+                                <p className="font-medium text-sm truncate">{pkg.package_name}</p>
+                                {pkg.subject && <p className="text-xs text-muted-foreground">{pkg.subject}</p>}
+                                <p className="text-xs text-muted-foreground">
+                                  {pkg.session_limit} sessions · {pkg.duration_minutes} min · {pkg.currency} {Number(pkg.price).toLocaleString()}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Availed: {new Date(pkg.purchased_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                                </p>
+                              </div>
+                              <Badge
+                                variant={pkg.payment_status === "paid" ? "default" : pkg.payment_status === "rejected" ? "destructive" : "secondary"}
+                                className="shrink-0 capitalize"
+                              >
+                                {pkg.payment_status}
+                              </Badge>
+                            </div>
+                          );
+                        }
+                        const adj = item.data;
+                        return (
+                          <div key={`adj-${adj.id}`} className="flex items-start gap-2.5 rounded-lg border border-dashed px-3 py-2.5">
+                            <div className="mt-0.5 shrink-0">
+                              {adj.adjustment > 0
+                                ? <TrendingUp className="h-3.5 w-3.5 text-green-500" />
+                                : <TrendingDown className="h-3.5 w-3.5 text-destructive" />}
+                            </div>
+                            <div className="space-y-0.5 min-w-0">
+                              <p className="text-xs font-medium">
+                                {adj.adjustment > 0
+                                  ? `+${adj.adjustment} session${adj.adjustment !== 1 ? "s" : ""} added`
+                                  : `${Math.abs(adj.adjustment)} session${Math.abs(adj.adjustment) !== 1 ? "s" : ""} deducted`}
+                              </p>
+                              <p className="text-xs text-muted-foreground wrap-break-word">Reason: {adj.remarks}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(adj.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                                {" · "}{adj.adjusted_by_name}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
-            <div>
-              <p className="text-xs text-muted-foreground">Full Name</p>
-              <p className="font-semibold">{student.name}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Email</p>
-              <p className="font-medium">{student.email}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Guardian</p>
-              <p className="font-medium">{student.guardian_name || "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Nationality</p>
-              <p className="font-medium">{student.nationality || "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Age</p>
-              <p className="font-medium">{student.age || "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Enrolled</p>
-              <p className="font-medium">{fmtDateOnly(student.created_at)}</p>
-            </div>
-          </CardContent>
-        </Card>
+          );
+        })()}
 
         {/* Active Package */}
         {activePackage ? (
@@ -806,25 +964,91 @@ const AdminStudentProfilePage = () => {
         )}
 
         {/* Booking History */}
+        {(() => {
+          const filteredBookings = bookings.filter((b) => {
+            const d = new Date(b.appointment_date);
+            if (d.getMonth() + 1 !== Number(historyMonth)) return false;
+            if (d.getFullYear() !== Number(historyYear)) return false;
+            if (historyStatus !== "all" && b.status !== historyStatus) return false;
+            if (historyAttendance === "student_absent" && !b.student_absent) return false;
+            if (historyAttendance === "teacher_absent" && !b.teacher_absent) return false;
+            if (historyAttendance === "present" && (b.student_absent || b.teacher_absent)) return false;
+            return true;
+          });
+          const yearOptions = Array.from(
+            new Set(bookings.map((b) => new Date(b.appointment_date).getFullYear()))
+          ).sort((a, z) => z - a);
+          if (!yearOptions.includes(Number(historyYear))) yearOptions.push(Number(historyYear));
+          yearOptions.sort((a, z) => z - a);
+
+          return (
         <Card className="glow-card border-0 rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
             <CardTitle className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5 text-primary" />
               Class History
             </CardTitle>
-            {activePackage && (
-              <div className="flex gap-2">
-                {/* Bulk assign only shown when no package-level teacher is set */}
-                {!activePackage.teacher_id && (
-                  <Button size="sm" variant="outline" className="gap-1" onClick={() => { setBulkTeacherId(""); setBulkMsg(null); setShowBulkAssign(true); }}>
-                    <Users className="h-4 w-4" /> Bulk Assign Classes
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Month filter */}
+              <Select value={historyMonth} onValueChange={setHistoryMonth}>
+                <SelectTrigger className="h-8 text-xs w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["January","February","March","April","May","June","July","August","September","October","November","December"].map((name, i) => (
+                    <SelectItem key={i + 1} value={String(i + 1)}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {/* Year filter */}
+              <Select value={historyYear} onValueChange={setHistoryYear}>
+                <SelectTrigger className="h-8 text-xs w-24">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {yearOptions.map((y) => (
+                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {/* Status filter */}
+              <Select value={historyStatus} onValueChange={setHistoryStatus}>
+                <SelectTrigger className="h-8 text-xs w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="confirmed">Confirmed</SelectItem>
+                  <SelectItem value="done">Done</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+              {/* Attendance filter */}
+              <Select value={historyAttendance} onValueChange={setHistoryAttendance}>
+                <SelectTrigger className="h-8 text-xs w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Attendance</SelectItem>
+                  <SelectItem value="present">Present</SelectItem>
+                  <SelectItem value="student_absent">Student Absent</SelectItem>
+                  <SelectItem value="teacher_absent">Teacher Absent</SelectItem>
+                </SelectContent>
+              </Select>
+              {activePackage && (
+                <>
+                  {!activePackage.teacher_id && (
+                    <Button size="sm" variant="outline" className="gap-1" onClick={() => { setBulkTeacherId(""); setBulkMsg(null); setShowBulkAssign(true); }}>
+                      <Users className="h-4 w-4" /> Bulk Assign Classes
+                    </Button>
+                  )}
+                  <Button size="sm" className="gap-1" onClick={() => { setSelectedSlots({}); resetAddClassDialog(); setShowAddClass(true); }}>
+                    <Plus className="h-4 w-4" /> Add Class
                   </Button>
-                )}
-                <Button size="sm" className="gap-1" onClick={() => { setSelectedSlots({}); resetAddClassDialog(); setShowAddClass(true); }}>
-                  <Plus className="h-4 w-4" /> Add Class
-                </Button>
-              </div>
-            )}
+                </>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             <Table>
@@ -839,14 +1063,14 @@ const AdminStudentProfilePage = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {bookings.length === 0 ? (
+                {filteredBookings.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-muted-foreground text-sm py-10">
                       No classes found
                     </TableCell>
                   </TableRow>
                 ) : (
-                  bookings.map((b) => (
+                  filteredBookings.map((b) => (
                     <TableRow key={b.id}>
                       <TableCell className="text-sm">
                         {fmtDate(b.appointment_date, "MMM d, yyyy h:mm a")}
@@ -932,6 +1156,8 @@ const AdminStudentProfilePage = () => {
             </Table>
           </CardContent>
         </Card>
+          );
+        })()}
       </div>
 
       {/* Edit Student Dialog */}

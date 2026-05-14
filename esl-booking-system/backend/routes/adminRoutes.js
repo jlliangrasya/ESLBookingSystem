@@ -962,6 +962,47 @@ router.get('/students/:id', authenticateToken, requireRole('company_admin'), asy
   }
 });
 
+// Get package history for a specific student (company_admin only)
+router.get('/students/:id/package-history', authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const { id } = req.params;
+    const [rows] = await pool.query(
+      `SELECT sp.id, sp.payment_status, sp.sessions_remaining, sp.purchased_at,
+              tp.package_name, tp.session_limit, tp.subject, tp.price, tp.currency, tp.duration_minutes
+       FROM student_packages sp
+       JOIN tutorial_packages tp ON sp.package_id = tp.id
+       WHERE sp.student_id = ? AND sp.company_id = ?
+       ORDER BY sp.purchased_at DESC`,
+      [id, companyId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get session adjustments for a specific student (company_admin only)
+router.get('/students/:id/package-adjustments', authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const { id } = req.params;
+    const [rows] = await pool.query(
+      `SELECT sa.id, sa.student_package_id, sa.adjustment, sa.remarks, sa.created_at,
+              u.name AS adjusted_by_name
+       FROM session_adjustments sa
+       JOIN users u ON sa.adjusted_by = u.id
+       JOIN student_packages sp ON sa.student_package_id = sp.id
+       WHERE sp.student_id = ? AND sa.company_id = ?
+       ORDER BY sa.created_at DESC`,
+      [id, companyId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Update student profile (company_admin only)
 router.put('/students/:id', authenticateToken, requireRole('company_admin'), async (req, res) => {
   try {
