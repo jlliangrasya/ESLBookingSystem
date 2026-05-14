@@ -783,6 +783,7 @@ const AdminDashboard = () => {
                       <Line
                         type="monotone"
                         dataKey="students"
+                        name="New Students"
                         stroke="#E76F7A"
                         strokeWidth={2}
                         dot={{ r: 3, fill: "#E76F7A" }}
