@@ -22,6 +22,7 @@ import {
   ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users, UserCheck, X, CheckCircle, AlertTriangle, TrendingUp, TrendingDown,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly, localToMysql } from "@/utils/timezone";
+import TablePagination from "@/components/TablePagination";
 
 interface PackageHistory {
   id: number;
@@ -162,6 +163,8 @@ const AdminStudentProfilePage = () => {
   const [historyYear, setHistoryYear] = useState(String(now.getFullYear()));
   const [historyStatus, setHistoryStatus] = useState("all");
   const [historyAttendance, setHistoryAttendance] = useState("all");
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPageSize, setHistoryPageSize] = useState(10);
 
   // Student Record panel
   const [packageHistory, setPackageHistory] = useState<PackageHistory[]>([]);
@@ -170,6 +173,10 @@ const AdminStudentProfilePage = () => {
   const [recordMonth, setRecordMonth] = useState("all");
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [recurringCancelBooking, setRecurringCancelBooking] = useState<BookingRecord | null>(null);
+
+  // Mini booking calendar
+  const [calYear, setCalYear] = useState(now.getFullYear());
+  const [calMonth, setCalMonth] = useState(now.getMonth()); // 0-indexed
 
   // Deactivate/reactivate student
   const [deactivateLoading, setDeactivateLoading] = useState(false);
@@ -721,31 +728,124 @@ const AdminStudentProfilePage = () => {
                     </Button>
                   </div>
                 </CardHeader>
-                <CardContent className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Full Name</p>
-                    <p className="font-semibold">{student.name}</p>
+                <CardContent className="space-y-4 text-sm">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Full Name</p>
+                      <p className="font-semibold">{student.name}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Email</p>
+                      <p className="font-medium">{student.email}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Guardian</p>
+                      <p className="font-medium">{student.guardian_name || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Nationality</p>
+                      <p className="font-medium">{student.nationality || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Age</p>
+                      <p className="font-medium">{student.age || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Enrolled</p>
+                      <p className="font-medium">{fmtDateOnly(student.created_at)}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Email</p>
-                    <p className="font-medium">{student.email}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Guardian</p>
-                    <p className="font-medium">{student.guardian_name || "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Nationality</p>
-                    <p className="font-medium">{student.nationality || "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Age</p>
-                    <p className="font-medium">{student.age || "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Enrolled</p>
-                    <p className="font-medium">{fmtDateOnly(student.created_at)}</p>
-                  </div>
+
+                  {/* Mini booking calendar */}
+                  {(() => {
+                    const firstDay = new Date(calYear, calMonth, 1).getDay(); // 0=Sun
+                    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+
+                    const bookingsByDay: Record<number, string[]> = {};
+                    bookings.forEach((b) => {
+                      const d = new Date(b.appointment_date);
+                      if (d.getFullYear() === calYear && d.getMonth() === calMonth) {
+                        const day = d.getDate();
+                        if (!bookingsByDay[day]) bookingsByDay[day] = [];
+                        bookingsByDay[day].push(b.status);
+                      }
+                    });
+
+                    const todayDate = now.getDate();
+                    const todayMonth = now.getMonth();
+                    const todayYear = now.getFullYear();
+
+                    const prevMonth = () => {
+                      if (calMonth === 0) { setCalYear(y => y - 1); setCalMonth(11); }
+                      else setCalMonth(m => m - 1);
+                    };
+                    const nextMonth = () => {
+                      if (calMonth === 11) { setCalYear(y => y + 1); setCalMonth(0); }
+                      else setCalMonth(m => m + 1);
+                    };
+
+                    const monthLabel = new Date(calYear, calMonth).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+                    const weekdays = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+                    const cells: (number | null)[] = [
+                      ...Array(firstDay).fill(null),
+                      ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+                    ];
+                    while (cells.length % 7 !== 0) cells.push(null);
+
+                    const getDotColor = (statuses: string[]) => {
+                      if (statuses.includes("confirmed")) return "bg-green-500";
+                      if (statuses.includes("pending")) return "bg-yellow-400";
+                      if (statuses.includes("done")) return "bg-blue-400";
+                      if (statuses.every(s => s === "cancelled")) return "bg-red-400";
+                      return "bg-primary";
+                    };
+
+                    return (
+                      <div className="border rounded-xl p-3 bg-muted/20 select-none">
+                        <div className="flex items-center justify-between mb-2">
+                          <button onClick={prevMonth} className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors text-xs">‹</button>
+                          <span className="text-xs font-semibold">{monthLabel}</span>
+                          <button onClick={nextMonth} className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors text-xs">›</button>
+                        </div>
+                        <div className="grid grid-cols-7 gap-0.5">
+                          {weekdays.map(d => (
+                            <div key={d} className="text-center text-[10px] font-medium text-muted-foreground py-0.5">{d}</div>
+                          ))}
+                          {cells.map((day, i) => {
+                            const isToday = day !== null && day === todayDate && calMonth === todayMonth && calYear === todayYear;
+                            const statuses = day !== null ? bookingsByDay[day] : undefined;
+                            const hasDot = statuses && statuses.length > 0;
+                            return (
+                              <div key={i} className={`relative flex flex-col items-center justify-center rounded-md py-1 ${day === null ? "" : "hover:bg-muted/60 transition-colors"} ${isToday ? "bg-primary/10 font-semibold" : ""}`}>
+                                {day !== null && (
+                                  <>
+                                    <span className={`text-[11px] leading-none ${isToday ? "text-primary font-bold" : "text-foreground"}`}>{day}</span>
+                                    {hasDot && (
+                                      <span className={`mt-0.5 h-1 w-1 rounded-full ${getDotColor(statuses!)}`} />
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex gap-3 mt-2 pt-2 border-t flex-wrap">
+                          {[
+                            { color: "bg-green-500", label: "Confirmed" },
+                            { color: "bg-yellow-400", label: "Pending" },
+                            { color: "bg-blue-400", label: "Done" },
+                            { color: "bg-red-400", label: "Cancelled" },
+                          ].map(({ color, label }) => (
+                            <span key={label} className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                              <span className={`h-1.5 w-1.5 rounded-full ${color}`} />
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
 
@@ -976,6 +1076,8 @@ const AdminStudentProfilePage = () => {
             if (historyAttendance === "present" && (b.student_absent || b.teacher_absent)) return false;
             return true;
           });
+          const totalHistoryPages = Math.max(1, Math.ceil(filteredBookings.length / historyPageSize));
+          const pagedBookings = filteredBookings.slice((historyPage - 1) * historyPageSize, historyPage * historyPageSize);
           const yearOptions = Array.from(
             new Set(bookings.map((b) => Number(b.appointment_date.slice(0, 4))))
           ).sort((a, z) => z - a);
@@ -991,7 +1093,7 @@ const AdminStudentProfilePage = () => {
             </CardTitle>
             <div className="flex flex-wrap items-center gap-2">
               {/* Month filter */}
-              <Select value={historyMonth} onValueChange={setHistoryMonth}>
+              <Select value={historyMonth} onValueChange={(v) => { setHistoryMonth(v); setHistoryPage(1); }}>
                 <SelectTrigger className="h-8 text-xs w-32">
                   <SelectValue />
                 </SelectTrigger>
@@ -1002,7 +1104,7 @@ const AdminStudentProfilePage = () => {
                 </SelectContent>
               </Select>
               {/* Year filter */}
-              <Select value={historyYear} onValueChange={setHistoryYear}>
+              <Select value={historyYear} onValueChange={(v) => { setHistoryYear(v); setHistoryPage(1); }}>
                 <SelectTrigger className="h-8 text-xs w-24">
                   <SelectValue />
                 </SelectTrigger>
@@ -1013,7 +1115,7 @@ const AdminStudentProfilePage = () => {
                 </SelectContent>
               </Select>
               {/* Status filter */}
-              <Select value={historyStatus} onValueChange={setHistoryStatus}>
+              <Select value={historyStatus} onValueChange={(v) => { setHistoryStatus(v); setHistoryPage(1); }}>
                 <SelectTrigger className="h-8 text-xs w-32">
                   <SelectValue />
                 </SelectTrigger>
@@ -1026,7 +1128,7 @@ const AdminStudentProfilePage = () => {
                 </SelectContent>
               </Select>
               {/* Attendance filter */}
-              <Select value={historyAttendance} onValueChange={setHistoryAttendance}>
+              <Select value={historyAttendance} onValueChange={(v) => { setHistoryAttendance(v); setHistoryPage(1); }}>
                 <SelectTrigger className="h-8 text-xs w-36">
                   <SelectValue />
                 </SelectTrigger>
@@ -1071,7 +1173,7 @@ const AdminStudentProfilePage = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredBookings.map((b) => (
+                  pagedBookings.map((b) => (
                     <TableRow key={b.id}>
                       <TableCell className="text-sm">
                         {fmtDate(b.appointment_date, "MMM d, yyyy h:mm a")}
@@ -1118,7 +1220,12 @@ const AdminStudentProfilePage = () => {
                             Teacher Absent
                           </span>
                         )}
-                        {!b.student_absent && !b.teacher_absent && (
+                        {!b.student_absent && !b.teacher_absent && b.status === "done" && (
+                          <span className="text-xs px-2 py-1 rounded-full font-medium bg-green-100 text-green-700">
+                            Present
+                          </span>
+                        )}
+                        {!b.student_absent && !b.teacher_absent && b.status !== "done" && (
                           <span className="text-muted-foreground text-xs">—</span>
                         )}
                       </TableCell>
@@ -1155,6 +1262,16 @@ const AdminStudentProfilePage = () => {
                 )}
               </TableBody>
             </Table>
+            {filteredBookings.length > 0 && (
+              <TablePagination
+                page={historyPage}
+                totalPages={totalHistoryPages}
+                pageSize={historyPageSize}
+                totalItems={filteredBookings.length}
+                onPageChange={setHistoryPage}
+                onPageSizeChange={(s) => { setHistoryPageSize(s); setHistoryPage(1); }}
+              />
+            )}
           </CardContent>
         </Card>
           );
