@@ -103,11 +103,18 @@ router.post('/', authenticateToken, requireRole('student', 'company_admin'), asy
 
         const [baseH, baseM] = start_time.split(':').map(Number);
 
+        const localDateStr = (d) => {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        };
+
         const targetDates = [];
         for (const cur = new Date(schedStartDate); cur < schedEndDate; cur.setDate(cur.getDate() + 1)) {
             const dayName = DAY_NAMES[cur.getDay()];
             if (!days_of_week.includes(dayName)) continue;
-            targetDates.push(cur.toISOString().split('T')[0]);
+            targetDates.push(localDateStr(cur));
         }
 
         if (targetDates.length === 0) {
@@ -230,8 +237,8 @@ router.post('/', authenticateToken, requireRole('student', 'company_admin'), asy
         }
 
         // ── INSERT recurring schedule ───────────────────────────────────────
-        const startDateStr = schedStartDate.toISOString().split('T')[0];
-        const endDateStr = schedEndDate.toISOString().split('T')[0];
+        const startDateStr = localDateStr(schedStartDate);
+        const endDateStr = localDateStr(schedEndDate);
 
         const [schedResult] = await connection.query(
             `INSERT INTO recurring_schedules

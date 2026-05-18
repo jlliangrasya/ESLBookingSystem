@@ -170,8 +170,9 @@ const StudentDashboard = () => {
       const todayAndFutureBookings: Booking[] = [];
 
       const normalizedBookings = (dashRes.data.bookings as Booking[]).map((booking) => {
-        const localDate = fmtDate(booking.appointment_datetime, "yyyy-MM-dd");
-        const localTime = fmtTime(booking.appointment_datetime).toUpperCase();
+        const dt = parseUTC(booking.appointment_datetime) ?? new Date(booking.appointment_datetime);
+        const localDate = dt.toLocaleDateString("en-CA");
+        const localTime = dt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }).toUpperCase();
         return { ...booking, appointment_date: localDate, timeslot: localTime };
       });
 
@@ -280,8 +281,9 @@ const StudentDashboard = () => {
       today.setHours(0, 0, 0, 0);
       const updated = (response.data.bookings as Booking[])
         .map((booking) => {
-          const localDate = fmtDate(booking.appointment_datetime, "yyyy-MM-dd");
-          const localTime = fmtTime(booking.appointment_datetime).toUpperCase();
+          const dt = parseUTC(booking.appointment_datetime) ?? new Date(booking.appointment_datetime);
+          const localDate = dt.toLocaleDateString("en-CA");
+          const localTime = dt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }).toUpperCase();
           return { ...booking, appointment_date: localDate, timeslot: localTime };
         })
         .filter((b) => (parseUTC(b.appointment_datetime) ?? new Date(b.appointment_datetime)) >= today);
@@ -337,8 +339,9 @@ const StudentDashboard = () => {
       const todayAndFutureBookings: Booking[] = [];
       (dashRes.data.bookings as Booking[])
         .map((booking) => {
-          const localDate = fmtDate(booking.appointment_datetime, "yyyy-MM-dd");
-          const localTime = fmtTime(booking.appointment_datetime).toUpperCase();
+          const dt = parseUTC(booking.appointment_datetime) ?? new Date(booking.appointment_datetime);
+          const localDate = dt.toLocaleDateString("en-CA");
+          const localTime = dt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }).toUpperCase();
           return { ...booking, appointment_date: localDate, timeslot: localTime };
         })
         .forEach((booking: Booking) => {

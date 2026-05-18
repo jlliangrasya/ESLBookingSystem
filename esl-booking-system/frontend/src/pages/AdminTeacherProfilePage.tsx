@@ -19,7 +19,7 @@ import {
   BookOpen, KeyRound, ChevronLeft, ChevronRight, Timer, CheckCircle2,
   UserX, Users, FileText, Heart,
 } from "lucide-react";
-import { fmtDate, fmtDateOnly } from "@/utils/timezone";
+import { fmtDate, fmtDateOnly, parseUTC } from "@/utils/timezone";
 import ReportModal from "@/components/ReportModal";
 
 interface TeacherProfile {
@@ -126,8 +126,8 @@ const AdminTeacherProfilePage = () => {
   const [drillKey, setDrillKey] = useState<DrilldownKey | null>(null);
 
   // Report view modal
-  const [reportModal, setReportModal] = useState<{ open: boolean; bookingId: number; studentName: string }>({
-    open: false, bookingId: 0, studentName: "",
+  const [reportModal, setReportModal] = useState<{ open: boolean; bookingId: number; studentName: string; classDate: string }>({
+    open: false, bookingId: 0, studentName: "", classDate: "",
   });
 
   // Edit dialog
@@ -594,8 +594,9 @@ const AdminTeacherProfilePage = () => {
                           const isPast = new Date(`${day}T${time}:00`) < new Date();
                           const isToggling = togglingSlot === key;
                           const bookedEntry = schedule.find(s => {
-                            const d = fmtDate(s.appointment_date, "yyyy-MM-dd");
-                            const t = fmtDate(s.appointment_date, "HH:mm");
+                            const dt = parseUTC(s.appointment_date) ?? new Date(s.appointment_date);
+                            const d = dt.toLocaleDateString("en-CA");
+                            const t = `${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
                             return d === day && t === time;
                           });
                           return (
@@ -711,7 +712,7 @@ const AdminTeacherProfilePage = () => {
                       </TableCell>
                       <TableCell>
                         {b.has_report
-                          ? <Button size="sm" variant="outline" className="text-xs h-7 border-green-400 text-green-700 hover:bg-green-50" onClick={() => setReportModal({ open: true, bookingId: b.id, studentName: b.student_name })}>✓ View Report</Button>
+                          ? <Button size="sm" variant="outline" className="text-xs h-7 border-green-400 text-green-700 hover:bg-green-50" onClick={() => setReportModal({ open: true, bookingId: b.id, studentName: b.student_name, classDate: b.appointment_date })}>✓ View Report</Button>
                           : <span className="text-xs text-muted-foreground">No report</span>}
                       </TableCell>
                     </TableRow>
@@ -734,6 +735,7 @@ const AdminTeacherProfilePage = () => {
         bookingId={reportModal.bookingId}
         studentId={0}
         studentName={reportModal.studentName}
+        classDate={reportModal.classDate}
         readOnly
       />
 
