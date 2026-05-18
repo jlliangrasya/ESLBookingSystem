@@ -756,18 +756,22 @@ const AdminStudentProfilePage = () => {
                     </div>
                   </div>
 
-                  {/* Mini booking calendar */}
+                  {/* Mini booking calendar — confirmed classes only */}
                   {(() => {
                     const firstDay = new Date(calYear, calMonth, 1).getDay(); // 0=Sun
                     const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
 
-                    const bookingsByDay: Record<number, string[]> = {};
+                    // Only track confirmed bookings; store formatted times per day
+                    const confirmedByDay: Record<number, string[]> = {};
                     bookings.forEach((b) => {
+                      if (b.status !== "confirmed") return;
                       const d = new Date(b.appointment_date);
                       if (d.getFullYear() === calYear && d.getMonth() === calMonth) {
                         const day = d.getDate();
-                        if (!bookingsByDay[day]) bookingsByDay[day] = [];
-                        bookingsByDay[day].push(b.status);
+                        if (!confirmedByDay[day]) confirmedByDay[day] = [];
+                        confirmedByDay[day].push(
+                          d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
+                        );
                       }
                     });
 
@@ -793,14 +797,6 @@ const AdminStudentProfilePage = () => {
                     ];
                     while (cells.length % 7 !== 0) cells.push(null);
 
-                    const getDotColor = (statuses: string[]) => {
-                      if (statuses.includes("confirmed")) return "bg-green-500";
-                      if (statuses.includes("pending")) return "bg-yellow-400";
-                      if (statuses.includes("done")) return "bg-blue-400";
-                      if (statuses.every(s => s === "cancelled")) return "bg-red-400";
-                      return "bg-primary";
-                    };
-
                     return (
                       <div className="border rounded-xl p-3 bg-muted/20 select-none">
                         <div className="flex items-center justify-between mb-2">
@@ -814,15 +810,20 @@ const AdminStudentProfilePage = () => {
                           ))}
                           {cells.map((day, i) => {
                             const isToday = day !== null && day === todayDate && calMonth === todayMonth && calYear === todayYear;
-                            const statuses = day !== null ? bookingsByDay[day] : undefined;
-                            const hasDot = statuses && statuses.length > 0;
+                            const times = day !== null ? confirmedByDay[day] : undefined;
+                            const hasDot = times && times.length > 0;
+                            const tooltip = hasDot ? times!.join("\n") : undefined;
                             return (
-                              <div key={i} className={`relative flex flex-col items-center justify-center rounded-md py-1 ${day === null ? "" : "hover:bg-muted/60 transition-colors"} ${isToday ? "bg-primary/10 font-semibold" : ""}`}>
+                              <div
+                                key={i}
+                                title={tooltip}
+                                className={`relative flex flex-col items-center justify-center rounded-md py-1 ${day === null ? "" : "hover:bg-muted/60 transition-colors"} ${isToday ? "bg-primary/10" : ""}`}
+                              >
                                 {day !== null && (
                                   <>
                                     <span className={`text-[11px] leading-none ${isToday ? "text-primary font-bold" : "text-foreground"}`}>{day}</span>
                                     {hasDot && (
-                                      <span className={`mt-0.5 h-1 w-1 rounded-full ${getDotColor(statuses!)}`} />
+                                      <span className="mt-0.5 h-1 w-1 rounded-full bg-green-500" />
                                     )}
                                   </>
                                 )}
@@ -830,18 +831,9 @@ const AdminStudentProfilePage = () => {
                             );
                           })}
                         </div>
-                        <div className="flex gap-3 mt-2 pt-2 border-t flex-wrap">
-                          {[
-                            { color: "bg-green-500", label: "Confirmed" },
-                            { color: "bg-yellow-400", label: "Pending" },
-                            { color: "bg-blue-400", label: "Done" },
-                            { color: "bg-red-400", label: "Cancelled" },
-                          ].map(({ color, label }) => (
-                            <span key={label} className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                              <span className={`h-1.5 w-1.5 rounded-full ${color}`} />
-                              {label}
-                            </span>
-                          ))}
+                        <div className="flex items-center gap-1.5 mt-2 pt-2 border-t">
+                          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                          <span className="text-[10px] text-muted-foreground">Confirmed class</span>
                         </div>
                       </div>
                     );
