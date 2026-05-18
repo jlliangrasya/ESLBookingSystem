@@ -671,14 +671,11 @@ const StudentDashboard = () => {
 
       {/* My Reports */}
       {reports.length > 0 && (() => {
-        const reportYears = [...new Set(reports.map(r => {
-          const d = new Date(r.appointment_date + (r.appointment_date.includes('T') ? '' : 'T00:00:00'));
-          return d.getFullYear();
-        }))].sort((a, b) => b - a);
+        const reportYears = [...new Set(reports.map(r => Number(r.appointment_date.slice(0, 4))))].sort((a, b) => b - a);
 
         const filtered = reports.filter(r => {
-          const d = new Date(r.appointment_date + (r.appointment_date.includes('T') ? '' : 'T00:00:00'));
-          return d.getFullYear() === reportYear && d.getMonth() + 1 === reportMonth;
+          const [y, m] = r.appointment_date.slice(0, 7).split("-");
+          return Number(y) === reportYear && Number(m) === reportMonth;
         });
         const totalPages = Math.max(1, Math.ceil(filtered.length / reportPageSize));
         const paginated = filtered.slice((reportPage - 1) * reportPageSize, reportPage * reportPageSize);
@@ -750,14 +747,11 @@ const StudentDashboard = () => {
 
       {/* Absence History */}
       {absences.length > 0 && (() => {
-        const absenceYears = [...new Set(absences.map(a => {
-          const d = new Date(a.appointment_date + (a.appointment_date.includes('T') ? '' : 'T00:00:00'));
-          return d.getFullYear();
-        }))].sort((a, b) => b - a);
+        const absenceYears = [...new Set(absences.map(a => Number(a.appointment_date.slice(0, 4))))].sort((a, b) => b - a);
 
         const filteredAbsences = absences.filter(a => {
-          const d = new Date(a.appointment_date + (a.appointment_date.includes('T') ? '' : 'T00:00:00'));
-          return d.getFullYear() === absenceYear && d.getMonth() + 1 === absenceMonth;
+          const [y, m] = a.appointment_date.slice(0, 7).split("-");
+          return Number(y) === absenceYear && Number(m) === absenceMonth;
         });
 
         const MONTHS = [

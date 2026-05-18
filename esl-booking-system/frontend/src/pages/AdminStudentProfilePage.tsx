@@ -966,9 +966,10 @@ const AdminStudentProfilePage = () => {
         {/* Booking History */}
         {(() => {
           const filteredBookings = bookings.filter((b) => {
-            const d = new Date(b.appointment_date);
-            if (d.getMonth() + 1 !== Number(historyMonth)) return false;
-            if (d.getFullYear() !== Number(historyYear)) return false;
+            const dateStr = b.appointment_date.slice(0, 10); // "YYYY-MM-DD"
+            const [y, m] = dateStr.split("-");
+            if (Number(m) !== Number(historyMonth)) return false;
+            if (Number(y) !== Number(historyYear)) return false;
             if (historyStatus !== "all" && b.status !== historyStatus) return false;
             if (historyAttendance === "student_absent" && !b.student_absent) return false;
             if (historyAttendance === "teacher_absent" && !b.teacher_absent) return false;
@@ -976,9 +977,9 @@ const AdminStudentProfilePage = () => {
             return true;
           });
           const yearOptions = Array.from(
-            new Set(bookings.map((b) => new Date(b.appointment_date).getFullYear()))
+            new Set(bookings.map((b) => Number(b.appointment_date.slice(0, 4))))
           ).sort((a, z) => z - a);
-          if (!yearOptions.includes(Number(historyYear))) yearOptions.push(Number(historyYear));
+          if (!yearOptions.includes(Number(historyYear))) yearOptions.unshift(Number(historyYear));
           yearOptions.sort((a, z) => z - a);
 
           return (

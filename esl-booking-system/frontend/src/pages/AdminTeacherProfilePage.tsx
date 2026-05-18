@@ -245,25 +245,27 @@ const AdminTeacherProfilePage = () => {
   // Drilldown filtering
   const getDrillList = (key: DrilldownKey): CompletedBooking[] => {
     const today = new Date();
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7)); // Mon
-    weekStart.setHours(0, 0, 0, 0);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 7);
+    // Build week boundaries as date strings ("YYYY-MM-DD") to avoid UTC shift
+    const weekStartDate = new Date(today);
+    weekStartDate.setDate(today.getDate() - ((today.getDay() + 6) % 7)); // Mon
+    const weekEndDate = new Date(weekStartDate);
+    weekEndDate.setDate(weekStartDate.getDate() + 6); // Sun
+    const weekStartStr = format(weekStartDate, "yyyy-MM-dd");
+    const weekEndStr = format(weekEndDate, "yyyy-MM-dd");
 
-    const thisMonth = today.getMonth();
-    const thisYear = today.getFullYear();
+    const thisMonthStr = String(today.getMonth() + 1).padStart(2, "0");
+    const thisYearStr = String(today.getFullYear());
 
     switch (key) {
       case "fifty_min_this_week":
         return completedBookings.filter(b => {
-          const d = new Date(b.appointment_date);
-          return !b.student_absent && b.duration_minutes === 50 && d >= weekStart && d < weekEnd;
+          const ds = b.appointment_date.slice(0, 10);
+          return !b.student_absent && b.duration_minutes === 50 && ds >= weekStartStr && ds <= weekEndStr;
         });
       case "twenty_five_min_this_week":
         return completedBookings.filter(b => {
-          const d = new Date(b.appointment_date);
-          return !b.student_absent && b.duration_minutes === 25 && d >= weekStart && d < weekEnd;
+          const ds = b.appointment_date.slice(0, 10);
+          return !b.student_absent && b.duration_minutes === 25 && ds >= weekStartStr && ds <= weekEndStr;
         });
       case "total_completed":
         return completedBookings;
@@ -273,8 +275,8 @@ const AdminTeacherProfilePage = () => {
         return completedBookings.filter(b => !b.student_absent);
       case "classes_this_month":
         return completedBookings.filter(b => {
-          const d = new Date(b.appointment_date);
-          return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
+          const ds = b.appointment_date.slice(0, 7); // "YYYY-MM"
+          return ds === `${thisYearStr}-${thisMonthStr}`;
         });
     }
   };
@@ -485,12 +487,14 @@ const AdminTeacherProfilePage = () => {
 
         {/* Custom date range results */}
         {appliedRange && (() => {
-          const from = new Date(appliedRange.from + "T00:00:00");
-          const to = new Date(appliedRange.to + "T23:59:59");
+          const fromStr = appliedRange.from; // "YYYY-MM-DD"
+          const toStr = appliedRange.to;     // "YYYY-MM-DD"
           const inRange = completedBookings.filter(b => {
-            const d = new Date(b.appointment_date);
-            return d >= from && d <= to;
+            const ds = b.appointment_date.slice(0, 10);
+            return ds >= fromStr && ds <= toStr;
           });
+          const from = new Date(appliedRange.from + "T00:00:00");
+          const to = new Date(appliedRange.to + "T00:00:00");
           const fiftyList = inRange.filter(b => !b.student_absent && b.duration_minutes === 50);
           const twentyFiveList = inRange.filter(b => !b.student_absent && b.duration_minutes === 25);
           const absencesList = inRange.filter(b => b.student_absent);
