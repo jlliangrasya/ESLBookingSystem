@@ -230,7 +230,7 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
     const [completedBookings] = await pool.query(`
       SELECT MIN(b.id) AS id, MIN(b.appointment_date) AS appointment_date,
              b.student_absent, b.teacher_absent,
-             u.name AS student_name, tp.duration_minutes, sp.subject,
+             MIN(u.name) AS student_name, tp.duration_minutes, sp.subject,
              MAX(IF(cr.id IS NOT NULL, 1, 0)) AS has_report
       FROM bookings b
       JOIN student_packages sp ON b.student_package_id = sp.id
@@ -310,7 +310,8 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
       },
     });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    console.error('[GET /teachers/:id]', err);
+    res.status(500).json({ message: 'Server error', detail: err.message });
   }
 });
 
@@ -850,10 +851,10 @@ router.post("/teacher-leaves/:id/reject", authenticateToken, requireRole('compan
 router.get('/company-settings', authenticateToken, async (req, res) => {
   try {
     const [[company]] = await pool.query(
-      'SELECT allow_student_pick_teacher, payment_qr_image, cancellation_hours, cancellation_penalty_enabled, payment_method FROM companies WHERE id = ?',
+      'SELECT allow_student_pick_teacher, payment_qr_image, cancellation_hours, cancellation_penalty_enabled, payment_method, show_class_adjustments FROM companies WHERE id = ?',
       [req.user.company_id]
     );
-    res.json(company || { allow_student_pick_teacher: true, payment_qr_image: null, cancellation_hours: 1, cancellation_penalty_enabled: false, payment_method: null });
+    res.json(company || { allow_student_pick_teacher: true, payment_qr_image: null, cancellation_hours: 1, cancellation_penalty_enabled: false, payment_method: null, show_class_adjustments: true });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -862,7 +863,7 @@ router.get('/company-settings', authenticateToken, async (req, res) => {
 // Update company settings (company_admin only)
 router.put('/company-settings', authenticateToken, requireRole('company_admin'), async (req, res) => {
   try {
-    const { allow_student_pick_teacher, payment_qr_image, cancellation_hours, cancellation_penalty_enabled, payment_method } = req.body;
+    const { allow_student_pick_teacher, payment_qr_image, cancellation_hours, cancellation_penalty_enabled, payment_method, show_class_adjustments } = req.body;
 
     // Validate cancellation_hours
     const parsedHours = parseInt(cancellation_hours);
@@ -878,10 +879,10 @@ router.put('/company-settings', authenticateToken, requireRole('company_admin'),
     }
 
     await pool.query(
-      'UPDATE companies SET allow_student_pick_teacher = ?, payment_qr_image = ?, cancellation_hours = ?, cancellation_penalty_enabled = ?, payment_method = ? WHERE id = ?',
-      [allow_student_pick_teacher, payment_qr_image ?? null, isNaN(parsedHours) ? 1 : parsedHours, cancellation_penalty_enabled ?? false, payment_method ?? null, req.user.company_id]
+      'UPDATE companies SET allow_student_pick_teacher = ?, payment_qr_image = ?, cancellation_hours = ?, cancellation_penalty_enabled = ?, payment_method = ?, show_class_adjustments = ? WHERE id = ?',
+      [allow_student_pick_teacher, payment_qr_image ?? null, isNaN(parsedHours) ? 1 : parsedHours, cancellation_penalty_enabled ?? false, payment_method ?? null, show_class_adjustments ?? true, req.user.company_id]
     );
-    await logAction(req.user.company_id, req.user.id, 'company_settings_updated', 'company', req.user.company_id, { allow_student_pick_teacher, cancellation_hours, cancellation_penalty_enabled, payment_method });
+    await logAction(req.user.company_id, req.user.id, 'company_settings_updated', 'company', req.user.company_id, { allow_student_pick_teacher, cancellation_hours, cancellation_penalty_enabled, payment_method, show_class_adjustments });
     res.json({ message: 'Settings updated' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -942,6 +943,7 @@ router.get('/students/:id', authenticateToken, requireRole('company_admin'), asy
     const [bookings] = await pool.query(
       `SELECT b.id, b.appointment_date, b.status, b.class_mode, b.meeting_link,
               b.student_absent, b.teacher_absent, b.teacher_id, b.booking_group_id,
+              b.recurring_schedule_id,
               u.name AS teacher_name,
               CASE WHEN cr.id IS NOT NULL THEN TRUE ELSE FALSE END AS has_report
        FROM bookings b
@@ -955,6 +957,47 @@ router.get('/students/:id', authenticateToken, requireRole('company_admin'), asy
     );
 
     res.json({ student, activePackage: activePackage || null, bookings });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get package history for a specific student (company_admin only)
+router.get('/students/:id/package-history', authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const { id } = req.params;
+    const [rows] = await pool.query(
+      `SELECT sp.id, sp.payment_status, sp.sessions_remaining, sp.purchased_at,
+              tp.package_name, tp.session_limit, tp.subject, tp.price, tp.currency, tp.duration_minutes
+       FROM student_packages sp
+       JOIN tutorial_packages tp ON sp.package_id = tp.id
+       WHERE sp.student_id = ? AND sp.company_id = ?
+       ORDER BY sp.purchased_at DESC`,
+      [id, companyId]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get session adjustments for a specific student (company_admin only)
+router.get('/students/:id/package-adjustments', authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const { id } = req.params;
+    const [rows] = await pool.query(
+      `SELECT sa.id, sa.student_package_id, sa.adjustment, sa.remarks, sa.created_at,
+              u.name AS adjusted_by_name
+       FROM session_adjustments sa
+       JOIN users u ON sa.adjusted_by = u.id
+       JOIN student_packages sp ON sa.student_package_id = sp.id
+       WHERE sp.student_id = ? AND sa.company_id = ?
+       ORDER BY sa.created_at DESC`,
+      [id, companyId]
+    );
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }

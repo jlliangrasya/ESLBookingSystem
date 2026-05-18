@@ -228,10 +228,53 @@
     "timezone": "시간대",
     "password": "비밀번호",
     "passwordHint": "변경하지 않으려면 비워두세요",
+    "newPasswordPlaceholder": "새 비밀번호를 입력하세요",
     "editProfile": "프로필 수정",
+    "cancel": "취소",
     "save": "저장",
     "saving": "저장 중...",
     "updateSuccess": "프로필이 업데이트되었습니다!",
-    "updateFailed": "프로필 업데이트에 실패했습니다."
+    "updateFailed": "프로필 업데이트에 실패했습니다.",
+    "memberSince": "가입일: {{date}}",
+    "personalInfo": "개인 정보",
+    "studentRecords": "학습 기록",
+    "noPackages": "아직 수강 패키지가 없습니다.",
+    "noRecordsForMonth": "이 달의 기록이 없습니다.",
+    "filterAllYears": "전체 연도",
+    "filterAllMonths": "전체 월",
+    "sessions": "회",
+    "min": "분",
+    "availed": "구매일",
+    "statsCompleted": "완료된 수업",
+    "statsUpcoming": "예정된 수업",
+    "statsRemaining": "남은 수업",
+    "paymentStatus": {
+      "paid": "결제 완료",
+      "unpaid": "미결제",
+      "rejected": "거절됨"
+    },
+    "adjustment": {
+      "added": "+{{count}}회 추가됨",
+      "deducted": "-{{count}}회 차감됨",
+      "reason": "사유",
+      "by": "처리자",
+      "presets": {
+        "add": {
+          "freeClass": "무료 수업",
+          "teacherAbsent": "선생님 결석",
+          "makeupClass": "보충 수업",
+          "bonusSessions": "보너스 수업",
+          "referralReward": "추천 보상",
+          "other": "기타"
+        },
+        "deduct": {
+          "classUsed": "수업 이미 사용됨",
+          "studentAbsent": "학생 결석",
+          "sessionConsumed": "수업 소진",
+          "correctionOfCount": "횟수 수정",
+          "other": "기타"
+        }
+      }
+    }
   }
 }

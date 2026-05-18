@@ -228,10 +228,53 @@
     "timezone": "时区",
     "password": "密码",
     "passwordHint": "不修改请留空",
+    "newPasswordPlaceholder": "请输入新密码",
     "editProfile": "编辑资料",
+    "cancel": "取消",
     "save": "保存",
     "saving": "保存中...",
     "updateSuccess": "资料更新成功！",
-    "updateFailed": "资料更新失败。"
+    "updateFailed": "资料更新失败。",
+    "memberSince": "注册时间：{{date}}",
+    "personalInfo": "个人信息",
+    "studentRecords": "学习记录",
+    "noPackages": "尚未购买课程包。",
+    "noRecordsForMonth": "本月暂无记录。",
+    "filterAllYears": "全部年份",
+    "filterAllMonths": "全部月份",
+    "sessions": "节课",
+    "min": "分钟",
+    "availed": "购买日期",
+    "statsCompleted": "已完成课时",
+    "statsUpcoming": "即将上课",
+    "statsRemaining": "剩余课时",
+    "paymentStatus": {
+      "paid": "已付款",
+      "unpaid": "未付款",
+      "rejected": "已拒绝"
+    },
+    "adjustment": {
+      "added": "+{{count}} 节课时已添加",
+      "deducted": "-{{count}} 节课时已扣除",
+      "reason": "原因",
+      "by": "操作人",
+      "presets": {
+        "add": {
+          "freeClass": "免费课程",
+          "teacherAbsent": "教师缺席",
+          "makeupClass": "补课",
+          "bonusSessions": "奖励课时",
+          "referralReward": "推荐奖励",
+          "other": "其他"
+        },
+        "deduct": {
+          "classUsed": "课程已使用",
+          "studentAbsent": "学生缺席",
+          "sessionConsumed": "课时已消耗",
+          "correctionOfCount": "次数修正",
+          "other": "其他"
+        }
+      }
+    }
   }
 }

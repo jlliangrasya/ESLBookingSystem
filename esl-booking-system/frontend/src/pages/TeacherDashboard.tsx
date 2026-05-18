@@ -35,7 +35,7 @@ interface AssignedStudent {
 interface Booking {
   id: number; appointment_date: string; status: string; student_name: string;
   duration_minutes: number; subject: string; class_mode: string | null; meeting_link: string | null;
-  student_absent: boolean; slot_count?: number;
+  student_absent: boolean; slot_count?: number; recurring_schedule_id: number | null;
 }
 interface CompletedBooking {
   id: number; appointment_date: string; status: string; student_name: string;
@@ -188,6 +188,7 @@ const TeacherDashboard = () => {
   const [cancelConfirm, setCancelConfirm] = useState<Booking | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelBlocked, setCancelBlocked] = useState(false);
+  const [recurringCancelBooking, setRecurringCancelBooking] = useState<Booking | null>(null);
 
   // Leave modal
   const [showLeaveModal, setShowLeaveModal] = useState(false);
@@ -560,17 +561,30 @@ const TeacherDashboard = () => {
     }
   };
 
-  const handleCancelBooking = async () => {
-    if (!cancelConfirm) return;
+  const handleCancelBooking = async (cancelAll?: boolean) => {
+    const booking = cancelConfirm ?? recurringCancelBooking;
+    if (!booking) return;
     setCancelLoading(true);
     try {
-      await axios.post(`${import.meta.env.VITE_API_URL}/api/teacher/bookings/${cancelConfirm.id}/cancel`, {}, { headers });
+      const url = cancelAll
+        ? `${import.meta.env.VITE_API_URL}/api/teacher/bookings/${booking.id}/cancel?cancelAll=true`
+        : `${import.meta.env.VITE_API_URL}/api/teacher/bookings/${booking.id}/cancel`;
+      await axios.post(url, {}, { headers });
       setCancelConfirm(null);
+      setRecurringCancelBooking(null);
       fetchData();
     } catch (err: unknown) {
       alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to cancel");
     } finally {
       setCancelLoading(false);
+    }
+  };
+
+  const handleInitiateCancel = (booking: Booking) => {
+    if (booking.recurring_schedule_id) {
+      setRecurringCancelBooking(booking);
+    } else {
+      setCancelConfirm(booking);
     }
   };
 
@@ -1169,6 +1183,7 @@ const TeacherDashboard = () => {
                       <TableHead>Status</TableHead>
                       <TableHead>Class Info</TableHead>
                       <TableHead>Attendance</TableHead>
+                      <TableHead></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1218,6 +1233,13 @@ const TeacherDashboard = () => {
                               ) : (
                                 <span className="text-xs text-muted-foreground">—</span>
                               )}
+                            </TableCell>
+                            <TableCell>
+                              <Button size="sm" variant="ghost"
+                                className="text-xs h-7 text-destructive hover:text-destructive hover:bg-red-50"
+                                onClick={() => handleInitiateCancel(b)}>
+                                Cancel
+                              </Button>
                             </TableCell>
                           </TableRow>
                         );
@@ -1723,10 +1745,31 @@ const TeacherDashboard = () => {
             <p className="text-sm text-muted-foreground py-2">Are you sure? The student and admin will be notified.</p>
             <DialogFooter>
               <Button variant="outline" onClick={() => setCancelConfirm(null)}>No, Keep It</Button>
-              <Button variant="destructive" onClick={handleCancelBooking} disabled={cancelLoading}>
+              <Button variant="destructive" onClick={() => handleCancelBooking(false)} disabled={cancelLoading}>
                 {cancelLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Yes, Cancel"}
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Recurring Cancel Choice dialog */}
+      {recurringCancelBooking && (
+        <Dialog open onOpenChange={o => { if (!o) setRecurringCancelBooking(null); }}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader><DialogTitle>Cancel Class</DialogTitle></DialogHeader>
+            <p className="text-sm text-muted-foreground py-2">
+              This class is part of a recurring schedule. What would you like to cancel?
+            </p>
+            <div className="flex flex-col gap-2 pt-1">
+              <Button variant="outline" className="justify-start" onClick={() => handleCancelBooking(false)} disabled={cancelLoading}>
+                {cancelLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Cancel this session only"}
+              </Button>
+              <Button variant="destructive" className="justify-start" onClick={() => handleCancelBooking(true)} disabled={cancelLoading}>
+                {cancelLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Cancel all upcoming sessions in this series"}
+              </Button>
+              <Button variant="ghost" onClick={() => setRecurringCancelBooking(null)}>No, Keep It</Button>
+            </div>
           </DialogContent>
         </Dialog>
       )}

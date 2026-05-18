@@ -41,7 +41,7 @@ router.get('/dashboard', authenticateToken, requireRole('student'), async (req, 
         // Fetch bookings from ALL student packages for this student
         const [bookingRows] = await pool.query(
             `SELECT b.id, b.appointment_date, b.status, b.class_mode, b.meeting_link,
-                    b.teacher_absent, b.student_absent,
+                    b.teacher_absent, b.student_absent, b.recurring_schedule_id,
                     u.name AS teacher_name
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
@@ -66,6 +66,7 @@ router.get('/dashboard', authenticateToken, requireRole('student'), async (req, 
                 meeting_link: booking.meeting_link || null,
                 teacher_absent: !!booking.teacher_absent,
                 student_absent: !!booking.student_absent,
+                recurring_schedule_id: booking.recurring_schedule_id || null,
             };
         });
 
@@ -190,6 +191,37 @@ router.get('/stats', authenticateToken, requireRole('student'), async (req, res)
             upcoming_count: Number(upcoming_count),
             sessions_remaining: activePkg ? Number(activePkg.sessions_remaining) : 0,
         });
+    } catch (err) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Get class adjustments for the student's packages (only when show_class_adjustments is enabled)
+router.get('/package-adjustments', authenticateToken, requireRole('student'), async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const companyId = req.user.company_id;
+
+        const [[company]] = await pool.query(
+            'SELECT show_class_adjustments FROM companies WHERE id = ?',
+            [companyId]
+        );
+
+        if (!company || !company.show_class_adjustments) {
+            return res.json([]);
+        }
+
+        const [rows] = await pool.query(
+            `SELECT sa.id, sa.student_package_id, sa.adjustment, sa.remarks, sa.created_at,
+                    u.name AS adjusted_by_name
+             FROM session_adjustments sa
+             JOIN users u ON sa.adjusted_by = u.id
+             JOIN student_packages sp ON sa.student_package_id = sp.id
+             WHERE sp.student_id = ? AND sa.company_id = ?
+             ORDER BY sa.created_at DESC`,
+            [userId, companyId]
+        );
+        res.json(rows);
     } catch (err) {
         res.status(500).json({ message: 'Server error' });
     }

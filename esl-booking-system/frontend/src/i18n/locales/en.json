@@ -228,10 +228,53 @@
     "timezone": "Timezone",
     "password": "Password",
     "passwordHint": "Leave blank to keep current password",
+    "newPasswordPlaceholder": "Enter new password",
     "editProfile": "Edit Profile",
+    "cancel": "Cancel",
     "save": "Save",
     "saving": "Saving...",
     "updateSuccess": "Profile updated successfully!",
-    "updateFailed": "Failed to update profile."
+    "updateFailed": "Failed to update profile.",
+    "memberSince": "Member since {{date}}",
+    "personalInfo": "Personal Information",
+    "studentRecords": "Student Records",
+    "noPackages": "No packages availed yet.",
+    "noRecordsForMonth": "No records for this month.",
+    "filterAllYears": "All years",
+    "filterAllMonths": "All months",
+    "sessions": "sessions",
+    "min": "min",
+    "availed": "Availed",
+    "statsCompleted": "Sessions Completed",
+    "statsUpcoming": "Upcoming Classes",
+    "statsRemaining": "Sessions Remaining",
+    "paymentStatus": {
+      "paid": "paid",
+      "unpaid": "unpaid",
+      "rejected": "rejected"
+    },
+    "adjustment": {
+      "added": "+{{count}} session(s) added",
+      "deducted": "-{{count}} session(s) deducted",
+      "reason": "Reason",
+      "by": "By",
+      "presets": {
+        "add": {
+          "freeClass": "Free Class",
+          "teacherAbsent": "Teacher Absent",
+          "makeupClass": "Makeup Class",
+          "bonusSessions": "Bonus Sessions",
+          "referralReward": "Referral Reward",
+          "other": "Other"
+        },
+        "deduct": {
+          "classUsed": "Class Already Used",
+          "studentAbsent": "Student Absent",
+          "sessionConsumed": "Session Consumed",
+          "correctionOfCount": "Correction of Count",
+          "other": "Other"
+        }
+      }
+    }
   }
 }

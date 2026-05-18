@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
@@ -18,9 +19,36 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users, UserCheck, X, CheckCircle, AlertTriangle,
+  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users, UserCheck, X, CheckCircle, AlertTriangle, TrendingUp, TrendingDown,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly, localToMysql } from "@/utils/timezone";
+import TablePagination from "@/components/TablePagination";
+
+interface PackageHistory {
+  id: number;
+  package_name: string;
+  subject: string | null;
+  session_limit: number;
+  sessions_remaining: number;
+  price: number;
+  currency: string;
+  duration_minutes: number;
+  payment_status: "unpaid" | "paid" | "rejected";
+  purchased_at: string;
+}
+
+interface SessionAdjustment {
+  id: number;
+  student_package_id: number;
+  adjustment: number;
+  remarks: string;
+  created_at: string;
+  adjusted_by_name: string;
+}
+
+type RecordTimelineItem =
+  | { kind: "package"; date: string; data: PackageHistory }
+  | { kind: "adjustment"; date: string; data: SessionAdjustment };
 
 interface ClassReport {
   id: number;
@@ -66,6 +94,7 @@ interface BookingRecord {
   teacher_name: string | null;
   has_report: boolean;
   booking_group_id: string | null;
+  recurring_schedule_id: number | null;
   slot_count?: number;
 }
 
@@ -116,6 +145,7 @@ const statusColors: Record<string, string> = {
 };
 
 const AdminStudentProfilePage = () => {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
@@ -127,7 +157,26 @@ const AdminStudentProfilePage = () => {
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const now = new Date();
+  const [historyMonth, setHistoryMonth] = useState(String(now.getMonth() + 1));
+  const [historyYear, setHistoryYear] = useState(String(now.getFullYear()));
+  const [historyStatus, setHistoryStatus] = useState("all");
+  const [historyAttendance, setHistoryAttendance] = useState("all");
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPageSize, setHistoryPageSize] = useState(10);
+
+  // Student Record panel
+  const [packageHistory, setPackageHistory] = useState<PackageHistory[]>([]);
+  const [sessionAdjustments, setSessionAdjustments] = useState<SessionAdjustment[]>([]);
+  const [recordYear, setRecordYear] = useState("all");
+  const [recordMonth, setRecordMonth] = useState("all");
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [recurringCancelBooking, setRecurringCancelBooking] = useState<BookingRecord | null>(null);
+
+  // Mini booking calendar
+  const [calYear, setCalYear] = useState(now.getFullYear());
+  const [calMonth, setCalMonth] = useState(now.getMonth()); // 0-indexed
 
   // Deactivate/reactivate student
   const [deactivateLoading, setDeactivateLoading] = useState(false);
@@ -408,10 +457,27 @@ const AdminStudentProfilePage = () => {
   // Session adjustment dialog
   const [showAdjust, setShowAdjust] = useState<"add" | "deduct" | null>(null);
   const [adjustAmount, setAdjustAmount] = useState("1");
+  const [adjustRemarkPreset, setAdjustRemarkPreset] = useState("");
   const [adjustRemarks, setAdjustRemarks] = useState("");
   const [adjustLoading, setAdjustLoading] = useState(false);
   const [adjustError, setAdjustError] = useState<string | null>(null);
   const [adjustSuccess, setAdjustSuccess] = useState<string | null>(null);
+
+  const ADD_PRESETS = [
+    { value: "Free Class",       label: t("profile.adjustment.presets.add.freeClass") },
+    { value: "Teacher Absent",   label: t("profile.adjustment.presets.add.teacherAbsent") },
+    { value: "Makeup Class",     label: t("profile.adjustment.presets.add.makeupClass") },
+    { value: "Bonus Sessions",   label: t("profile.adjustment.presets.add.bonusSessions") },
+    { value: "Referral Reward",  label: t("profile.adjustment.presets.add.referralReward") },
+    { value: "Other",            label: t("profile.adjustment.presets.add.other") },
+  ];
+  const DEDUCT_PRESETS = [
+    { value: "Class Already Used",   label: t("profile.adjustment.presets.deduct.classUsed") },
+    { value: "Student Absent",       label: t("profile.adjustment.presets.deduct.studentAbsent") },
+    { value: "Session Consumed",     label: t("profile.adjustment.presets.deduct.sessionConsumed") },
+    { value: "Correction of Count",  label: t("profile.adjustment.presets.deduct.correctionOfCount") },
+    { value: "Other",                label: t("profile.adjustment.presets.deduct.other") },
+  ];
 
   // Session adjustment history
   const [showAdjustHistory, setShowAdjustHistory] = useState(false);
@@ -463,14 +529,18 @@ const AdminStudentProfilePage = () => {
 
   const fetchData = async () => {
     try {
-      const [profileRes, teachersRes] = await Promise.all([
+      const [profileRes, teachersRes, pkgHistRes, adjRes] = await Promise.all([
         axios.get(`${base}/api/admin/students/${id}`, { headers }),
         axios.get(`${base}/api/admin/teachers`, { headers }),
+        axios.get(`${base}/api/admin/students/${id}/package-history`, { headers }),
+        axios.get(`${base}/api/admin/students/${id}/package-adjustments`, { headers }),
       ]);
       setStudent(profileRes.data.student);
       setActivePackage(profileRes.data.activePackage);
       setBookings(groupBookings(profileRes.data.bookings));
       setTeachers(teachersRes.data.map((t: Teacher) => ({ id: t.id, name: t.name })));
+      setPackageHistory(pkgHistRes.data);
+      setSessionAdjustments(adjRes.data);
     } catch (err) {
       console.error("Error fetching student profile:", err);
     } finally {
@@ -480,10 +550,22 @@ const AdminStudentProfilePage = () => {
 
   useEffect(() => { fetchData(); }, [id]);
 
-  const handleCancelBooking = async (bookingId: number) => {
+  const handleInitiateCancel = (booking: BookingRecord) => {
+    if (booking.recurring_schedule_id) {
+      setRecurringCancelBooking(booking);
+    } else {
+      doCancel(booking.id, false);
+    }
+  };
+
+  const doCancel = async (bookingId: number, cancelAll: boolean) => {
     setCancellingId(bookingId);
+    setRecurringCancelBooking(null);
     try {
-      await axios.post(`${base}/api/bookings/cancel/${bookingId}`, {}, { headers });
+      const url = cancelAll
+        ? `${base}/api/bookings/cancel/${bookingId}?cancelAll=true`
+        : `${base}/api/bookings/cancel/${bookingId}`;
+      await axios.post(url, {}, { headers });
       fetchData();
     } catch (err) {
       console.error("Error cancelling booking:", err);
@@ -598,61 +680,262 @@ const AdminStudentProfilePage = () => {
           <ArrowLeft className="h-4 w-4" /> Back to Students
         </Button>
 
-        {/* Student Info */}
-        <Card className="glow-card border-0 rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5 text-primary" />
-              Student Profile
-            </CardTitle>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="gap-1" onClick={openEdit}>
-                <Pencil className="h-4 w-4" /> Edit
-              </Button>
-              <Button size="sm" variant="outline" className="gap-1"
-                onClick={() => { setShowResetPw(true); setResetPw(""); setResetPwMsg(null); }}>
-                <KeyRound className="h-4 w-4" /> Reset Password
-              </Button>
-              <Button
-                size="sm"
-                variant={student.is_active ? "destructive" : "default"}
-                className="gap-1"
-                onClick={handleToggleActive}
-                disabled={deactivateLoading}
-              >
-                {deactivateLoading
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : student.is_active ? "Deactivate" : "Reactivate"}
-              </Button>
+        {/* Student Info + Student Record side by side */}
+        {(() => {
+          const recordTimeline: RecordTimelineItem[] = [
+            ...packageHistory.map((pkg) => ({ kind: "package" as const, date: pkg.purchased_at, data: pkg })),
+            ...sessionAdjustments.map((adj) => ({ kind: "adjustment" as const, date: adj.created_at, data: adj })),
+          ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+          const recordYearOptions = Array.from(new Set(recordTimeline.map((i) => i.date.slice(0, 4)))).sort((a, b) => b.localeCompare(a));
+
+          const filteredRecordTimeline = recordTimeline.filter((item) => {
+            const [y, m] = item.date.slice(0, 7).split("-");
+            if (recordYear !== "all" && y !== recordYear) return false;
+            if (recordMonth !== "all" && m !== recordMonth.padStart(2, "0")) return false;
+            return true;
+          });
+
+          const monthName = (num: number) => new Date(2000, num - 1).toLocaleDateString(undefined, { month: "long" });
+
+          return (
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5 items-stretch">
+              {/* LEFT — Student Profile */}
+              <Card className="glow-card border-0 rounded-2xl">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <User className="h-5 w-5 text-primary" />
+                    Student Profile
+                  </CardTitle>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" className="gap-1" onClick={openEdit}>
+                      <Pencil className="h-4 w-4" /> Edit
+                    </Button>
+                    <Button size="sm" variant="outline" className="gap-1"
+                      onClick={() => { setShowResetPw(true); setResetPw(""); setResetPwMsg(null); }}>
+                      <KeyRound className="h-4 w-4" /> Reset Password
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={student.is_active ? "destructive" : "default"}
+                      className="gap-1"
+                      onClick={handleToggleActive}
+                      disabled={deactivateLoading}
+                    >
+                      {deactivateLoading
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : student.is_active ? "Deactivate" : "Reactivate"}
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4 text-sm">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Full Name</p>
+                      <p className="font-semibold">{student.name}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Email</p>
+                      <p className="font-medium">{student.email}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Guardian</p>
+                      <p className="font-medium">{student.guardian_name || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Nationality</p>
+                      <p className="font-medium">{student.nationality || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Age</p>
+                      <p className="font-medium">{student.age || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Enrolled</p>
+                      <p className="font-medium">{fmtDateOnly(student.created_at)}</p>
+                    </div>
+                  </div>
+
+                  {/* Mini booking calendar — confirmed classes only */}
+                  {(() => {
+                    const firstDay = new Date(calYear, calMonth, 1).getDay(); // 0=Sun
+                    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+
+                    // Only track confirmed bookings; store formatted times per day
+                    const confirmedByDay: Record<number, string[]> = {};
+                    bookings.forEach((b) => {
+                      if (b.status !== "confirmed") return;
+                      const d = new Date(b.appointment_date);
+                      if (d.getFullYear() === calYear && d.getMonth() === calMonth) {
+                        const day = d.getDate();
+                        if (!confirmedByDay[day]) confirmedByDay[day] = [];
+                        confirmedByDay[day].push(
+                          d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
+                        );
+                      }
+                    });
+
+                    const todayDate = now.getDate();
+                    const todayMonth = now.getMonth();
+                    const todayYear = now.getFullYear();
+
+                    const prevMonth = () => {
+                      if (calMonth === 0) { setCalYear(y => y - 1); setCalMonth(11); }
+                      else setCalMonth(m => m - 1);
+                    };
+                    const nextMonth = () => {
+                      if (calMonth === 11) { setCalYear(y => y + 1); setCalMonth(0); }
+                      else setCalMonth(m => m + 1);
+                    };
+
+                    const monthLabel = new Date(calYear, calMonth).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+                    const weekdays = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+                    const cells: (number | null)[] = [
+                      ...Array(firstDay).fill(null),
+                      ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+                    ];
+                    while (cells.length % 7 !== 0) cells.push(null);
+
+                    return (
+                      <div className="border rounded-xl p-3 bg-muted/20 select-none">
+                        <div className="flex items-center justify-between mb-2">
+                          <button onClick={prevMonth} className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors text-xs">‹</button>
+                          <span className="text-xs font-semibold">{monthLabel}</span>
+                          <button onClick={nextMonth} className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors text-xs">›</button>
+                        </div>
+                        <div className="grid grid-cols-7 gap-0.5">
+                          {weekdays.map(d => (
+                            <div key={d} className="text-center text-[10px] font-medium text-muted-foreground py-0.5">{d}</div>
+                          ))}
+                          {cells.map((day, i) => {
+                            const isToday = day !== null && day === todayDate && calMonth === todayMonth && calYear === todayYear;
+                            const times = day !== null ? confirmedByDay[day] : undefined;
+                            const hasDot = times && times.length > 0;
+                            const tooltip = hasDot ? times!.join("\n") : undefined;
+                            return (
+                              <div
+                                key={i}
+                                title={tooltip}
+                                className={`relative flex flex-col items-center justify-center rounded-md py-1 ${day === null ? "" : "hover:bg-muted/60 transition-colors"} ${isToday ? "bg-primary/10" : ""}`}
+                              >
+                                {day !== null && (
+                                  <>
+                                    <span className={`text-[11px] leading-none ${isToday ? "text-primary font-bold" : "text-foreground"}`}>{day}</span>
+                                    {hasDot && (
+                                      <span className="mt-0.5 h-1 w-1 rounded-full bg-green-500" />
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-2 pt-2 border-t">
+                          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                          <span className="text-[10px] text-muted-foreground">Confirmed class</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+
+              {/* RIGHT — Student Record */}
+              <Card className="glow-card border-0 rounded-2xl flex flex-col">
+                <CardHeader className="pb-2 space-y-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Package className="h-4 w-4 text-primary" />
+                    Student Record
+                  </CardTitle>
+                  {recordTimeline.length > 0 && (
+                    <div className="flex gap-2">
+                      <Select value={recordYear} onValueChange={(v) => { setRecordYear(v); setRecordMonth("all"); }}>
+                        <SelectTrigger className="h-8 text-xs flex-1">
+                          <SelectValue placeholder="All Years" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Years</SelectItem>
+                          {recordYearOptions.map((y) => (
+                            <SelectItem key={y} value={y}>{y}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={recordMonth} onValueChange={setRecordMonth}>
+                        <SelectTrigger className="h-8 text-xs flex-1">
+                          <SelectValue placeholder="All Months" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Months</SelectItem>
+                          {[1,2,3,4,5,6,7,8,9,10,11,12].map((m) => (
+                            <SelectItem key={m} value={String(m)}>{monthName(m)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </CardHeader>
+                <CardContent className="overflow-y-auto flex-1 max-h-85 pr-1">
+                  {filteredRecordTimeline.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      {recordTimeline.length === 0 ? "No records yet." : "No records for selected period."}
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {filteredRecordTimeline.map((item) => {
+                        if (item.kind === "package") {
+                          const pkg = item.data;
+                          return (
+                            <div key={`pkg-${pkg.id}`} className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3">
+                              <div className="space-y-0.5 min-w-0">
+                                <p className="font-medium text-sm truncate">{pkg.package_name}</p>
+                                {pkg.subject && <p className="text-xs text-muted-foreground">{pkg.subject}</p>}
+                                <p className="text-xs text-muted-foreground">
+                                  {pkg.session_limit} sessions · {pkg.duration_minutes} min · {pkg.currency} {Number(pkg.price).toLocaleString()}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Availed: {new Date(pkg.purchased_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                                </p>
+                              </div>
+                              <Badge
+                                variant={pkg.payment_status === "paid" ? "default" : pkg.payment_status === "rejected" ? "destructive" : "secondary"}
+                                className="shrink-0 capitalize"
+                              >
+                                {pkg.payment_status}
+                              </Badge>
+                            </div>
+                          );
+                        }
+                        const adj = item.data;
+                        return (
+                          <div key={`adj-${adj.id}`} className="flex items-start gap-2.5 rounded-lg border border-dashed px-3 py-2.5">
+                            <div className="mt-0.5 shrink-0">
+                              {adj.adjustment > 0
+                                ? <TrendingUp className="h-3.5 w-3.5 text-green-500" />
+                                : <TrendingDown className="h-3.5 w-3.5 text-destructive" />}
+                            </div>
+                            <div className="space-y-0.5 min-w-0">
+                              <p className="text-xs font-medium">
+                                {adj.adjustment > 0
+                                  ? `+${adj.adjustment} session${adj.adjustment !== 1 ? "s" : ""} added`
+                                  : `${Math.abs(adj.adjustment)} session${Math.abs(adj.adjustment) !== 1 ? "s" : ""} deducted`}
+                              </p>
+                              <p className="text-xs text-muted-foreground wrap-break-word">Reason: {adj.remarks}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(adj.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                                {" · "}{adj.adjusted_by_name}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
-            <div>
-              <p className="text-xs text-muted-foreground">Full Name</p>
-              <p className="font-semibold">{student.name}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Email</p>
-              <p className="font-medium">{student.email}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Guardian</p>
-              <p className="font-medium">{student.guardian_name || "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Nationality</p>
-              <p className="font-medium">{student.nationality || "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Age</p>
-              <p className="font-medium">{student.age || "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Enrolled</p>
-              <p className="font-medium">{fmtDateOnly(student.created_at)}</p>
-            </div>
-          </CardContent>
-        </Card>
+          );
+        })()}
 
         {/* Active Package */}
         {activePackage ? (
@@ -697,7 +980,7 @@ const AdminStudentProfilePage = () => {
                       variant="ghost"
                       className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50"
                       title="Add sessions"
-                      onClick={() => { setShowAdjust("add"); setAdjustAmount("1"); setAdjustRemarks(""); setAdjustError(null); setAdjustSuccess(null); }}
+                      onClick={() => { setShowAdjust("add"); setAdjustAmount("1"); setAdjustRemarkPreset(""); setAdjustRemarks(""); setAdjustError(null); setAdjustSuccess(null); }}
                     >
                       <PlusCircle className="h-4 w-4" />
                     </Button>
@@ -706,7 +989,7 @@ const AdminStudentProfilePage = () => {
                       variant="ghost"
                       className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-50"
                       title="Deduct sessions"
-                      onClick={() => { setShowAdjust("deduct"); setAdjustAmount("1"); setAdjustRemarks(""); setAdjustError(null); setAdjustSuccess(null); }}
+                      onClick={() => { setShowAdjust("deduct"); setAdjustAmount("1"); setAdjustRemarkPreset(""); setAdjustRemarks(""); setAdjustError(null); setAdjustSuccess(null); }}
                     >
                       <MinusCircle className="h-4 w-4" />
                     </Button>
@@ -773,25 +1056,94 @@ const AdminStudentProfilePage = () => {
         )}
 
         {/* Booking History */}
+        {(() => {
+          const filteredBookings = bookings.filter((b) => {
+            const dateStr = b.appointment_date.slice(0, 10); // "YYYY-MM-DD"
+            const [y, m] = dateStr.split("-");
+            if (Number(m) !== Number(historyMonth)) return false;
+            if (Number(y) !== Number(historyYear)) return false;
+            if (historyStatus !== "all" && b.status !== historyStatus) return false;
+            if (historyAttendance === "student_absent" && !b.student_absent) return false;
+            if (historyAttendance === "teacher_absent" && !b.teacher_absent) return false;
+            if (historyAttendance === "present" && (b.student_absent || b.teacher_absent)) return false;
+            return true;
+          });
+          const totalHistoryPages = Math.max(1, Math.ceil(filteredBookings.length / historyPageSize));
+          const pagedBookings = filteredBookings.slice((historyPage - 1) * historyPageSize, historyPage * historyPageSize);
+          const yearOptions = Array.from(
+            new Set(bookings.map((b) => Number(b.appointment_date.slice(0, 4))))
+          ).sort((a, z) => z - a);
+          if (!yearOptions.includes(Number(historyYear))) yearOptions.unshift(Number(historyYear));
+          yearOptions.sort((a, z) => z - a);
+
+          return (
         <Card className="glow-card border-0 rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
             <CardTitle className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5 text-primary" />
               Class History
             </CardTitle>
-            {activePackage && (
-              <div className="flex gap-2">
-                {/* Bulk assign only shown when no package-level teacher is set */}
-                {!activePackage.teacher_id && (
-                  <Button size="sm" variant="outline" className="gap-1" onClick={() => { setBulkTeacherId(""); setBulkMsg(null); setShowBulkAssign(true); }}>
-                    <Users className="h-4 w-4" /> Bulk Assign Classes
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Month filter */}
+              <Select value={historyMonth} onValueChange={(v) => { setHistoryMonth(v); setHistoryPage(1); }}>
+                <SelectTrigger className="h-8 text-xs w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["January","February","March","April","May","June","July","August","September","October","November","December"].map((name, i) => (
+                    <SelectItem key={i + 1} value={String(i + 1)}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {/* Year filter */}
+              <Select value={historyYear} onValueChange={(v) => { setHistoryYear(v); setHistoryPage(1); }}>
+                <SelectTrigger className="h-8 text-xs w-24">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {yearOptions.map((y) => (
+                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {/* Status filter */}
+              <Select value={historyStatus} onValueChange={(v) => { setHistoryStatus(v); setHistoryPage(1); }}>
+                <SelectTrigger className="h-8 text-xs w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="confirmed">Confirmed</SelectItem>
+                  <SelectItem value="done">Done</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+              {/* Attendance filter */}
+              <Select value={historyAttendance} onValueChange={(v) => { setHistoryAttendance(v); setHistoryPage(1); }}>
+                <SelectTrigger className="h-8 text-xs w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Attendance</SelectItem>
+                  <SelectItem value="present">Present</SelectItem>
+                  <SelectItem value="student_absent">Student Absent</SelectItem>
+                  <SelectItem value="teacher_absent">Teacher Absent</SelectItem>
+                </SelectContent>
+              </Select>
+              {activePackage && (
+                <>
+                  {!activePackage.teacher_id && (
+                    <Button size="sm" variant="outline" className="gap-1" onClick={() => { setBulkTeacherId(""); setBulkMsg(null); setShowBulkAssign(true); }}>
+                      <Users className="h-4 w-4" /> Bulk Assign Classes
+                    </Button>
+                  )}
+                  <Button size="sm" className="gap-1" onClick={() => { setSelectedSlots({}); resetAddClassDialog(); setShowAddClass(true); }}>
+                    <Plus className="h-4 w-4" /> Add Class
                   </Button>
-                )}
-                <Button size="sm" className="gap-1" onClick={() => { setSelectedSlots({}); resetAddClassDialog(); setShowAddClass(true); }}>
-                  <Plus className="h-4 w-4" /> Add Class
-                </Button>
-              </div>
-            )}
+                </>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             <Table>
@@ -806,14 +1158,14 @@ const AdminStudentProfilePage = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {bookings.length === 0 ? (
+                {filteredBookings.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-muted-foreground text-sm py-10">
                       No classes found
                     </TableCell>
                   </TableRow>
                 ) : (
-                  bookings.map((b) => (
+                  pagedBookings.map((b) => (
                     <TableRow key={b.id}>
                       <TableCell className="text-sm">
                         {fmtDate(b.appointment_date, "MMM d, yyyy h:mm a")}
@@ -860,7 +1212,12 @@ const AdminStudentProfilePage = () => {
                             Teacher Absent
                           </span>
                         )}
-                        {!b.student_absent && !b.teacher_absent && (
+                        {!b.student_absent && !b.teacher_absent && b.status === "done" && (
+                          <span className="text-xs px-2 py-1 rounded-full font-medium bg-green-100 text-green-700">
+                            Present
+                          </span>
+                        )}
+                        {!b.student_absent && !b.teacher_absent && b.status !== "done" && (
                           <span className="text-muted-foreground text-xs">—</span>
                         )}
                       </TableCell>
@@ -886,7 +1243,7 @@ const AdminStudentProfilePage = () => {
                             variant="ghost"
                             className="text-xs h-7 text-destructive hover:text-destructive"
                             disabled={cancellingId === b.id}
-                            onClick={() => handleCancelBooking(b.id)}
+                            onClick={() => handleInitiateCancel(b)}
                           >
                             {cancellingId === b.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Cancel"}
                           </Button>
@@ -897,8 +1254,20 @@ const AdminStudentProfilePage = () => {
                 )}
               </TableBody>
             </Table>
+            {filteredBookings.length > 0 && (
+              <TablePagination
+                page={historyPage}
+                totalPages={totalHistoryPages}
+                pageSize={historyPageSize}
+                totalItems={filteredBookings.length}
+                onPageChange={setHistoryPage}
+                onPageSizeChange={(s) => { setHistoryPageSize(s); setHistoryPage(1); }}
+              />
+            )}
           </CardContent>
         </Card>
+          );
+        })()}
       </div>
 
       {/* Edit Student Dialog */}
@@ -1274,7 +1643,7 @@ const AdminStudentProfilePage = () => {
       </Dialog>
 
       {/* Session Adjustment Dialog */}
-      <Dialog open={!!showAdjust} onOpenChange={(o) => { if (!o) { setShowAdjust(null); setAdjustSuccess(null); } }}>
+      <Dialog open={!!showAdjust} onOpenChange={(o) => { if (!o) { setShowAdjust(null); setAdjustRemarkPreset(""); setAdjustRemarks(""); setAdjustSuccess(null); } }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>
@@ -1299,15 +1668,32 @@ const AdminStudentProfilePage = () => {
             </div>
 
             <div className="space-y-1.5">
-              <Label>Remarks <span className="text-destructive">*</span></Label>
-              <Textarea
-                placeholder={showAdjust === "add"
-                  ? "e.g. Bonus sessions for referral, compensating for cancelled class..."
-                  : "e.g. Penalty for no-show, correction of incorrect session count..."}
-                value={adjustRemarks}
-                onChange={(e) => setAdjustRemarks(e.target.value)}
-                rows={3}
-              />
+              <Label>Reason <span className="text-destructive">*</span></Label>
+              <Select
+                value={adjustRemarkPreset}
+                onValueChange={(val) => {
+                  setAdjustRemarkPreset(val);
+                  if (val !== "Other") setAdjustRemarks(val);
+                  else setAdjustRemarks("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a reason..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {(showAdjust === "add" ? ADD_PRESETS : DEDUCT_PRESETS).map((preset) => (
+                    <SelectItem key={preset.value} value={preset.value}>{preset.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {adjustRemarkPreset === "Other" && (
+                <Textarea
+                  placeholder="Enter custom reason..."
+                  value={adjustRemarks}
+                  onChange={(e) => setAdjustRemarks(e.target.value)}
+                  rows={2}
+                />
+              )}
               <p className="text-xs text-muted-foreground">
                 This note will be included in the notification sent to the student.
               </p>
@@ -1426,7 +1812,7 @@ const AdminStudentProfilePage = () => {
 
       {/* Assign Package Dialog */}
       <Dialog open={showAssignPkg} onOpenChange={(o) => { if (!o) setShowAssignPkg(false); }}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Assign Package to Student</DialogTitle>
           </DialogHeader>
@@ -1501,6 +1887,30 @@ const AdminStudentProfilePage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Recurring Cancel Choice Dialog */}
+      {recurringCancelBooking && (
+        <Dialog open onOpenChange={o => { if (!o) setRecurringCancelBooking(null); }}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader><DialogTitle>Cancel Class</DialogTitle></DialogHeader>
+            <p className="text-sm text-muted-foreground py-2">
+              This class is part of a recurring schedule. What would you like to cancel?
+            </p>
+            <div className="flex flex-col gap-2 pt-1">
+              <Button variant="outline" className="justify-start"
+                disabled={cancellingId === recurringCancelBooking.id}
+                onClick={() => doCancel(recurringCancelBooking.id, false)}>
+                {cancellingId === recurringCancelBooking.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Cancel this session only"}
+              </Button>
+              <Button variant="destructive" className="justify-start"
+                disabled={cancellingId === recurringCancelBooking.id}
+                onClick={() => doCancel(recurringCancelBooking.id, true)}>
+                {cancellingId === recurringCancelBooking.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Cancel all upcoming sessions in this series"}
+              </Button>
+              <Button variant="ghost" onClick={() => setRecurringCancelBooking(null)}>Keep it</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 };

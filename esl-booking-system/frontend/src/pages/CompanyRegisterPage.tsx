@@ -158,7 +158,7 @@ const CompanyRegisterPage = () => {
           <Button
             variant="outline"
             size="sm"
-            className="border-white/30 text-white hover:bg-white/10 hover:text-white"
+            className="border-white/30 text-white bg-white/10 hover:bg-white/50 hover:text-white"
             onClick={() => navigate("/")}
           >
             Back to Home

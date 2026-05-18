@@ -362,7 +362,8 @@ router.post('/bookings/:id/cancel', authenticateToken, requireRole('teacher'), a
         const { id } = req.params;
 
         const [[booking]] = await pool.query(
-            `SELECT b.id, b.appointment_date, b.teacher_id, b.student_package_id, sp.student_id, u.name AS student_name
+            `SELECT b.id, b.appointment_date, b.teacher_id, b.student_package_id, b.recurring_schedule_id,
+                    b.booking_group_id, sp.student_id, u.name AS student_name
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
              JOIN users u ON sp.student_id = u.id
@@ -399,12 +400,73 @@ router.post('/bookings/:id/cancel', authenticateToken, requireRole('teacher'), a
             });
         }
 
+        const cancelAll = req.query.cancelAll === 'true';
+        const [[teacher]] = await pool.query('SELECT name FROM users WHERE id = ?', [teacherId]);
+
+        if (cancelAll && booking.recurring_schedule_id) {
+            // Cancel this session and all future bookings in the recurring series
+            const [futureBookings] = await pool.query(
+                `SELECT id, student_package_id, booking_group_id
+                 FROM bookings
+                 WHERE recurring_schedule_id = ? AND company_id = ?
+                   AND appointment_date >= ?
+                   AND status NOT IN ('done', 'cancelled')`,
+                [booking.recurring_schedule_id, companyId, booking.appointment_date]
+            );
+
+            const classGroups = new Set();
+            for (const b of futureBookings) {
+                classGroups.add(b.booking_group_id || `solo_${b.id}`);
+            }
+            const classCount = classGroups.size;
+
+            if (futureBookings.length > 0) {
+                await pool.query(
+                    `UPDATE bookings SET status = 'cancelled'
+                     WHERE recurring_schedule_id = ? AND company_id = ?
+                       AND appointment_date >= ?
+                       AND status NOT IN ('done', 'cancelled')`,
+                    [booking.recurring_schedule_id, companyId, booking.appointment_date]
+                );
+                await pool.query(
+                    `UPDATE student_packages SET sessions_remaining = sessions_remaining + ?
+                     WHERE id = ? AND company_id = ?`,
+                    [classCount, booking.student_package_id, companyId]
+                );
+                await pool.query(
+                    `UPDATE recurring_schedules SET status = 'cancelled', cancelled_at = NOW()
+                     WHERE id = ? AND company_id = ?`,
+                    [booking.recurring_schedule_id, companyId]
+                );
+            }
+
+            if (booking.student_id) {
+                await notify({
+                    userId: booking.student_id, companyId,
+                    type: 'class_cancelled',
+                    title: 'Recurring schedule cancelled by teacher',
+                    message: `Your recurring schedule was cancelled by the teacher (${classCount} upcoming class(es) cancelled).`,
+                });
+            }
+            const [admins] = await pool.query(
+                "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin'", [companyId]
+            );
+            await Promise.all(admins.map(admin => notify({
+                userId: admin.id, companyId,
+                type: 'booking_cancelled',
+                title: 'Recurring schedule cancelled by teacher',
+                message: `${teacher?.name || 'A teacher'} cancelled their recurring schedule with ${booking.student_name} (${classCount} upcoming class(es) cancelled).`,
+            })));
+
+            await logAction(companyId, teacherId, 'recurring_cancelled_by_teacher', 'recurring_schedule', booking.recurring_schedule_id, { student_name: booking.student_name, cancelled: classCount });
+            return res.json({ message: 'All upcoming recurring sessions cancelled', cancelled: classCount });
+        }
+
         // Group-aware: cancel all slots in the multi-slot group
-        const [[fullBooking]] = await pool.query("SELECT booking_group_id FROM bookings WHERE id = ?", [id]);
-        if (fullBooking?.booking_group_id) {
+        if (booking.booking_group_id) {
             await pool.query(
                 "UPDATE bookings SET status = 'cancelled' WHERE booking_group_id = ? AND company_id = ? AND status NOT IN ('done', 'cancelled')",
-                [fullBooking.booking_group_id, companyId]
+                [booking.booking_group_id, companyId]
             );
         } else {
             await pool.query("UPDATE bookings SET status = 'cancelled' WHERE id = ? AND teacher_id = ? AND company_id = ?", [id, teacherId, companyId]);
@@ -418,7 +480,6 @@ router.post('/bookings/:id/cancel', authenticateToken, requireRole('teacher'), a
         );
 
         const dateStr = new Date(booking.appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
-        const [[teacher]] = await pool.query('SELECT name FROM users WHERE id = ?', [teacherId]);
 
         if (booking.student_id) {
             await notify({

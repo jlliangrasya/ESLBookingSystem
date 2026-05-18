@@ -67,6 +67,7 @@ interface Booking {
   meeting_link: string | null;
   teacher_absent: boolean;
   student_absent: boolean;
+  recurring_schedule_id: number | null;
 }
 
 interface Absence {
@@ -111,7 +112,10 @@ const StudentDashboard = () => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [reports, setReports] = useState<Report[]>([]);
   const [expandedReport, setExpandedReport] = useState<number | null>(null);
-  const [reportMonth, setReportMonth] = useState<string>("all");
+  const [reportMonth, setReportMonth] = useState<number>(new Date().getMonth() + 1);
+  const [reportYear, setReportYear] = useState<number>(new Date().getFullYear());
+  const [absenceMonth, setAbsenceMonth] = useState<number>(new Date().getMonth() + 1);
+  const [absenceYear, setAbsenceYear] = useState<number>(new Date().getFullYear());
   const [reportPage, setReportPage] = useState(1);
   const [reportPageSize, setReportPageSize] = useState(20);
   const [absentLoadingId, setAbsentLoadingId] = useState<number | null>(null);
@@ -136,6 +140,7 @@ const StudentDashboard = () => {
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [showCancelPolicyModal, setShowCancelPolicyModal] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState<number | null>(null);
+  const [recurringCancelBooking, setRecurringCancelBooking] = useState<Booking | null>(null);
   const [copiedLinkId, setCopiedLinkId] = useState<number | null>(null);
 
   // Company settings for enrollment
@@ -300,27 +305,33 @@ const StudentDashboard = () => {
     }
   };
 
-  const handleStudentCancel = (bookingId: number, appointmentDatetime: string) => {
-    const apptTime = parseUTC(appointmentDatetime)?.getTime() ?? 0;
+  const handleStudentCancel = (booking: Booking) => {
+    const apptTime = parseUTC(booking.appointment_datetime)?.getTime() ?? 0;
     const hoursUntil = (apptTime - Date.now()) / (1000 * 60 * 60);
     if (cancellationHours > 0 && hoursUntil < cancellationHours) {
       // Within window — notify teacher via backend (fire-and-forget), show policy modal
-      axios.delete(`${import.meta.env.VITE_API_URL}/api/bookings/${bookingId}`, {
+      axios.delete(`${import.meta.env.VITE_API_URL}/api/bookings/${booking.id}`, {
         headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {});
       setShowCancelPolicyModal(true);
+    } else if (booking.recurring_schedule_id) {
+      setRecurringCancelBooking(booking);
     } else {
-      setShowCancelConfirm(bookingId);
+      setShowCancelConfirm(booking.id);
     }
   };
 
-  const handleConfirmCancel = async () => {
-    if (!showCancelConfirm) return;
-    const id = showCancelConfirm;
+  const handleConfirmCancel = async (bookingId?: number, cancelAll?: boolean) => {
+    const id = bookingId ?? showCancelConfirm;
+    if (!id) return;
     setCancellingId(id);
     setShowCancelConfirm(null);
+    setRecurringCancelBooking(null);
     try {
-      await axios.delete(`${import.meta.env.VITE_API_URL}/api/bookings/${id}`, {
+      const url = cancelAll
+        ? `${import.meta.env.VITE_API_URL}/api/bookings/${id}?cancelAll=true`
+        : `${import.meta.env.VITE_API_URL}/api/bookings/${id}`;
+      await axios.delete(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setShowClassModal(false);
@@ -663,37 +674,46 @@ const StudentDashboard = () => {
 
       {/* My Reports */}
       {reports.length > 0 && (() => {
-        const monthOptions = [...new Set(reports.map(r => {
-          const d = new Date(r.appointment_date + (r.appointment_date.includes('T') ? '' : 'T00:00:00'));
-          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        }))].sort().reverse();
+        const reportYears = [...new Set(reports.map(r => Number(r.appointment_date.slice(0, 4))))].sort((a, b) => b - a);
 
-        const filtered = reportMonth === "all" ? reports : reports.filter(r => {
-          const d = new Date(r.appointment_date + (r.appointment_date.includes('T') ? '' : 'T00:00:00'));
-          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === reportMonth;
+        const filtered = reports.filter(r => {
+          const [y, m] = r.appointment_date.slice(0, 7).split("-");
+          return Number(y) === reportYear && Number(m) === reportMonth;
         });
         const totalPages = Math.max(1, Math.ceil(filtered.length / reportPageSize));
         const paginated = filtered.slice((reportPage - 1) * reportPageSize, reportPage * reportPageSize);
 
+        const MONTHS = [
+          "January","February","March","April","May","June",
+          "July","August","September","October","November","December"
+        ];
+
         return (
           <div className="max-w-7xl mx-auto px-4 pb-10">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
                 <CardTitle className="text-base flex items-center gap-2">
                   <FileText className="h-4 w-4 text-primary" />
                   {t("student.myReports")}
                 </CardTitle>
-                <Select value={reportMonth} onValueChange={(v) => { setReportMonth(v); setReportPage(1); }}>
-                  <SelectTrigger className="w-40 h-8 text-xs"><SelectValue placeholder="All months" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All months</SelectItem>
-                    {monthOptions.map(m => {
-                      const [y, mo] = m.split('-');
-                      const label = new Date(Number(y), Number(mo) - 1).toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
-                      return <SelectItem key={m} value={m}>{label}</SelectItem>;
-                    })}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                  <Select value={String(reportMonth)} onValueChange={(v) => { setReportMonth(Number(v)); setReportPage(1); }}>
+                    <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {MONTHS.map((name, i) => (
+                        <SelectItem key={i + 1} value={String(i + 1)}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={String(reportYear)} onValueChange={(v) => { setReportYear(Number(v)); setReportPage(1); }}>
+                    <SelectTrigger className="w-24 h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {reportYears.map(y => (
+                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 {paginated.length === 0 ? (
@@ -729,51 +749,87 @@ const StudentDashboard = () => {
       })()}
 
       {/* Absence History */}
-      {absences.length > 0 && (
-        <div className="max-w-7xl mx-auto px-4 pb-10">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <UserX className="h-4 w-4 text-primary" />
-                {t("student.absenceHistory")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t("student.dateTime")}</TableHead>
-                    <TableHead>{t("student.teacher")}</TableHead>
-                    <TableHead>{t("student.reason")}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {absences.map((a) => (
-                    <TableRow key={a.id}>
-                      <TableCell className="text-sm">
-                        {fmtDate(a.appointment_date, "MMM d, yyyy h:mm a")}
-                      </TableCell>
-                      <TableCell className="text-sm">{a.teacher_name || "—"}</TableCell>
-                      <TableCell>
-                        {!!a.student_absent && (
-                          <span className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-700">
-                            {t("student.youAbsent")}
-                          </span>
-                        )}
-                        {!!a.teacher_absent && (
-                          <span className="text-xs px-2 py-1 rounded-full font-medium bg-red-100 text-red-700 ml-1">
-                            {t("student.teacherAbsent")}
-                          </span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      {absences.length > 0 && (() => {
+        const absenceYears = [...new Set(absences.map(a => Number(a.appointment_date.slice(0, 4))))].sort((a, b) => b - a);
+
+        const filteredAbsences = absences.filter(a => {
+          const [y, m] = a.appointment_date.slice(0, 7).split("-");
+          return Number(y) === absenceYear && Number(m) === absenceMonth;
+        });
+
+        const MONTHS = [
+          "January","February","March","April","May","June",
+          "July","August","September","October","November","December"
+        ];
+
+        return (
+          <div className="max-w-7xl mx-auto px-4 pb-10">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <UserX className="h-4 w-4 text-primary" />
+                  {t("student.absenceHistory")}
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Select value={String(absenceMonth)} onValueChange={(v) => setAbsenceMonth(Number(v))}>
+                    <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {MONTHS.map((name, i) => (
+                        <SelectItem key={i + 1} value={String(i + 1)}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={String(absenceYear)} onValueChange={(v) => setAbsenceYear(Number(v))}>
+                    <SelectTrigger className="w-24 h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {absenceYears.map(y => (
+                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {filteredAbsences.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-6">No absences for this period.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t("student.dateTime")}</TableHead>
+                        <TableHead>{t("student.teacher")}</TableHead>
+                        <TableHead>{t("student.reason")}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredAbsences.map((a) => (
+                        <TableRow key={a.id}>
+                          <TableCell className="text-sm">
+                            {fmtDate(a.appointment_date, "MMM d, yyyy h:mm a")}
+                          </TableCell>
+                          <TableCell className="text-sm">{a.teacher_name || "—"}</TableCell>
+                          <TableCell>
+                            {!!a.student_absent && (
+                              <span className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-700">
+                                {t("student.youAbsent")}
+                              </span>
+                            )}
+                            {!!a.teacher_absent && (
+                              <span className="text-xs px-2 py-1 rounded-full font-medium bg-red-100 text-red-700 ml-1">
+                                {t("student.teacherAbsent")}
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
 
       {/* My Waitlist */}
       <div className="max-w-7xl mx-auto px-4 pb-10">
@@ -949,7 +1005,38 @@ const StudentDashboard = () => {
           </p>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setShowCancelConfirm(null)}>{t("student.noKeepIt")}</Button>
-            <Button variant="destructive" onClick={handleConfirmCancel}>{t("student.yesCancel")}</Button>
+            <Button variant="destructive" onClick={() => handleConfirmCancel()}>{t("student.yesCancel")}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Recurring Cancel Choice Modal */}
+      <Dialog open={recurringCancelBooking !== null} onOpenChange={(o) => { if (!o) setRecurringCancelBooking(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("student.cancelClass")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">
+            This class is part of a recurring schedule. What would you like to cancel?
+          </p>
+          <div className="flex flex-col gap-2 pt-1">
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={() => handleConfirmCancel(recurringCancelBooking!.id, false)}
+            >
+              Cancel this session only
+            </Button>
+            <Button
+              variant="destructive"
+              className="justify-start"
+              onClick={() => handleConfirmCancel(recurringCancelBooking!.id, true)}
+            >
+              Cancel all upcoming sessions in this series
+            </Button>
+            <Button variant="ghost" onClick={() => setRecurringCancelBooking(null)}>
+              {t("student.noKeepIt")}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -1190,7 +1277,7 @@ const StudentDashboard = () => {
                         variant="outline"
                         className="text-xs h-7 border-destructive text-destructive hover:bg-red-50"
                         disabled={cancellingId === b.id}
-                        onClick={() => handleStudentCancel(b.id, b.appointment_datetime)}
+                        onClick={() => handleStudentCancel(b)}
                       >
                         {cancellingId === b.id ? t("student.cancelling") : t("student.cancelClass")}
                       </Button>

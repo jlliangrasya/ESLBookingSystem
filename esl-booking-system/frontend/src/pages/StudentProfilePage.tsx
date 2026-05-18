@@ -26,6 +26,8 @@ import {
   CheckCircle2,
   CalendarClock,
   Layers,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import { TIMEZONES, setUserTimezone } from "@/utils/timezone";
 
@@ -42,6 +44,19 @@ interface PackageHistory {
   purchased_at: string;
 }
 
+interface SessionAdjustment {
+  id: number;
+  student_package_id: number;
+  adjustment: number;
+  remarks: string;
+  created_at: string;
+  adjusted_by_name: string;
+}
+
+type TimelineItem =
+  | { kind: "package"; date: string; data: PackageHistory }
+  | { kind: "adjustment"; date: string; data: SessionAdjustment };
+
 interface StudentProfile {
   name: string;
   email: string;
@@ -51,6 +66,8 @@ interface StudentProfile {
   timezone: string;
   created_at?: string;
 }
+
+const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 const StudentProfilePage = () => {
   const { t } = useTranslation();
@@ -74,11 +91,14 @@ const StudentProfilePage = () => {
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [packageHistory, setPackageHistory] = useState<PackageHistory[]>([]);
+  const [adjustments, setAdjustments] = useState<SessionAdjustment[]>([]);
   const [stats, setStats] = useState({
     completed_count: 0,
     upcoming_count: 0,
     sessions_remaining: 0,
   });
+  const [selectedYear, setSelectedYear] = useState<string>("all");
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
 
   useEffect(() => {
     axios
@@ -88,6 +108,10 @@ const StudentProfilePage = () => {
     axios
       .get(`${base}/api/student/package-history`, { headers })
       .then((r) => setPackageHistory(r.data))
+      .catch(console.error);
+    axios
+      .get(`${base}/api/student/package-adjustments`, { headers })
+      .then((r) => setAdjustments(r.data))
       .catch(console.error);
     axios
       .get(`${base}/api/student/profile`, { headers })
@@ -143,7 +167,7 @@ const StudentProfilePage = () => {
     } catch (err: unknown) {
       setSaveError(
         (err as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message || "Failed to save",
+          ?.message || t("profile.updateFailed"),
       );
     } finally {
       setSaving(false);
@@ -182,6 +206,37 @@ const StudentProfilePage = () => {
     </div>
   );
 
+  // Build a flat timeline of packages + adjustments sorted newest-first
+  const timeline: TimelineItem[] = [
+    ...packageHistory.map((pkg) => ({
+      kind: "package" as const,
+      date: pkg.purchased_at,
+      data: pkg,
+    })),
+    ...adjustments.map((adj) => ({
+      kind: "adjustment" as const,
+      date: adj.created_at,
+      data: adj,
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // Collect unique years from the full timeline, newest-first
+  const yearSet = new Set<string>();
+  for (const item of timeline) yearSet.add(item.date.slice(0, 4));
+  const yearOptions = Array.from(yearSet).sort((a, b) => b.localeCompare(a));
+
+  // Filter timeline by selected year + month
+  const filteredTimeline = timeline.filter((item) => {
+    const [y, m] = item.date.slice(0, 7).split("-");
+    if (selectedYear !== "all" && y !== selectedYear) return false;
+    if (selectedMonth !== "all" && m !== selectedMonth.padStart(2, "0"))
+      return false;
+    return true;
+  });
+
+  const monthName = (num: number) =>
+    new Date(2000, num - 1).toLocaleDateString(undefined, { month: "long" });
+
   return (
     <div className="min-h-screen brand-gradient-subtle">
       {/* Navbar */}
@@ -196,24 +251,25 @@ const StudentProfilePage = () => {
 
       {/* Page body */}
       <div className="max-w-5xl mx-auto px-6 pb-12">
-        {/* Avatar — overlaps bottom of banner */}
-        <div className="-mt-10 mb-3">
-          <div className="h-20 w-20 rounded-full brand-gradient flex items-center justify-center text-white text-2xl font-bold border-4 border-background shadow-lg select-none">
+        {/* Avatar row — avatar left, identity info right, both overlap banner */}
+        <div className="-mt-10 mb-6 flex items-end justify-between gap-4">
+          {/* Avatar */}
+          <div className="h-20 w-20 shrink-0 rounded-full brand-gradient flex items-center justify-center text-white text-2xl font-bold border-4 border-background shadow-lg select-none">
             {initials || "S"}
           </div>
-        </div>
 
-        {/* Identity */}
-        <div className="mb-1">
-          <h2 className="text-xl font-bold leading-tight">
-            {profile.name || "—"}
-          </h2>
-          <p className="text-sm text-muted-foreground">{profile.email}</p>
-          {memberSince && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Member since {memberSince}
-            </p>
-          )}
+          {/* Identity — right-aligned, sits at bottom of banner overlap */}
+          <div className="text-right pb-1">
+            <h2 className="text-xl font-bold leading-tight">
+              {profile.name || "—"}
+            </h2>
+            <p className="text-sm text-muted-foreground">{profile.email}</p>
+            {memberSince && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {t("profile.memberSince", { date: memberSince })}
+              </p>
+            )}
+          </div>
         </div>
 
         <Button
@@ -238,7 +294,7 @@ const StudentProfilePage = () => {
                     {stats.completed_count}
                   </span>
                   <span className="text-xs text-muted-foreground text-center leading-tight">
-                    Sessions Completed
+                    {t("profile.statsCompleted")}
                   </span>
                 </CardContent>
               </Card>
@@ -249,7 +305,7 @@ const StudentProfilePage = () => {
                     {stats.upcoming_count}
                   </span>
                   <span className="text-xs text-muted-foreground text-center leading-tight">
-                    Upcoming Classes
+                    {t("profile.statsUpcoming")}
                   </span>
                 </CardContent>
               </Card>
@@ -260,7 +316,7 @@ const StudentProfilePage = () => {
                     {stats.sessions_remaining}
                   </span>
                   <span className="text-xs text-muted-foreground text-center leading-tight">
-                    Sessions Remaining
+                    {t("profile.statsRemaining")}
                   </span>
                 </CardContent>
               </Card>
@@ -270,7 +326,7 @@ const StudentProfilePage = () => {
             <Card className="glow-card border-0 rounded-2xl">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-base">
-                  Personal Information
+                  {t("profile.personalInfo")}
                 </CardTitle>
                 {!isEditing ? (
                   <Button
@@ -290,7 +346,7 @@ const StudentProfilePage = () => {
                       onClick={handleCancel}
                       className="gap-1.5"
                     >
-                      <X className="h-3.5 w-3.5" /> Cancel
+                      <X className="h-3.5 w-3.5" /> {t("profile.cancel")}
                     </Button>
                     <Button
                       size="sm"
@@ -379,7 +435,7 @@ const StudentProfilePage = () => {
                         type={showPassword ? "text" : "password"}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Enter new password"
+                        placeholder={t("profile.newPasswordPlaceholder")}
                         className="pr-10"
                       />
                       <button
@@ -404,64 +460,163 @@ const StudentProfilePage = () => {
           {/* RIGHT — Student Records, sticky + scrollable */}
           <div className="sticky top-4">
             <Card className="glow-card border-0 rounded-2xl">
-              <CardHeader className="pb-2">
+              <CardHeader className="pb-2 space-y-2">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Package className="h-4 w-4 text-primary" />
-                  Student Records
+                  {t("profile.studentRecords")}
                 </CardTitle>
+
+                {/* Year + Month filters */}
+                {timeline.length > 0 && (
+                  <div className="flex gap-2">
+                    <Select
+                      value={selectedYear}
+                      onValueChange={(v) => {
+                        setSelectedYear(v);
+                        setSelectedMonth("all");
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-xs flex-1">
+                        <SelectValue placeholder={t("profile.filterAllYears")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">
+                          {t("profile.filterAllYears")}
+                        </SelectItem>
+                        {yearOptions.map((y) => (
+                          <SelectItem key={y} value={y}>
+                            {y}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Select
+                      value={selectedMonth}
+                      onValueChange={setSelectedMonth}
+                    >
+                      <SelectTrigger className="h-8 text-xs flex-1">
+                        <SelectValue
+                          placeholder={t("profile.filterAllMonths")}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">
+                          {t("profile.filterAllMonths")}
+                        </SelectItem>
+                        {MONTHS.map((m) => (
+                          <SelectItem key={m} value={String(m)}>
+                            {monthName(m)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </CardHeader>
+
               <CardContent className="overflow-y-auto max-h-[65vh] pr-1">
-                {packageHistory.length === 0 ? (
+                {filteredTimeline.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No packages availed yet.
+                    {timeline.length === 0
+                      ? t("profile.noPackages")
+                      : t("profile.noRecordsForMonth")}
                   </p>
                 ) : (
-                  <div className="space-y-3">
-                    {packageHistory.map((pkg) => (
-                      <div
-                        key={pkg.id}
-                        className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3"
-                      >
-                        <div className="space-y-0.5 min-w-0">
-                          <p className="font-medium text-sm truncate">
-                            {pkg.package_name}
-                          </p>
-                          {pkg.subject && (
-                            <p className="text-xs text-muted-foreground">
-                              {pkg.subject}
-                            </p>
-                          )}
-                          <p className="text-xs text-muted-foreground">
-                            {pkg.session_limit} sessions ·{" "}
-                            {pkg.duration_minutes} min · {pkg.currency}{" "}
-                            {Number(pkg.price).toLocaleString()}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Availed:{" "}
-                            {new Date(pkg.purchased_at).toLocaleDateString(
-                              undefined,
-                              {
-                                year: "numeric",
-                                month: "short",
-                                day: "numeric",
-                              },
-                            )}
-                          </p>
-                        </div>
-                        <Badge
-                          variant={
-                            pkg.payment_status === "paid"
-                              ? "default"
-                              : pkg.payment_status === "rejected"
-                                ? "destructive"
-                                : "secondary"
-                          }
-                          className="shrink-0 capitalize"
+                  <div className="space-y-2">
+                    {filteredTimeline.map((item) => {
+                      if (item.kind === "package") {
+                        const pkg = item.data;
+                        return (
+                          <div
+                            key={`pkg-${pkg.id}`}
+                            className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3"
+                          >
+                            <div className="space-y-0.5 min-w-0">
+                              <p className="font-medium text-sm truncate">
+                                {pkg.package_name}
+                              </p>
+                              {pkg.subject && (
+                                <p className="text-xs text-muted-foreground">
+                                  {pkg.subject}
+                                </p>
+                              )}
+                              <p className="text-xs text-muted-foreground">
+                                {pkg.session_limit} {t("profile.sessions")} ·{" "}
+                                {pkg.duration_minutes} {t("profile.min")} ·{" "}
+                                {pkg.currency}{" "}
+                                {Number(pkg.price).toLocaleString()}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {t("profile.availed")}:{" "}
+                                {new Date(pkg.purchased_at).toLocaleDateString(
+                                  undefined,
+                                  {
+                                    year: "numeric",
+                                    month: "short",
+                                    day: "numeric",
+                                  },
+                                )}
+                              </p>
+                            </div>
+                            <Badge
+                              variant={
+                                pkg.payment_status === "paid"
+                                  ? "default"
+                                  : pkg.payment_status === "rejected"
+                                    ? "destructive"
+                                    : "secondary"
+                              }
+                              className="shrink-0 capitalize"
+                            >
+                              {t(
+                                `profile.paymentStatus.${pkg.payment_status}`,
+                              )}
+                            </Badge>
+                          </div>
+                        );
+                      }
+
+                      const adj = item.data;
+                      return (
+                        <div
+                          key={`adj-${adj.id}`}
+                          className="flex items-start gap-2.5 rounded-lg border border-dashed px-3 py-2.5"
                         >
-                          {pkg.payment_status}
-                        </Badge>
-                      </div>
-                    ))}
+                          <div className="mt-0.5 shrink-0">
+                            {adj.adjustment > 0 ? (
+                              <TrendingUp className="h-3.5 w-3.5 text-green-500" />
+                            ) : (
+                              <TrendingDown className="h-3.5 w-3.5 text-destructive" />
+                            )}
+                          </div>
+                          <div className="space-y-0.5 min-w-0">
+                            <p className="text-xs font-medium">
+                              {adj.adjustment > 0
+                                ? t("profile.adjustment.added", {
+                                    count: adj.adjustment,
+                                  })
+                                : t("profile.adjustment.deducted", {
+                                    count: Math.abs(adj.adjustment),
+                                  })}
+                            </p>
+                            <p className="text-xs text-muted-foreground wrap-break-word">
+                              {t("profile.adjustment.reason")}: {adj.remarks}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(adj.created_at).toLocaleDateString(
+                                undefined,
+                                {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                },
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
