@@ -39,12 +39,16 @@ export function fmtDate(utcStr: string, fmt = "MMM d, yyyy h:mm a", _tz?: string
     }
 }
 
-/** Normalize a UTC string (ISO or MySQL DATETIME) into a Date object */
+/**
+ * Normalize a MySQL DATETIME string stored as PHT display time into a Date object.
+ * Appends +00:00 to force the JS Date constructor to treat those digits as UTC,
+ * matching the same strategy used in fmtDate so comparisons and calendar keys stay correct.
+ */
 export function parseUTC(utcStr: string): Date | null {
     if (!utcStr) return null;
     try {
         const normalized = utcStr.includes('T') ? utcStr : utcStr.replace(' ', 'T');
-        return new Date(normalized);
+        return new Date(normalized + (normalized.endsWith('Z') ? '' : '+00:00'));
     } catch {
         return null;
     }
