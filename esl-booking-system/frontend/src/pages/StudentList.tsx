@@ -89,6 +89,8 @@ const StudentListPage: React.FC = () => {
   const [teacherFilter, setTeacherFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [credStudent, setCredStudent] = useState<{ name: string; email: string; password: string; age: string; guardian_name: string } | null>(null);
+  const [credCopied, setCredCopied] = useState(false);
 
   const handleCopyInfo = (student: Student) => {
     const text = `Name: ${student.name}
@@ -97,7 +99,7 @@ Guardian: ${student.guardian_name ?? ""}
 Email: ${student.email}
 Password: ${student.password}
 
-Please use the email and password to login to https://esl-booking-system.vercel.app`;
+Please use the email and password to login to https://esl-booking-system.pages.dev`;
     navigator.clipboard.writeText(text);
     setCopiedId(student.id);
     setTimeout(() => setCopiedId(null), 2000);
@@ -163,6 +165,13 @@ Please use the email and password to login to https://esl-booking-system.vercel.
         { headers: { Authorization: `Bearer ${token}` } },
       );
       setShowAddModal(false);
+      setCredStudent({
+        name: addForm.name,
+        email: addForm.email,
+        password: addForm.password,
+        age: addForm.age,
+        guardian_name: addForm.guardian_name,
+      });
       setAddForm(emptyForm);
       fetchStudents();
     } catch (err: unknown) {
@@ -391,6 +400,61 @@ Please use the email and password to login to https://esl-booking-system.vercel.
           )}
         </div>
       </div>
+
+      {/* Send Credentials prompt — shown after a student is successfully created */}
+      <Dialog open={!!credStudent} onOpenChange={(open) => { if (!open) { setCredStudent(null); setCredCopied(false); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Student Added!</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Share these login credentials with your student. Use the{" "}
+              <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                <Copy className="h-3.5 w-3.5" /> Copy
+              </span>{" "}
+              button below and send it to them via chat or message.
+            </p>
+            {credStudent && (() => {
+              const credText = `Name: ${credStudent.name}
+Age: ${credStudent.age ?? ""}
+Guardian: ${credStudent.guardian_name ?? ""}
+Email: ${credStudent.email}
+Password: ${credStudent.password}
+
+Please use the email and password to login to https://esl-booking-system.pages.dev`;
+              return (
+                <div className="relative rounded-lg border bg-muted/50 p-4">
+                  <pre className="text-xs whitespace-pre-wrap break-all font-mono text-foreground leading-relaxed">
+                    {credText}
+                  </pre>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="mt-3 w-full gap-2"
+                    onClick={() => {
+                      navigator.clipboard.writeText(credText);
+                      setCredCopied(true);
+                      setTimeout(() => setCredCopied(false), 2000);
+                    }}
+                  >
+                    {credCopied ? (
+                      <><Check className="h-3.5 w-3.5 text-green-500" /> Copied!</>
+                    ) : (
+                      <><Copy className="h-3.5 w-3.5" /> Copy Credentials</>
+                    )}
+                  </Button>
+                </div>
+              );
+            })()}
+          </div>
+          <DialogFooter className="mt-2">
+            <Button variant="outline" onClick={() => { setCredStudent(null); setCredCopied(false); }}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add Student Modal */}
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>

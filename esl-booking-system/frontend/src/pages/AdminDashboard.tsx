@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+﻿import { useState, useEffect, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import NavBar from "../components/Navbar";
 import axios from "axios";
@@ -45,6 +45,8 @@ import {
 } from "@/components/ui/dialog";
 import { fmtDate } from "@/utils/timezone";
 import AnnouncementPanel from "@/components/AnnouncementPanel";
+import AuthContext from "@/context/AuthContext";
+import OnboardingChecklist from "@/components/OnboardingChecklist";
 
 interface Feedback {
   id: number;
@@ -114,6 +116,8 @@ const AdminDashboard = () => {
   >([]);
   const [studentPackages, setStudentPackages] = useState<StudentPackage[]>([]);
   const navigate = useNavigate();
+  const authContext = useContext(AuthContext);
+  const currentUser = authContext?.user ?? null;
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -298,6 +302,14 @@ const AdminDashboard = () => {
       <NavBar />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         <AnnouncementPanel />
+        {currentUser?.role === "company_admin" && currentUser.company_id != null && (
+          <OnboardingChecklist
+            companyId={currentUser.company_id}
+            teacherCount={teacherCount}
+            studentCount={students.length}
+            bookingCount={bookings.length}
+          />
+        )}
         {/* Plan badge */}
         {analytics?.totals.planName && (
           <div className="flex items-center gap-2">

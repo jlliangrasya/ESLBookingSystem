@@ -93,10 +93,64 @@ router.post('/register', async (req, res) => {
             );
         }
 
+        // Free plan accounts are activated immediately inside the transaction for atomicity
+        if (isTrial) {
+            await connection.query(
+                `UPDATE companies
+                 SET status = 'active', approved_at = NOW(), trial_ends_at = DATE_ADD(NOW(), INTERVAL 30 DAY)
+                 WHERE id = ?`,
+                [companyId]
+            );
+        }
+
         await connection.commit();
 
-        // Notify all super_admins (fire-and-forget, after commit)
+        // Notify all super_admins for visibility (fire-and-forget, after commit)
         const [superAdmins] = await pool.query('SELECT id FROM users WHERE role = ?', ['super_admin']);
+
+        if (isTrial) {
+            // Free plan: auto-activated, superadmins notified for info only
+            await Promise.all(superAdmins.map(sa => notify({
+                userId: sa.id,
+                companyId: null,
+                type: 'new_company',
+                title: 'New free-plan company registered',
+                message: `"${company_name}" registered on the ${plan.name} plan and was auto-activated.`,
+            })));
+
+            notify({
+                userId: ownerResult.insertId,
+                companyId,
+                type: 'company_approved',
+                title: 'Your account is active!',
+                message: 'Your free trial account is ready. You have 30 days to explore the platform. Start by adding a teacher, then a student, then book your first class.',
+            });
+
+            sendMail({
+                to: owner_email,
+                subject: 'Your ESL Booking Account Is Ready',
+                html: `<h2>Welcome, ${owner_name}!</h2>
+                       <p>Your ESL center <strong>${company_name}</strong> has been registered and your account is <strong>immediately active</strong>.</p>
+                       <p>You can log in right now and start setting up your school:</p>
+                       <ol>
+                         <li>Add a teacher</li>
+                         <li>Add a student (credentials are sent automatically)</li>
+                         <li>Have your student log in and book their first class</li>
+                       </ol>
+                       <p>Your free trial runs for <strong>30 days</strong>.</p>
+                       <p>Thank you for choosing our platform!</p>`,
+            }).catch(() => {});
+
+            await logAction(null, ownerResult.insertId, 'company_auto_activated', 'company', companyId, { company_name, plan: plan.name });
+
+            return res.status(201).json({
+                message: 'Registration successful! Your free trial account is active. You can log in immediately.',
+                company_id: companyId,
+                auto_activated: true,
+            });
+        }
+
+        // Paid plan: pending approval flow (unchanged)
         await Promise.all(superAdmins.map(sa => notify({
             userId: sa.id,
             companyId: null,

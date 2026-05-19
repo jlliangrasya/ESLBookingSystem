@@ -121,18 +121,32 @@ const CompanyRegisterPage = () => {
         <Card className="max-w-md w-full text-center shadow-lg">
           <CardContent className="pt-8 pb-8 space-y-4">
             <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto" />
-            <h2 className="text-2xl font-bold text-gray-800">Application Submitted!</h2>
-            <p className="text-muted-foreground">
-              Your ESL center registration is pending review. Our team will contact you at{" "}
-              <span className="font-medium">{form.owner_email}</span> once approved.
-            </p>
-            {!isFreePlan && (
-              <p className="text-sm text-muted-foreground">
-                Our team will verify your payment and activate your account within 1–2 business days.
-              </p>
+            {isFreePlan ? (
+              <>
+                <h2 className="text-2xl font-bold text-gray-800">You're All Set!</h2>
+                <p className="text-muted-foreground">
+                  Your account for <span className="font-medium">{form.company_name}</span> is{" "}
+                  <strong>immediately active</strong>. Check your email at{" "}
+                  <span className="font-medium">{form.owner_email}</span> for your login details.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Your 30-day free trial starts now. Log in and start adding teachers and students.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-2xl font-bold text-gray-800">Application Submitted!</h2>
+                <p className="text-muted-foreground">
+                  Your ESL center registration is pending review. Our team will contact you at{" "}
+                  <span className="font-medium">{form.owner_email}</span> once approved.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Our team will verify your payment and activate your account within 1–2 business days.
+                </p>
+              </>
             )}
-            <Button onClick={() => navigate("/")} className="w-full mt-4">
-              Back to Home
+            <Button onClick={() => navigate(isFreePlan ? "/login" : "/")} className="w-full mt-4">
+              {isFreePlan ? "Go to Login" : "Back to Home"}
             </Button>
           </CardContent>
         </Card>
