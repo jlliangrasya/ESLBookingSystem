@@ -14,7 +14,7 @@ interface Props {
 
 const TablePagination: React.FC<Props> = ({
   page, totalPages, pageSize, totalItems, onPageChange, onPageSizeChange,
-  pageSizeOptions = [10, 15, 30, 50],
+  pageSizeOptions = [5, 10, 15, 30, 50],
 }) => {
   if (totalItems === 0) return null;
   const start = (page - 1) * pageSize + 1;

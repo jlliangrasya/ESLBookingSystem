@@ -416,10 +416,10 @@ const TeacherDashboard = () => {
       return true;
     })
     .sort((a, b) => {
-      if (upcomingSort === "date-desc") return new Date(b.appointment_date).getTime() - new Date(a.appointment_date).getTime();
+      if (upcomingSort === "date-desc") return b.appointment_date.localeCompare(a.appointment_date);
       if (upcomingSort === "student-asc") return a.student_name.localeCompare(b.student_name);
       if (upcomingSort === "student-desc") return b.student_name.localeCompare(a.student_name);
-      return new Date(a.appointment_date).getTime() - new Date(b.appointment_date).getTime(); // date-asc default
+      return a.appointment_date.localeCompare(b.appointment_date); // date-asc default
     });
 
   // Unique student names for the student filter dropdown
@@ -719,9 +719,9 @@ const TeacherDashboard = () => {
         {page === "dashboard" && (
           <>
             {/* KPIs + Calendar */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Left: KPI grid */}
-              <div className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+              {/* Left: KPI grid — 2/5 width */}
+              <div className="space-y-4 lg:col-span-2">
                 <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Overview</h2>
                 <div className="grid grid-cols-2 gap-3">
                   <Card>
@@ -829,8 +829,8 @@ const TeacherDashboard = () => {
                 )}
               </div>
 
-              {/* Right: Calendar */}
-              <div>
+              {/* Right: Calendar — 3/5 width */}
+              <div className="lg:col-span-3">
                 <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-4">My Schedule</h2>
                 <div className="bg-white rounded-xl border shadow-sm p-4 flex justify-center">
                   <Calendar
@@ -1512,7 +1512,7 @@ const TeacherDashboard = () => {
                     ) : leaves.map(lv => (
                       <TableRow key={lv.id}>
                         <TableCell className="text-sm font-medium">
-                          {new Date(`${lv.leave_date}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                          {fmtDateOnly(lv.leave_date)}
                         </TableCell>
                         <TableCell className="text-sm capitalize">{lv.reason_type}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{lv.notes || "—"}</TableCell>

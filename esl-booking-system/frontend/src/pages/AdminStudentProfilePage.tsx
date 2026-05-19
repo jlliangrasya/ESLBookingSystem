@@ -761,17 +761,21 @@ const AdminStudentProfilePage = () => {
                     const firstDay = new Date(calYear, calMonth, 1).getDay(); // 0=Sun
                     const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
 
-                    // Only track confirmed bookings; store formatted times per day
+                    // Only track confirmed bookings; store formatted times per day.
+                    // Slice directly from the stored PHT string — never use new Date()
+                    // which would UTC-shift on a UTC server or produce wrong results.
                     const confirmedByDay: Record<number, string[]> = {};
                     bookings.forEach((b) => {
                       if (b.status !== "confirmed") return;
-                      const d = new Date(b.appointment_date);
-                      if (d.getFullYear() === calYear && d.getMonth() === calMonth) {
-                        const day = d.getDate();
-                        if (!confirmedByDay[day]) confirmedByDay[day] = [];
-                        confirmedByDay[day].push(
-                          d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
-                        );
+                      const s = String(b.appointment_date);
+                      const [y, mo, dd] = s.slice(0, 10).split("-").map(Number);
+                      if (y === calYear && mo - 1 === calMonth) {
+                        const hh = Number(s.slice(11, 13));
+                        const mm = s.slice(14, 16);
+                        const ampm = hh >= 12 ? "PM" : "AM";
+                        const h12 = hh % 12 === 0 ? 12 : hh % 12;
+                        if (!confirmedByDay[dd]) confirmedByDay[dd] = [];
+                        confirmedByDay[dd].push(`${h12}:${mm} ${ampm}`);
                       }
                     });
 

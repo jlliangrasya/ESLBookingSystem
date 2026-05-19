@@ -117,7 +117,7 @@ const StudentDashboard = () => {
   const [absenceMonth, setAbsenceMonth] = useState<number>(new Date().getMonth() + 1);
   const [absenceYear, setAbsenceYear] = useState<number>(new Date().getFullYear());
   const [reportPage, setReportPage] = useState(1);
-  const [reportPageSize, setReportPageSize] = useState(20);
+  const [reportPageSize, setReportPageSize] = useState(5);
   const [absentLoadingId, setAbsentLoadingId] = useState<number | null>(null);
   const [absences, setAbsences] = useState<Absence[]>([]);
 
@@ -372,10 +372,10 @@ const StudentDashboard = () => {
   };
 
   const handleDateClick = (date: Date) => {
-    const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-      .toISOString()
-      .split("T")[0];
-    navigate(`/timeslots/${localDate}`);
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    navigate(`/timeslots/${y}-${m}-${d}`);
   };
 
   const confirmBooking = async () => {
@@ -920,7 +920,7 @@ const StudentDashboard = () => {
                   {waitlistEntries.map(entry => (
                     <TableRow key={entry.id}>
                       <TableCell className="text-sm">
-                        {new Date(entry.desired_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        {fmtDateOnly(entry.desired_date)}
                       </TableCell>
                       <TableCell className="text-sm">{entry.desired_time}</TableCell>
                       <TableCell className="text-sm">{entry.teacher_name || "—"}</TableCell>

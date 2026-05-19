@@ -38,6 +38,7 @@ interface ScheduleEntry {
   [key: string]: unknown;
   student_name: string;
   package_name: string;
+  duration_minutes: number | null;
   subject: string | null;
 }
 
@@ -114,8 +115,12 @@ const AdminTeacherProfilePage = () => {
   const [health, setHealth] = useState<Health | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Upcoming pagination
+  // Upcoming filters & pagination
   const [upcomingPage, setUpcomingPage] = useState(1);
+  const [upcomingSearch, setUpcomingSearch] = useState("");
+  const [upcomingDateFrom, setUpcomingDateFrom] = useState("");
+  const [upcomingDateTo, setUpcomingDateTo] = useState("");
+  const [upcomingDuration, setUpcomingDuration] = useState<string>("all");
 
   // Weekly availability
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -290,9 +295,18 @@ const AdminTeacherProfilePage = () => {
     classes_this_month: "Completed Classes This Month",
   };
 
-  const upcomingTotal = schedule.length;
+  const filteredUpcoming = schedule.filter((s) => {
+    const q = upcomingSearch.toLowerCase();
+    if (q && !s.student_name.toLowerCase().includes(q) && !s.package_name.toLowerCase().includes(q)) return false;
+    const ds = s.appointment_date.slice(0, 10);
+    if (upcomingDateFrom && ds < upcomingDateFrom) return false;
+    if (upcomingDateTo && ds > upcomingDateTo) return false;
+    if (upcomingDuration !== "all" && String(s.duration_minutes) !== upcomingDuration) return false;
+    return true;
+  });
+  const upcomingTotal = filteredUpcoming.length;
   const upcomingTotalPages = Math.max(1, Math.ceil(upcomingTotal / UPCOMING_PAGE_SIZE));
-  const upcomingPaged = schedule.slice((upcomingPage - 1) * UPCOMING_PAGE_SIZE, upcomingPage * UPCOMING_PAGE_SIZE);
+  const upcomingPaged = filteredUpcoming.slice((upcomingPage - 1) * UPCOMING_PAGE_SIZE, upcomingPage * UPCOMING_PAGE_SIZE);
 
   if (loading) {
     return (
@@ -659,12 +673,63 @@ const AdminTeacherProfilePage = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {/* Filters */}
+            <div className="mb-3 flex flex-wrap items-end gap-2">
+              <div className="relative flex-1 min-w-40">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search student or package…"
+                  value={upcomingSearch}
+                  onChange={(e) => { setUpcomingSearch(e.target.value); setUpcomingPage(1); }}
+                  className="pl-8 h-8 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">From</p>
+                <Input
+                  type="date"
+                  value={upcomingDateFrom}
+                  onChange={(e) => { setUpcomingDateFrom(e.target.value); setUpcomingPage(1); }}
+                  className="h-8 text-xs w-36"
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">To</p>
+                <Input
+                  type="date"
+                  value={upcomingDateTo}
+                  onChange={(e) => { setUpcomingDateTo(e.target.value); setUpcomingPage(1); }}
+                  className="h-8 text-xs w-36"
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Duration</p>
+                <select
+                  value={upcomingDuration}
+                  onChange={(e) => { setUpcomingDuration(e.target.value); setUpcomingPage(1); }}
+                  className="h-8 text-xs rounded-md border border-input bg-background px-2 w-28"
+                >
+                  <option value="all">All</option>
+                  <option value="25">25 min</option>
+                  <option value="50">50 min</option>
+                  <option value="75">75 min</option>
+                  <option value="100">100 min</option>
+                </select>
+              </div>
+              {(upcomingSearch || upcomingDateFrom || upcomingDateTo || upcomingDuration !== "all") && (
+                <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground self-end"
+                  onClick={() => { setUpcomingSearch(""); setUpcomingDateFrom(""); setUpcomingDateTo(""); setUpcomingDuration("all"); setUpcomingPage(1); }}>
+                  Clear
+                </Button>
+              )}
+            </div>
             <Table>
               <TableHeader>
                 <TableRow className="brand-gradient-subtle">
                   <TableHead>Date & Time</TableHead>
                   <TableHead>Student</TableHead>
                   <TableHead>Package / Subject</TableHead>
+                  <TableHead>Duration</TableHead>
                   <TableHead>Mode</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
@@ -672,8 +737,14 @@ const AdminTeacherProfilePage = () => {
               <TableBody>
                 {schedule.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground text-sm py-10">
+                    <TableCell colSpan={6} className="text-center text-muted-foreground text-sm py-10">
                       No upcoming classes
+                    </TableCell>
+                  </TableRow>
+                ) : filteredUpcoming.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground text-sm py-10">
+                      No classes match your filters
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -685,6 +756,9 @@ const AdminTeacherProfilePage = () => {
                       <TableCell className="text-sm font-medium">{s.student_name}</TableCell>
                       <TableCell className="text-sm">
                         {s.package_name}{s.subject ? ` · ${s.subject}` : ""}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {s.duration_minutes ? `${s.duration_minutes} min` : "—"}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {s.class_mode || "—"}
@@ -770,8 +844,12 @@ const AdminTeacherProfilePage = () => {
                           const isPast = new Date(`${day}T${time}:00`) < new Date();
                           const isToggling = togglingSlot === key;
                           const bookedEntry = schedule.find(s => {
-                            const d = fmtDate(s.appointment_date, "yyyy-MM-dd");
-                            const t = fmtDate(s.appointment_date, "HH:mm");
+                            // appointment_date is stored as display time, not UTC — slice directly
+                            const normalized = s.appointment_date.includes('T')
+                              ? s.appointment_date
+                              : s.appointment_date.replace(' ', 'T');
+                            const d = normalized.slice(0, 10);
+                            const t = normalized.slice(11, 16);
                             return d === day && t === time;
                           });
                           return (

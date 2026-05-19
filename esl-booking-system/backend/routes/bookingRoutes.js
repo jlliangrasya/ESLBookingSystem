@@ -8,6 +8,24 @@ const { notifyWaitlistForSlot } = require("./waitlistRoutes");
 
 const router = express.Router();
 
+/**
+ * Format a stored PHT datetime string ("YYYY-MM-DD HH:MM:SS") for display in
+ * notification messages. Slices directly — never uses new Date() — so no
+ * UTC shift occurs regardless of server timezone.
+ */
+function fmtAppt(dtStr) {
+    if (!dtStr) return 'unknown date';
+    const s = String(dtStr);
+    const datePart = s.slice(0, 10);               // "YYYY-MM-DD"
+    const timePart = s.slice(11, 16);              // "HH:MM"
+    const [hh, mm] = timePart.split(':').map(Number);
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    const h12 = hh % 12 === 0 ? 12 : hh % 12;
+    const [y, mo, d] = datePart.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${months[Number(mo) - 1]} ${Number(d)}, ${y} ${h12}:${String(mm).padStart(2,'0')} ${ampm}`;
+}
+
 // Get bookings by student_package_id (students can only view their own)
 router.get("/api/bookings", authenticateToken, async (req, res) => {
     try {
@@ -123,11 +141,9 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
         }
 
         // Build list of consecutive slots to book
-        const baseDate = req.body.slot_date || new Date(appointment_date).toISOString().split('T')[0];
-        const baseTime = req.body.slot_time || (() => {
-            const dt = new Date(appointment_date);
-            return `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
-        })();
+        const rawAppt = String(appointment_date);
+        const baseDate = req.body.slot_date || rawAppt.slice(0, 10);
+        const baseTime = req.body.slot_time || rawAppt.slice(11, 16);
         const [baseH, baseM] = baseTime.split(':').map(Number);
 
         const slotList = [];
@@ -230,7 +246,7 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
 
         // Notifications
         const [[student]] = await pool.query('SELECT name FROM users WHERE id = ?', [studentId]);
-        const dateStr = new Date(appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+        const dateStr = fmtAppt(appointment_date);
         const slotMsg = slotsNeeded > 1 ? ` (${durationMinutes}-minute class, ${slotsNeeded} slots)` : '';
 
         if (teacherId) {
@@ -421,14 +437,15 @@ router.delete("/api/bookings/:id", authenticateToken, async (req, res) => {
             'SELECT cancellation_hours FROM companies WHERE id = ?', [companyId]
         );
         const cancellationHours = company?.cancellation_hours ?? 1;
-        const appointmentTime = new Date(booking.appointment_date).getTime();
+        // Treat stored PHT string as UTC offset +08:00 to get the correct epoch ms
+        const appointmentTime = new Date(String(booking.appointment_date).replace(' ', 'T') + '+08:00').getTime();
         const now = Date.now();
         const hoursUntilClass = (appointmentTime - now) / (1000 * 60 * 60);
 
         if (cancellationHours > 0 && hoursUntilClass < cancellationHours) {
             // Within window — notify teacher but do NOT cancel
             const [[student]] = await pool.query('SELECT name FROM users WHERE id = ?', [studentId]);
-            const dateStr = new Date(booking.appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+            const dateStr = fmtAppt(booking.appointment_date);
             if (booking.teacher_id) {
                 await notify({
                     userId: booking.teacher_id, companyId,
@@ -538,7 +555,7 @@ router.delete("/api/bookings/:id", authenticateToken, async (req, res) => {
             [booking.student_package_id, companyId]
         );
 
-        const dateStr = new Date(booking.appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+        const dateStr = fmtAppt(booking.appointment_date);
 
         if (booking.teacher_id) {
             await notify({
@@ -769,7 +786,7 @@ router.post("/api/bookings/cancel/:id", authenticateToken, requireRole('company_
         }
 
         if (booking) {
-            const dateStr = new Date(booking.appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+            const dateStr = fmtAppt(booking.appointment_date);
 
             if (booking.student_id) {
                 await notify({

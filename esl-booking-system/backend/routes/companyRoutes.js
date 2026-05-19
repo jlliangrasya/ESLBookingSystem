@@ -77,7 +77,7 @@ router.post('/register', async (req, res) => {
         if (!isTrial) {
             const today = new Date().toISOString().split('T')[0];
             const periodEndDt = new Date();
-            periodEndDt.setMonth(periodEndDt.getMonth() + 1);
+            periodEndDt.setUTCMonth(periodEndDt.getUTCMonth() + 1);
             const periodEnd = periodEndDt.toISOString().split('T')[0];
             await connection.query(
                 `INSERT INTO company_payments (company_id, amount, payment_date, period_start, period_end, notes, recorded_by)
@@ -340,10 +340,10 @@ router.post('/:id/mark-paid', authenticateToken, requireRole('super_admin'), asy
 
         // Payment period: from current next_due_date (or today) + 1 month
         const periodStart = company.next_due_date
-            ? new Date(company.next_due_date).toISOString().split('T')[0]
+            ? String(company.next_due_date).slice(0, 10)
             : new Date().toISOString().split('T')[0];
-        const periodEndDt = new Date(periodStart);
-        periodEndDt.setMonth(periodEndDt.getMonth() + 1);
+        const periodEndDt = new Date(periodStart + 'T00:00:00Z');
+        periodEndDt.setUTCMonth(periodEndDt.getUTCMonth() + 1);
         const periodEnd = periodEndDt.toISOString().split('T')[0];
 
         // Record in payment history

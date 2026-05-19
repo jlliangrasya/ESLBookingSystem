@@ -9,6 +9,10 @@ const poolConfig = {
   port:     process.env.DB_PORT || 3306,
   waitForConnections: true,
   connectionLimit: 10,
+  // Return DATETIME/TIMESTAMP columns as plain strings, not JS Date objects.
+  // Dates are stored as display time (PHT) — returning them as strings prevents
+  // mysql2 from UTC-converting them during serialization.
+  dateStrings: true,
 };
 
 // TiDB Cloud requires SSL connections

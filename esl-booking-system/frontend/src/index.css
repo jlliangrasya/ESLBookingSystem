@@ -38,12 +38,17 @@
   background: linear-gradient(135deg, #2E6B9E, #4A9EAF);
   color: white;
   border-radius: 6px;
-  text-align: center;
-  padding: 2px 4px;
-  font-size: 11px;
+  text-align: left;
+  padding: 2px 5px;
+  font-size: 10px;
   font-weight: 500;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ─── Weekly Calendar ────────────────────────────────────────────── */
@@ -298,6 +303,12 @@
 }
 
 /* ─── React Calendar Brand Override ─────────────────────────────── */
+.custom-calendar .react-calendar__month-view__days__day {
+  min-height: 52px;
+  padding-bottom: 4px;
+  vertical-align: top;
+}
+
 .custom-calendar .react-calendar__tile--active {
   background: linear-gradient(135deg, #2E6B9E, #4A9EAF) !important;
   color: white !important;

@@ -7,6 +7,20 @@ const requireRole = require("../middleware/requireRole");
 const notify = require("../utils/notify");
 const { logAction } = require("../utils/audit");
 
+/** Format a stored PHT datetime string for notification messages without UTC shift. */
+function fmtAppt(dtStr) {
+    if (!dtStr) return 'unknown date';
+    const s = String(dtStr);
+    const datePart = s.slice(0, 10);
+    const timePart = s.slice(11, 16);
+    const [hh, mm] = timePart.split(':').map(Number);
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    const h12 = hh % 12 === 0 ? 12 : hh % 12;
+    const [y, mo, d] = datePart.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${months[Number(mo) - 1]} ${Number(d)}, ${y} ${h12}:${String(mm).padStart(2,'0')} ${ampm}`;
+}
+
 // Helper: check if admin user has a specific permission or is_owner
 const ALLOWED_PERMISSIONS = ['can_add_teacher', 'can_edit_teacher', 'can_delete_teacher'];
 async function canDo(userId, permission) {
@@ -128,8 +142,8 @@ router.put("/profile", authenticateToken, requireRole('company_admin'), async (r
 router.get("/teachers", authenticateToken, requireRole('company_admin'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
-    const month = parseInt(req.query.month) || new Date().getMonth() + 1;
-    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const month = parseInt(req.query.month) || new Date().getUTCMonth() + 1;
+    const year = parseInt(req.query.year) || new Date().getUTCFullYear();
 
     const [rows] = await pool.query(`
       SELECT u.id, u.name, u.email, u.created_at,
@@ -211,7 +225,7 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
 
     const [schedule] = await pool.query(`
       SELECT b.id, b.appointment_date, b.status, b.class_mode, b.meeting_link,
-             u.name AS student_name, tp.package_name, sp.subject
+             u.name AS student_name, tp.package_name, tp.duration_minutes, sp.subject
       FROM bookings b
       JOIN student_packages sp ON b.student_package_id = sp.id
       JOIN users u ON sp.student_id = u.id
@@ -532,8 +546,8 @@ router.get("/teachers/:id/weekly-slots", authenticateToken, requireRole('company
     const companyId = req.user.company_id;
     const { id } = req.params;
     const startDate = req.query.startDate || new Date().toISOString().split('T')[0];
-    const endDt = new Date(startDate);
-    endDt.setDate(endDt.getDate() + 7);
+    const endDt = new Date(startDate + 'T00:00:00Z');
+    endDt.setUTCDate(endDt.getUTCDate() + 7);
     const endDate = endDt.toISOString().split('T')[0];
 
     const [rows] = await pool.query(
@@ -1080,11 +1094,11 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
     const durationMinutes = sp.duration_minutes || 25;
     const slotsNeeded = Math.max(1, Math.ceil(durationMinutes / 30));
 
-    // Parse base time from appointment_date (stored as display time)
-    const baseDt = new Date(appointment_date);
-    const baseH = baseDt.getHours();
-    const baseM = baseDt.getMinutes();
-    const baseDate = appointment_date.split(' ')[0] || appointment_date.split('T')[0];
+    // Slice directly — appointment_date is stored as PHT display time, never use new Date()
+    const rawAppt = String(appointment_date);
+    const baseDate = rawAppt.slice(0, 10);
+    const baseH = Number(rawAppt.slice(11, 13));
+    const baseM = Number(rawAppt.slice(14, 16));
 
     // Build list of consecutive slot datetimes
     const slotList = [];
@@ -1148,7 +1162,7 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
 
     await connection.commit();
 
-    const dateStr = new Date(appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+    const dateStr = fmtAppt(appointment_date);
     const slotMsg = slotsNeeded > 1 ? ` (${durationMinutes}-min class, ${slotsNeeded} slots)` : '';
 
     if (teacher_id) {
@@ -1222,8 +1236,8 @@ router.post('/students/:id/bulk-assign-teacher', authenticateToken, requireRole(
       [teacher_id, companyId]
     );
     const leaveSet = new Set(leaves.map(l => {
-      const d = new Date(l.leave_date);
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const d = new Date(String(l.leave_date) + 'T00:00:00Z');
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
     }));
 
     // Get unassigned upcoming bookings for this student
@@ -1239,10 +1253,11 @@ router.post('/students/:id/bulk-assign-teacher', authenticateToken, requireRole(
     let assigned = 0;
     let skipped = 0;
     for (const b of bookings) {
-      const dt = new Date(b.appointment_date);
-      const dateStr = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`;
-      const hh = String(dt.getUTCHours()).padStart(2, '0');
-      const mm = dt.getUTCMinutes() < 30 ? '00' : '30';
+      const raw = String(b.appointment_date);
+      const dateStr = raw.slice(0, 10);
+      const hh = raw.slice(11, 13);
+      const minVal = Number(raw.slice(14, 16));
+      const mm = minVal < 30 ? '00' : '30';
       const timeStr = `${hh}:${mm}`;
 
       // Check if teacher is on leave that day or has the slot closed
@@ -1349,9 +1364,9 @@ router.put('/students/:id/assign-teacher', authenticateToken, requireRole('compa
     let assigned = 0;
     let skipped = 0;
     for (const b of futureBookings) {
-      const dt = new Date(b.appointment_date);
-      const dateStr = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`;
-      const timeStr = `${String(dt.getUTCHours()).padStart(2,'0')}:${dt.getUTCMinutes() < 30 ? '00' : '30'}`;
+      const raw = String(b.appointment_date);
+      const dateStr = raw.slice(0, 10);
+      const timeStr = `${raw.slice(11, 13)}:${Number(raw.slice(14, 16)) < 30 ? '00' : '30'}`;
 
       // Skip if teacher is on leave that day
       if (leaveSet.has(dateStr)) { skipped++; continue; }

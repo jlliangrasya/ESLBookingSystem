@@ -6,6 +6,20 @@ const notify = require('../utils/notify');
 
 const router = express.Router();
 
+/** Format a stored PHT datetime string for notification messages without UTC shift. */
+function fmtAppt(dtStr) {
+    if (!dtStr) return 'unknown date';
+    const s = String(dtStr);
+    const datePart = s.slice(0, 10);
+    const timePart = s.slice(11, 16);
+    const [hh, mm] = timePart.split(':').map(Number);
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    const h12 = hh % 12 === 0 ? 12 : hh % 12;
+    const [y, mo, d] = datePart.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${months[Number(mo) - 1]} ${Number(d)}, ${y} ${h12}:${String(mm).padStart(2,'0')} ${ampm}`;
+}
+
 // POST /api/waitlist — student subscribes to be notified when a slot opens
 router.post('/', authenticateToken, requireRole('student'), async (req, res) => {
     try {
@@ -79,11 +93,9 @@ router.delete('/:id', authenticateToken, requireRole('student'), async (req, res
  */
 async function notifyWaitlistForSlot(companyId, teacherId, appointmentDate) {
     try {
-        const dt = new Date(appointmentDate);
-        const dateStr = dt.toISOString().split('T')[0];
-        const hours = String(dt.getHours()).padStart(2, '0');
-        const mins = String(dt.getMinutes()).padStart(2, '0');
-        const timeStr = `${hours}:${mins}`;
+        const raw = String(appointmentDate);
+        const dateStr = raw.slice(0, 10);
+        const timeStr = raw.slice(11, 16);
 
         const [waiters] = await pool.query(
             `SELECT id, student_id FROM waitlist
@@ -92,7 +104,7 @@ async function notifyWaitlistForSlot(companyId, teacherId, appointmentDate) {
             [companyId, teacherId, dateStr, timeStr]
         );
 
-        const dateDisplay = dt.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+        const dateDisplay = fmtAppt(appointmentDate);
         await Promise.all(waiters.map(async (w) => {
             await notify({
                 userId: w.student_id,

@@ -5,6 +5,20 @@ const authenticateToken = require('../middleware/authMiddleware');
 const requireRole = require('../middleware/requireRole');
 const notify = require('../utils/notify');
 
+/** Format a stored PHT datetime string for notification messages without UTC shift. */
+function fmtAppt(dtStr) {
+    if (!dtStr) return 'unknown date';
+    const s = String(dtStr);
+    const datePart = s.slice(0, 10);
+    const timePart = s.slice(11, 16);
+    const [hh, mm] = timePart.split(':').map(Number);
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    const h12 = hh % 12 === 0 ? 12 : hh % 12;
+    const [y, mo, d] = datePart.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${months[Number(mo) - 1]} ${Number(d)}, ${y} ${h12}:${String(mm).padStart(2,'0')} ${ampm}`;
+}
+
 // Student dashboard
 router.get('/dashboard', authenticateToken, requireRole('student'), async (req, res) => {
     try {
@@ -52,14 +66,20 @@ router.get('/dashboard', authenticateToken, requireRole('student'), async (req, 
             [userId, companyId]
         );
         bookings = bookingRows.map(booking => {
-            const appointmentDate = new Date(booking.appointment_date);
+            // appointment_date is stored as display time (PHT) — slice directly,
+            // never convert via new Date() which would UTC-shift on a UTC server.
+            const raw = String(booking.appointment_date);
+            const dateOnly = raw.slice(0, 10);           // "YYYY-MM-DD"
+            const timePart = raw.slice(11, 16);           // "HH:MM"
+            const [hh, mm] = timePart.split(':').map(Number);
+            const ampm = hh >= 12 ? 'PM' : 'AM';
+            const h12 = hh % 12 === 0 ? 12 : hh % 12;
+            const timeslot = `${String(h12).padStart(2, '0')}:${String(mm).padStart(2, '0')} ${ampm}`;
             return {
                 id: booking.id,
-                appointment_date: appointmentDate.toISOString().split('T')[0],
+                appointment_date: dateOnly,
                 appointment_datetime: booking.appointment_date,
-                timeslot: appointmentDate.toLocaleTimeString('en-US', {
-                    hour: '2-digit', minute: '2-digit', hour12: true,
-                }),
+                timeslot,
                 status: booking.status,
                 teacher_name: booking.teacher_name || null,
                 class_mode: booking.class_mode || null,
@@ -140,7 +160,7 @@ router.post('/bookings/:id/mark-teacher-absent', authenticateToken, requireRole(
                     userId: admin.id, companyId: req.user.company_id,
                     type: 'general',
                     title: 'Teacher no-show reported',
-                    message: `${fullBooking?.student_name || 'A student'}'s class on ${fullBooking?.appointment_date ? new Date(fullBooking.appointment_date).toLocaleString() : 'unknown date'} was marked as teacher no-show. 1 session has been refunded.`,
+                    message: `${fullBooking?.student_name || 'A student'}'s class on ${fmtAppt(fullBooking?.appointment_date)} was marked as teacher no-show. 1 session has been refunded.`,
                 });
             }
         })();

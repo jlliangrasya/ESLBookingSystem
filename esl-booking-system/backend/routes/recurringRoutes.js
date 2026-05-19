@@ -9,6 +9,46 @@ const { logAction } = require('../utils/audit');
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+/** Format a stored PHT datetime string for notification messages without UTC shift. */
+function fmtAppt(dtStr) {
+    if (!dtStr) return 'unknown date';
+    const s = String(dtStr);
+    const datePart = s.slice(0, 10);
+    const timePart = s.slice(11, 16);
+    const [hh, mm] = timePart.split(':').map(Number);
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    const h12 = hh % 12 === 0 ? 12 : hh % 12;
+    const [y, mo, d] = datePart.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${months[Number(mo) - 1]} ${Number(d)}, ${y} ${h12}:${String(mm).padStart(2,'0')} ${ampm}`;
+}
+
+/**
+ * Advance a "YYYY-MM-DD" string by one day using pure arithmetic — no Date object,
+ * no timezone shift risk.
+ */
+function addOneDay(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d + 1));
+    return dt.toISOString().slice(0, 10);
+}
+
+/** Add N days to a "YYYY-MM-DD" string. */
+function addDays(dateStr, n) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d + n));
+    return dt.toISOString().slice(0, 10);
+}
+
+/** Get the day-of-week index (0=Sun) for a "YYYY-MM-DD" string. */
+function dayOfWeek(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+/** Compare two "YYYY-MM-DD" strings. */
+function dateStrLt(a, b) { return a < b; }
+
 // POST / — Create recurring schedule + auto-generate bookings
 router.post('/', authenticateToken, requireRole('student', 'company_admin'), async (req, res) => {
     const connection = await pool.getConnection();
@@ -92,22 +132,17 @@ router.post('/', authenticateToken, requireRole('student', 'company_admin'), asy
         const slotsPerClass = Math.max(1, Math.ceil(durationMinutes / 30));
 
         // ── Generate target dates ───────────────────────────────────────────
-        const schedStartDate = start_date ? new Date(start_date + 'T00:00:00') : new Date();
-        if (!start_date) {
-            schedStartDate.setDate(schedStartDate.getDate() + 1); // default: tomorrow
-        }
-        schedStartDate.setHours(0, 0, 0, 0);
-
-        const schedEndDate = new Date(schedStartDate);
-        schedEndDate.setDate(schedEndDate.getDate() + weeksCount * 7);
+        // Use pure string-based date arithmetic — no new Date() to avoid UTC shift.
+        const schedStartStr = start_date || addOneDay(new Date().toISOString().slice(0, 10));
+        const schedEndStr = addDays(schedStartStr, weeksCount * 7);
 
         const [baseH, baseM] = start_time.split(':').map(Number);
 
         const targetDates = [];
-        for (const cur = new Date(schedStartDate); cur < schedEndDate; cur.setDate(cur.getDate() + 1)) {
-            const dayName = DAY_NAMES[cur.getDay()];
+        for (let cur = schedStartStr; dateStrLt(cur, schedEndStr); cur = addOneDay(cur)) {
+            const dayName = DAY_NAMES[dayOfWeek(cur)];
             if (!days_of_week.includes(dayName)) continue;
-            targetDates.push(cur.toISOString().split('T')[0]);
+            targetDates.push(cur);
         }
 
         if (targetDates.length === 0) {
@@ -230,8 +265,8 @@ router.post('/', authenticateToken, requireRole('student', 'company_admin'), asy
         }
 
         // ── INSERT recurring schedule ───────────────────────────────────────
-        const startDateStr = schedStartDate.toISOString().split('T')[0];
-        const endDateStr = schedEndDate.toISOString().split('T')[0];
+        const startDateStr = schedStartStr;
+        const endDateStr = schedEndStr;
 
         const [schedResult] = await connection.query(
             `INSERT INTO recurring_schedules
@@ -554,7 +589,7 @@ router.post('/:id/bookings/:bookingId/cancel', authenticateToken, requireRole('s
         await connection.commit();
         connection.release();
 
-        const dateStr = new Date(booking.appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+        const dateStr = fmtAppt(booking.appointment_date);
         notify({
             userId: booking.student_id, companyId,
             type: 'class_cancelled',

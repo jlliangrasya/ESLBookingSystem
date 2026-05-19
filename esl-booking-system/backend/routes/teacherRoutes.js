@@ -8,6 +8,20 @@ const { notifyWaitlistForSlot } = require('./waitlistRoutes');
 
 const router = express.Router();
 
+/** Format a stored PHT datetime string for notification messages without UTC shift. */
+function fmtAppt(dtStr) {
+    if (!dtStr) return 'unknown date';
+    const s = String(dtStr);
+    const datePart = s.slice(0, 10);
+    const timePart = s.slice(11, 16);
+    const [hh, mm] = timePart.split(':').map(Number);
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    const h12 = hh % 12 === 0 ? 12 : hh % 12;
+    const [y, mo, d] = datePart.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${months[Number(mo) - 1]} ${Number(d)}, ${y} ${h12}:${String(mm).padStart(2,'0')} ${ampm}`;
+}
+
 /** Current time as a JS Date — let MySQL handle comparisons via NOW().
  *  For queries that need a JS-side datetime string, use the server's current time.
  *  Appointments are stored as absolute datetime values. */
@@ -378,12 +392,13 @@ router.post('/bookings/:id/cancel', authenticateToken, requireRole('teacher'), a
             'SELECT cancellation_hours FROM companies WHERE id = ?', [companyId]
         );
         const policyHours = company?.cancellation_hours ?? 1;
-        const hoursUntilClass = (new Date(booking.appointment_date).getTime() - Date.now()) / (1000 * 60 * 60);
+        const appointmentTime = new Date(String(booking.appointment_date).replace(' ', 'T') + '+08:00').getTime();
+        const hoursUntilClass = (appointmentTime - Date.now()) / (1000 * 60 * 60);
 
         if (policyHours > 0 && hoursUntilClass < policyHours) {
             // Within window — notify admins about the attempt, but do NOT cancel
             const [[teacher]] = await pool.query('SELECT name FROM users WHERE id = ?', [teacherId]);
-            const dateStr = new Date(booking.appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+            const dateStr = fmtAppt(booking.appointment_date);
             const [admins] = await pool.query(
                 "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin'", [companyId]
             );
@@ -479,7 +494,7 @@ router.post('/bookings/:id/cancel', authenticateToken, requireRole('teacher'), a
             [booking.student_package_id, companyId]
         );
 
-        const dateStr = new Date(booking.appointment_date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+        const dateStr = fmtAppt(booking.appointment_date);
 
         if (booking.student_id) {
             await notify({
@@ -794,7 +809,8 @@ router.post('/availability', authenticateToken, requireRole('teacher'), async (r
                 'SELECT cancellation_hours FROM companies WHERE id = ?', [companyId]
             );
             const policyHours = company?.cancellation_hours ?? 1;
-            const slotDatetime = new Date(`${date}T${time.substring(0, 5)}:00`);
+            // Append +08:00 so the server (UTC) treats slot as PHT wall-clock time
+            const slotDatetime = new Date(`${date}T${time.substring(0, 5)}:00+08:00`);
             const hoursUntilSlot = (slotDatetime.getTime() - Date.now()) / (1000 * 60 * 60);
 
             if (hoursUntilSlot <= policyHours) {
@@ -869,7 +885,8 @@ router.post('/weekly-slots', authenticateToken, requireRole('teacher'), async (r
         if (!slot_date || !slot_time || !action) {
             return res.status(400).json({ message: 'slot_date, slot_time, and action are required' });
         }
-        const slotDatetime = new Date(`${slot_date}T${slot_time}`);
+        // Append +08:00 so the UTC server compares against PHT wall-clock time
+        const slotDatetime = new Date(`${slot_date}T${slot_time}+08:00`);
         if (slotDatetime < new Date()) {
             return res.status(400).json({ message: 'Cannot modify past slots' });
         }

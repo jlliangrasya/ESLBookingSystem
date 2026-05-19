@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import AuthContext from "@/context/AuthContext";
 import NavBar from "@/components/Navbar";
+import { fmtDate as fmtDateTz } from "@/utils/timezone";
 
 interface Schedule {
   id: number;
@@ -201,7 +202,7 @@ const RecurringSchedulesPage: React.FC = () => {
     }
   };
 
-  const fmtDate = (d: string) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const fmtDate = (d: string) => fmtDateTz(d, "MMM d, yyyy");
   const fmtTime = (t: string) => {
     const [h, m] = t.split(':').map(Number);
     const ampm = h >= 12 ? "PM" : "AM";

@@ -114,6 +114,9 @@ const TeacherManagementPage = () => {
   const [scheduleTeacher, setScheduleTeacher] = useState<Teacher | null>(null);
   const [schedule, setSchedule] = useState<ScheduleBooking[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [schedulePage, setSchedulePage] = useState(1);
+  const SCHEDULE_PAGE_SIZE = 6;
 
   // Leave modal
   const [leaveTeacher, setLeaveTeacher] = useState<Teacher | null>(null);
@@ -203,9 +206,11 @@ const TeacherManagementPage = () => {
   const openSchedule = async (teacher: Teacher) => {
     setScheduleTeacher(teacher);
     setScheduleLoading(true);
+    setSchedulePage(1);
+    setScheduleDate(new Date().toISOString().slice(0, 10));
     try {
       const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/admin/teachers/${teacher.id}/schedule`, { headers });
-      setSchedule(res.data);
+      setSchedule(res.data.filter((b: ScheduleBooking) => b.status !== "cancelled"));
     } finally {
       setScheduleLoading(false);
     }
@@ -474,30 +479,67 @@ const TeacherManagementPage = () => {
           <DialogHeader><DialogTitle>{scheduleTeacher?.name} — Upcoming Schedule</DialogTitle></DialogHeader>
           {scheduleLoading ? (
             <div className="flex justify-center py-6"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date & Time</TableHead>
-                  <TableHead>Student</TableHead>
-                  <TableHead>Package</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {schedule.length === 0 ? (
-                  <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-6">No upcoming classes</TableCell></TableRow>
-                ) : schedule.map((b) => (
-                  <TableRow key={b.id}>
-                    <TableCell className="text-sm">{fmtDate(b.appointment_date, "MMM d, h:mm a")}</TableCell>
-                    <TableCell>{b.student_name}</TableCell>
-                    <TableCell className="text-xs">{b.package_name}</TableCell>
-                    <TableCell><span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[b.status] || "bg-gray-100"}`}>{b.status}</span></TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          ) : (() => {
+            const filtered = schedule.filter((b) => !scheduleDate || b.appointment_date.slice(0, 10) >= scheduleDate);
+            const totalPages = Math.max(1, Math.ceil(filtered.length / SCHEDULE_PAGE_SIZE));
+            const paged = filtered.slice((schedulePage - 1) * SCHEDULE_PAGE_SIZE, schedulePage * SCHEDULE_PAGE_SIZE);
+            return (
+              <>
+                <div className="flex items-end gap-2 mb-2">
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">From date</p>
+                    <Input
+                      type="date"
+                      value={scheduleDate}
+                      onChange={(e) => { setScheduleDate(e.target.value); setSchedulePage(1); }}
+                      className="h-8 text-xs w-40"
+                    />
+                  </div>
+                  {scheduleDate && (
+                    <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground"
+                      onClick={() => { setScheduleDate(""); setSchedulePage(1); }}>
+                      Clear
+                    </Button>
+                  )}
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date & Time</TableHead>
+                      <TableHead>Student</TableHead>
+                      <TableHead>Package</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paged.length === 0 ? (
+                      <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-6">No upcoming classes</TableCell></TableRow>
+                    ) : paged.map((b) => (
+                      <TableRow key={b.id}>
+                        <TableCell className="text-sm">{fmtDate(b.appointment_date, "MMM d, h:mm a")}</TableCell>
+                        <TableCell>{b.student_name}</TableCell>
+                        <TableCell className="text-xs">{b.package_name}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+                    <span>Page {schedulePage} of {totalPages} · {filtered.length} total</span>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" className="h-7 w-7 p-0"
+                        disabled={schedulePage === 1} onClick={() => setSchedulePage((p) => p - 1)}>
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 w-7 p-0"
+                        disabled={schedulePage === totalPages} onClick={() => setSchedulePage((p) => p + 1)}>
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
@@ -553,7 +595,7 @@ const TeacherManagementPage = () => {
             {leaveConflicts.map((b) => (
               <div key={b.id} className="flex justify-between text-sm py-1 border-b last:border-0">
                 <span className="font-medium">{b.student_name}</span>
-                <span className="text-muted-foreground text-xs">{new Date(b.appointment_date).toLocaleString()}</span>
+                <span className="text-muted-foreground text-xs">{fmtDate(b.appointment_date, "MMM d, yyyy h:mm a")}</span>
               </div>
             ))}
           </div>

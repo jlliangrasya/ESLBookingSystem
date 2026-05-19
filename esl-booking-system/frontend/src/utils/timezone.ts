@@ -16,17 +16,22 @@ export function setUserTimezone(tz: string): void {
 }
 
 /**
- * Format a UTC date string (ISO or MySQL DATETIME) in the user's timezone.
- * @param utcStr  — e.g. "2024-01-15T10:00:00.000Z" or "2024-01-15 10:00:00"
+ * Format a MySQL DATETIME string stored as PHT display time.
+ *
+ * Strategy: appointment_date is stored as the literal wall-clock time in PHT
+ * (e.g. "2026-05-19 19:30:00" = 7:30 PM PH time). We append +00:00 to force
+ * the JS Date constructor to treat those digits as UTC, then formatInTimeZone
+ * with 'UTC' outputs the same digits back — giving correct PHT display with
+ * no timezone shift. For Z-terminated ISO strings (already true UTC), the
+ * digits represent UTC and display identically.
+ *
+ * @param utcStr  — MySQL DATETIME "YYYY-MM-DD HH:MM:SS" or ISO string
  * @param fmt     — date-fns format string, default "MMM d, yyyy h:mm a"
- * @param tz      — override timezone (defaults to getUserTimezone())
  */
 export function fmtDate(utcStr: string, fmt = "MMM d, yyyy h:mm a", _tz?: string): string {
     if (!utcStr) return '—';
     try {
-        // Dates are stored as display time (not UTC) — parse without timezone conversion
         const normalized = utcStr.includes('T') ? utcStr : utcStr.replace(' ', 'T');
-        // Append local timezone to prevent JS Date from treating it as UTC
         const localDate = new Date(normalized + (normalized.endsWith('Z') ? '' : '+00:00'));
         return formatInTimeZone(localDate, 'UTC', fmt);
     } catch {
