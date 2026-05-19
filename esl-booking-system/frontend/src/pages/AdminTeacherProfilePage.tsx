@@ -19,7 +19,7 @@ import {
   BookOpen, KeyRound, ChevronLeft, ChevronRight, Timer, CheckCircle2,
   UserX, Users, FileText, Heart, Search,
 } from "lucide-react";
-import { fmtDate, fmtDateOnly } from "@/utils/timezone";
+import { fmtDate, fmtDateOnly, parseUTC } from "@/utils/timezone";
 import ReportModal from "@/components/ReportModal";
 
 interface TeacherProfile {
@@ -137,8 +137,8 @@ const AdminTeacherProfilePage = () => {
   const [rangeDrillKey, setRangeDrillKey] = useState<"fifty" | "twentyFive" | "absences" | null>(null);
 
   // Report view modal
-  const [reportModal, setReportModal] = useState<{ open: boolean; bookingId: number; studentName: string }>({
-    open: false, bookingId: 0, studentName: "",
+  const [reportModal, setReportModal] = useState<{ open: boolean; bookingId: number; studentName: string; classDate: string }>({
+    open: false, bookingId: 0, studentName: "", classDate: "",
   });
 
   // Edit dialog
@@ -965,7 +965,7 @@ const AdminTeacherProfilePage = () => {
                       </TableCell>
                       <TableCell>
                         {b.has_report
-                          ? <Button size="sm" variant="outline" className="text-xs h-7 border-green-400 text-green-700 hover:bg-green-50" onClick={() => setReportModal({ open: true, bookingId: b.id, studentName: b.student_name })}>✓ View Report</Button>
+                          ? <Button size="sm" variant="outline" className="text-xs h-7 border-green-400 text-green-700 hover:bg-green-50" onClick={() => setReportModal({ open: true, bookingId: b.id, studentName: b.student_name, classDate: b.appointment_date })}>✓ View Report</Button>
                           : <span className="text-xs text-muted-foreground">No report</span>}
                       </TableCell>
                     </TableRow>
@@ -988,6 +988,7 @@ const AdminTeacherProfilePage = () => {
         bookingId={reportModal.bookingId}
         studentId={0}
         studentName={reportModal.studentName}
+        classDate={reportModal.classDate}
         readOnly
       />
 

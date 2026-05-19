@@ -162,7 +162,7 @@ const TeacherDashboard = () => {
   // Confirm classes
   const [doneLoadingId, setDoneLoadingId] = useState<number | null>(null);
   const [absentLoadingId, setAbsentLoadingId] = useState<number | null>(null);
-  const [postDoneReport, setPostDoneReport] = useState<{ bookingId: number; studentId: number; studentName: string } | null>(null);
+  const [postDoneReport, setPostDoneReport] = useState<{ bookingId: number; studentId: number; studentName: string; classDate: string } | null>(null);
 
   // Classes page — completed filter
   const [classesMonth, setClassesMonth] = useState(new Date().getMonth() + 1);
@@ -217,8 +217,8 @@ const TeacherDashboard = () => {
   const [recurringMsg, setRecurringMsg] = useState<string | null>(null);
 
   // Report modal
-  const [reportModal, setReportModal] = useState<{ open: boolean; bookingId: number; studentId: number; studentName: string }>({
-    open: false, bookingId: 0, studentId: 0, studentName: "",
+  const [reportModal, setReportModal] = useState<{ open: boolean; bookingId: number; studentId: number; studentName: string; classDate: string }>({
+    open: false, bookingId: 0, studentId: 0, studentName: "", classDate: "",
   });
 
   const fetchData = async () => {
@@ -247,9 +247,10 @@ const TeacherDashboard = () => {
       // Build calendar map
       const calMap: Record<string, { student: string; time: string }[]> = {};
       (dash.bookings as Booking[]).forEach((b) => {
-        const key = fmtDate(b.appointment_date, "yyyy-MM-dd");
+        const dt = parseUTC(b.appointment_date) ?? new Date(b.appointment_date);
+        const key = dt.toLocaleDateString("en-CA");
         if (!calMap[key]) calMap[key] = [];
-        calMap[key].push({ student: b.student_name, time: fmtDate(b.appointment_date, "h:mm a") });
+        calMap[key].push({ student: b.student_name, time: dt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) });
       });
       setCalendarBookings(calMap);
 
@@ -461,7 +462,7 @@ const TeacherDashboard = () => {
       setPendingConfirmation(prev => prev.filter(p => p.id !== item.id));
       fetchData();
       // Open report modal right after marking done
-      setPostDoneReport({ bookingId: item.id, studentId: item.student_id, studentName: item.student_name });
+      setPostDoneReport({ bookingId: item.id, studentId: item.student_id, studentName: item.student_name, classDate: item.appointment_date });
     } catch (err: unknown) {
       alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to confirm class");
     } finally {
@@ -629,7 +630,7 @@ const TeacherDashboard = () => {
   };
 
   const openReport = (b: CompletedBooking) =>
-    setReportModal({ open: true, bookingId: b.id, studentId: b.student_id, studentName: b.student_name });
+    setReportModal({ open: true, bookingId: b.id, studentId: b.student_id, studentName: b.student_name, classDate: b.appointment_date });
 
   if (loading) {
     return (
@@ -1834,6 +1835,7 @@ const TeacherDashboard = () => {
         bookingId={postDoneReport?.bookingId ?? reportModal.bookingId}
         studentId={postDoneReport?.studentId ?? reportModal.studentId}
         studentName={postDoneReport?.studentName ?? reportModal.studentName}
+        classDate={postDoneReport?.classDate ?? reportModal.classDate}
       />
 
       {/* Recurring Schedule Dialog — Issue #15 */}

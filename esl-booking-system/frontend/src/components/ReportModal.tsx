@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
+import { fmtDateOnly } from "@/utils/timezone";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +20,7 @@ interface ReportModalProps {
   bookingId: number;
   studentId: number;
   studentName: string;
+  classDate?: string;
   readOnly?: boolean;
 }
 
@@ -28,6 +30,7 @@ const ReportModal: React.FC<ReportModalProps> = ({
   bookingId,
   studentId,
   studentName,
+  classDate,
   readOnly = false,
 }) => {
   const [newWords, setNewWords] = useState("");
@@ -111,6 +114,9 @@ const ReportModal: React.FC<ReportModalProps> = ({
           <DialogTitle>
             {readOnly ? "Class Report" : isEditing ? "Edit Report" : "Class Report"} — {studentName}
           </DialogTitle>
+          {classDate && (
+            <p className="text-sm text-muted-foreground">{fmtDateOnly(classDate)}</p>
+          )}
         </DialogHeader>
 
         <div className="space-y-4 py-2">
