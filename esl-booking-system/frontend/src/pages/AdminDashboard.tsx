@@ -49,7 +49,7 @@ import AnnouncementPanel from "@/components/AnnouncementPanel";
 import AuthContext from "@/context/AuthContext";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
 import { AdminTour, useStartTour } from "@/components/AdminTour";
-import { Map } from "lucide-react";
+import { Map as MapIcon } from "lucide-react";
 
 interface Feedback {
   id: number;
@@ -347,7 +347,7 @@ const AdminDashboard = () => {
               className="text-xs gap-1.5 h-7"
               onClick={startTour}
             >
-              <Map className="h-3.5 w-3.5" /> Take the Tour
+              <MapIcon className="h-3.5 w-3.5" /> Take the Tour
             </Button>
           )}
         </div>
