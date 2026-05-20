@@ -188,7 +188,7 @@
 
   <!-- ── BOTTOM BAR ── -->
   <rect x="0" y="582" width="1200" height="48" fill="#000000" fill-opacity="0.25"/>
-  <text x="60" y="612" font-family="Arial, sans-serif" font-size="14" fill="#D0E8F0" fill-opacity="0.7">www.brightfolks.com</text>
+  <text x="60" y="612" font-family="Arial, sans-serif" font-size="14" fill="#D0E8F0" fill-opacity="0.7">brightfolks.pages.dev</text>
   <text x="600" y="612" font-family="Arial, sans-serif" font-size="14" fill="#D0E8F0" fill-opacity="0.5" text-anchor="middle">&#169; 2025 Brightfolks &#xB7; All rights reserved</text>
   <text x="1140" y="612" font-family="Arial, sans-serif" font-size="14" fill="#D4900A" fill-opacity="0.85" text-anchor="end">Book your first lesson today →</text>
 </svg>
