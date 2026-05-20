@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
+import AuthContext from "@/context/AuthContext";
+import { AdminTour } from "@/components/AdminTour";
 import { format, addDays, startOfWeek } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -103,6 +105,8 @@ const UPCOMING_PAGE_SIZE = 10;
 const AdminTeacherProfilePage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const authContext = useContext(AuthContext);
+  const currentUser = authContext?.user ?? null;
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
   const base = import.meta.env.VITE_API_URL;
@@ -346,11 +350,11 @@ const AdminTeacherProfilePage = () => {
               Teacher Profile
             </CardTitle>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="gap-1"
+              <Button id="teacher-btn-reset-pw" size="sm" variant="outline" className="gap-1"
                 onClick={() => { setShowResetPw(true); setResetPw(""); setResetPwMsg(null); }}>
                 <KeyRound className="h-4 w-4" /> Reset Password
               </Button>
-              <Button size="sm" variant="outline" className="gap-1" onClick={openEdit}>
+              <Button id="teacher-btn-edit" size="sm" variant="outline" className="gap-1" onClick={openEdit}>
                 <Pencil className="h-4 w-4" /> Edit
               </Button>
             </div>
@@ -373,7 +377,7 @@ const AdminTeacherProfilePage = () => {
 
         {/* KPIs */}
         {kpi && (
-          <Card className="glow-card border-0 rounded-2xl">
+          <Card id="teacher-performance-card" className="glow-card border-0 rounded-2xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <FileText className="h-5 w-5 text-primary" /> Performance Overview
@@ -624,7 +628,7 @@ const AdminTeacherProfilePage = () => {
 
         {/* Health */}
         {health && (
-          <Card className="glow-card border-0 rounded-2xl">
+          <Card id="teacher-attendance-card" className="glow-card border-0 rounded-2xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Heart className="h-5 w-5 text-rose-500" /> Attendance Health
@@ -662,7 +666,7 @@ const AdminTeacherProfilePage = () => {
         )}
 
         {/* Upcoming Schedule */}
-        <Card className="glow-card border-0 rounded-2xl">
+        <Card id="teacher-schedule-card" className="glow-card border-0 rounded-2xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5 text-primary" />
@@ -793,7 +797,7 @@ const AdminTeacherProfilePage = () => {
         </Card>
 
         {/* Weekly Availability (Opt-in) */}
-        <Card className="glow-card border-0 rounded-2xl">
+        <Card id="teacher-availability-card" className="glow-card border-0 rounded-2xl">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5 text-primary" />
@@ -882,7 +886,7 @@ const AdminTeacherProfilePage = () => {
         </Card>
 
         {/* Leave Requests */}
-        <Card className="glow-card border-0 rounded-2xl">
+        <Card id="teacher-leave-card" className="glow-card border-0 rounded-2xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <BookOpen className="h-5 w-5 text-primary" />
@@ -1091,6 +1095,10 @@ const AdminTeacherProfilePage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {currentUser?.role === "company_admin" && currentUser.company_id != null && (
+        <AdminTour segment="E" companyId={currentUser.company_id} autoStart />
+      )}
     </>
   );
 };

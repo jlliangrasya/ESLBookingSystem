@@ -1,7 +1,9 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import NavBar from "../components/Navbar";
+import AuthContext from "@/context/AuthContext";
+import { AdminTour } from "@/components/AdminTour";
 import {
   Table,
   TableBody,
@@ -77,6 +79,8 @@ const emptyForm = {
 
 const StudentListPage: React.FC = () => {
   const navigate = useNavigate();
+  const authContext = useContext(AuthContext);
+  const currentUser = authContext?.user ?? null;
   const [students, setStudents] = useState<Student[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -89,6 +93,8 @@ const StudentListPage: React.FC = () => {
   const [teacherFilter, setTeacherFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [credStudent, setCredStudent] = useState<{ name: string; email: string; password: string } | null>(null);
+  const [credCopied, setCredCopied] = useState(false);
 
   const handleCopyInfo = (student: Student) => {
     const text = `Name: ${student.name}
@@ -97,7 +103,7 @@ Guardian: ${student.guardian_name ?? ""}
 Email: ${student.email}
 Password: ${student.password}
 
-Please use the email and password to login to https://esl-booking-system.vercel.app`;
+Please use the email and password to login to https://brightfolks.pages.dev`;
     navigator.clipboard.writeText(text);
     setCopiedId(student.id);
     setTimeout(() => setCopiedId(null), 2000);
@@ -163,6 +169,8 @@ Please use the email and password to login to https://esl-booking-system.vercel.
         { headers: { Authorization: `Bearer ${token}` } },
       );
       setShowAddModal(false);
+      setCredStudent({ name: addForm.name, email: addForm.email, password: addForm.password });
+      setCredCopied(false);
       setAddForm(emptyForm);
       fetchStudents();
     } catch (err: unknown) {
@@ -183,6 +191,7 @@ Please use the email and password to login to https://esl-booking-system.vercel.
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-gray-800">Students List</h1>
           <Button
+            id="btn-add-student"
             onClick={() => {
               setAddForm(emptyForm);
               setAddError(null);
@@ -322,7 +331,7 @@ Please use the email and password to login to https://esl-booking-system.vercel.
                                 <Button
                                   size="sm"
                                   variant="ghost"
-                                  className="h-7 w-7 p-0"
+                                  className="h-7 w-7 p-0 student-copy-btn"
                                   onClick={() => handleCopyInfo(student)}
                                 >
                                   {copiedId === student.id ? (
@@ -514,6 +523,49 @@ Please use the email and password to login to https://esl-booking-system.vercel.
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Credentials popup after adding a student */}
+      <Dialog open={!!credStudent} onOpenChange={(open) => { if (!open) setCredStudent(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Check className="h-5 w-5 text-green-500" />
+              Student Added Successfully
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Copy these credentials and send them to your student so they can log in.
+          </p>
+          <div className="rounded-md bg-muted p-4 font-mono text-sm whitespace-pre-wrap select-all">
+{`Name: ${credStudent?.name}
+Email: ${credStudent?.email}
+Password: ${credStudent?.password}
+
+Login at: https://brightfolks.pages.dev`}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              className="student-copy-btn w-full gap-2"
+              onClick={() => {
+                navigator.clipboard.writeText(
+                  `Name: ${credStudent?.name}\nEmail: ${credStudent?.email}\nPassword: ${credStudent?.password}\n\nPlease use the email and password to login to https://brightfolks.pages.dev`
+                );
+                setCredCopied(true);
+              }}
+            >
+              {credCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              {credCopied ? "Copied!" : "Copy Credentials"}
+            </Button>
+            <Button variant="outline" className="w-full" onClick={() => setCredStudent(null)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {currentUser?.role === "company_admin" && currentUser.company_id != null && (
+        <AdminTour segment="D" companyId={currentUser.company_id} autoStart />
+      )}
     </>
   );
 };
