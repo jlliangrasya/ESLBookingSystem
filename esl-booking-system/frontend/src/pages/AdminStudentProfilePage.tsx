@@ -1,8 +1,10 @@
-﻿import { useState, useEffect } from "react";
+﻿import { useState, useEffect, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
+import AuthContext from "@/context/AuthContext";
+import { AdminTour } from "@/components/AdminTour";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -148,6 +150,8 @@ const AdminStudentProfilePage = () => {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const authContext = useContext(AuthContext);
+  const currentUser = authContext?.user ?? null;
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
   const base = import.meta.env.VITE_API_URL;
@@ -708,14 +712,15 @@ const AdminStudentProfilePage = () => {
                     Student Profile
                   </CardTitle>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline" className="gap-1" onClick={openEdit}>
+                    <Button id="student-btn-edit" size="sm" variant="outline" className="gap-1" onClick={openEdit}>
                       <Pencil className="h-4 w-4" /> Edit
                     </Button>
-                    <Button size="sm" variant="outline" className="gap-1"
+                    <Button id="student-btn-reset-pw" size="sm" variant="outline" className="gap-1"
                       onClick={() => { setShowResetPw(true); setResetPw(""); setResetPwMsg(null); }}>
                       <KeyRound className="h-4 w-4" /> Reset Password
                     </Button>
                     <Button
+                      id="student-btn-deactivate"
                       size="sm"
                       variant={student.is_active ? "destructive" : "default"}
                       className="gap-1"
@@ -943,17 +948,17 @@ const AdminStudentProfilePage = () => {
 
         {/* Active Package */}
         {activePackage ? (
-          <Card className="glow-card border-0 rounded-2xl">
+          <Card id="student-package-card" className="glow-card border-0 rounded-2xl">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="flex items-center gap-2">
                 <Package className="h-5 w-5 text-primary" />
                 Active Package
               </CardTitle>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={openAssignPackage}>
+                <Button id="student-btn-assign-package" size="sm" variant="outline" className="gap-1 text-xs" onClick={openAssignPackage}>
                   <Plus className="h-3.5 w-3.5" /> Assign New Package
                 </Button>
-                <Button size="sm" variant="ghost" className="gap-1 text-xs" onClick={fetchAdjustmentHistory} disabled={historyLoading}>
+                <Button id="student-btn-adj-history" size="sm" variant="ghost" className="gap-1 text-xs" onClick={fetchAdjustmentHistory} disabled={historyLoading}>
                   <History className="h-3.5 w-3.5" /> Adjustment History
                 </Button>
               </div>
@@ -980,6 +985,7 @@ const AdminStudentProfilePage = () => {
                       </Badge>
                     )}
                     <Button
+                      id="student-btn-add-sessions"
                       size="icon"
                       variant="ghost"
                       className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50"
@@ -989,6 +995,7 @@ const AdminStudentProfilePage = () => {
                       <PlusCircle className="h-4 w-4" />
                     </Button>
                     <Button
+                      id="student-btn-deduct-sessions"
                       size="icon"
                       variant="ghost"
                       className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-50"
@@ -1023,6 +1030,7 @@ const AdminStudentProfilePage = () => {
                 </div>
                 <div className="flex gap-2">
                   <Button
+                    id="student-btn-assign-teacher"
                     size="sm"
                     variant="outline"
                     className="h-7 text-xs gap-1"
@@ -1081,7 +1089,7 @@ const AdminStudentProfilePage = () => {
           yearOptions.sort((a, z) => z - a);
 
           return (
-        <Card className="glow-card border-0 rounded-2xl">
+        <Card id="student-history-card" className="glow-card border-0 rounded-2xl">
           <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
             <CardTitle className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5 text-primary" />
@@ -1138,11 +1146,11 @@ const AdminStudentProfilePage = () => {
               {activePackage && (
                 <>
                   {!activePackage.teacher_id && (
-                    <Button size="sm" variant="outline" className="gap-1" onClick={() => { setBulkTeacherId(""); setBulkMsg(null); setShowBulkAssign(true); }}>
+                    <Button id="student-btn-bulk-assign" size="sm" variant="outline" className="gap-1" onClick={() => { setBulkTeacherId(""); setBulkMsg(null); setShowBulkAssign(true); }}>
                       <Users className="h-4 w-4" /> Bulk Assign Classes
                     </Button>
                   )}
-                  <Button size="sm" className="gap-1" onClick={() => { setSelectedSlots({}); resetAddClassDialog(); setShowAddClass(true); }}>
+                  <Button id="student-btn-add-class" size="sm" className="gap-1" onClick={() => { setSelectedSlots({}); resetAddClassDialog(); setShowAddClass(true); }}>
                     <Plus className="h-4 w-4" /> Add Class
                   </Button>
                 </>
@@ -1914,6 +1922,10 @@ const AdminStudentProfilePage = () => {
             </div>
           </DialogContent>
         </Dialog>
+      )}
+
+      {currentUser?.role === "company_admin" && currentUser.company_id != null && (
+        <AdminTour segment="F" companyId={currentUser.company_id} autoStart />
       )}
     </>
   );

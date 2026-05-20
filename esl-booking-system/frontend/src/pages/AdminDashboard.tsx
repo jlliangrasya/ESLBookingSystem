@@ -23,6 +23,7 @@ import {
   CalendarCheck,
   CalendarDays,
   AlertCircle,
+  Clock,
 } from "lucide-react";
 import {
   BarChart,
@@ -47,6 +48,11 @@ import { fmtDate } from "@/utils/timezone";
 import AnnouncementPanel from "@/components/AnnouncementPanel";
 import AuthContext from "@/context/AuthContext";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
+<<<<<<< HEAD
+=======
+import { AdminTour, useStartTour } from "@/components/AdminTour";
+import { Map } from "lucide-react";
+>>>>>>> main
 
 interface Feedback {
   id: number;
@@ -118,6 +124,10 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const authContext = useContext(AuthContext);
   const currentUser = authContext?.user ?? null;
+<<<<<<< HEAD
+=======
+  const startTour = useStartTour("A", currentUser?.company_id ?? 0);
+>>>>>>> main
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -142,11 +152,13 @@ const AdminDashboard = () => {
       maxAdmins: number;
       planName: string;
       unassignedBookings: number;
+      trialEndsAt: string | null;
     };
     teacherWorkload: { id: number; name: string; today: number; next7days: number }[];
   }
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [teacherCount, setTeacherCount] = useState<number | null>(null);
+  const [packageCount, setPackageCount] = useState<number>(0);
 
   const [recurringCancelBooking, setRecurringCancelBooking] = useState<Booking | null>(null);
 
@@ -195,6 +207,7 @@ const AdminDashboard = () => {
         paidRes,
         feedbackRes,
         teachersRes,
+        packagesRes,
       ] = await Promise.all([
         axios.get(`${base}/api/student/students`, { headers }),
         axios.get(`${base}/api/student-bookings`, { headers }),
@@ -202,6 +215,7 @@ const AdminDashboard = () => {
         axios.get(`${base}/api/student/student-packages/paid`, { headers }),
         axios.get<Feedback[]>(`${base}/api/admin/feedback`, { headers }),
         axios.get(`${base}/api/admin/teachers`, { headers }),
+        axios.get(`${base}/api/student/packages`, { headers }),
       ]);
 
       const sd = studentsRes.data;
@@ -212,6 +226,7 @@ const AdminDashboard = () => {
       setPaidStudentPackages(paidRes.data);
       setFeedback(feedbackRes.data);
       setTeacherCount(teachersRes.data.length);
+      setPackageCount(Array.isArray(packagesRes.data) ? packagesRes.data.length : 0);
     } catch (err) {
       console.error("Error fetching data", err);
     }
@@ -302,6 +317,7 @@ const AdminDashboard = () => {
       <NavBar />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         <AnnouncementPanel />
+<<<<<<< HEAD
         {currentUser?.role === "company_admin" && currentUser.company_id != null && (
           <OnboardingChecklist
             companyId={currentUser.company_id}
@@ -323,7 +339,48 @@ const AdminDashboard = () => {
               </span>
             ) : null}
           </div>
+=======
+
+        {currentUser?.role === "company_admin" && currentUser.company_id != null && (
+          <>
+            <AdminTour segment="A" companyId={currentUser.company_id} autoStart />
+            <OnboardingChecklist
+              companyId={currentUser.company_id}
+              packageCount={packageCount}
+              teacherCount={teacherCount}
+              studentCount={students.length}
+              bookingCount={bookings.length}
+            />
+          </>
+>>>>>>> main
         )}
+
+        {/* Plan badge + Tour button */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          {analytics?.totals.planName && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-primary/10 text-primary border border-primary/20">
+                {analytics.totals.planName} Plan
+              </span>
+              {analytics.totals.totalStudents >= analytics.totals.maxStudents ||
+              analytics.totals.teachersCount >= analytics.totals.maxTeachers ? (
+                <span className="text-xs text-red-600 font-medium">
+                  ⚠ You have reached a plan limit — consider upgrading.
+                </span>
+              ) : null}
+            </div>
+          )}
+          {currentUser?.role === "company_admin" && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs gap-1.5 h-7"
+              onClick={startTour}
+            >
+              <Map className="h-3.5 w-3.5" /> Take the Tour
+            </Button>
+          )}
+        </div>
 
         {/* Stats row */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -436,6 +493,27 @@ const AdminDashboard = () => {
           </button>
         </div>
 
+        {/* Trial expiry banner */}
+        {(() => {
+          const trialEndsAt = analytics?.totals.trialEndsAt;
+          if (!trialEndsAt) return null;
+          const msLeft = new Date(trialEndsAt).getTime() - Date.now();
+          const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+          if (daysLeft > 30 || daysLeft < 0) return null;
+          const urgent = daysLeft <= 7;
+          return (
+            <div id="trial-banner" className={`flex items-center gap-3 rounded-xl px-4 py-3 border ${urgent ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"}`}>
+              <Clock className={`h-5 w-5 shrink-0 ${urgent ? "text-red-500" : "text-amber-600"}`} />
+              <p className={`text-sm font-medium ${urgent ? "text-red-800" : "text-amber-800"}`}>
+                {daysLeft === 0
+                  ? "Your free trial expires today."
+                  : `Your free trial ends in ${daysLeft} day${daysLeft !== 1 ? "s" : ""}.`}
+                {" "}To keep your account active, please contact Brightfolks to upgrade your plan.
+              </p>
+            </div>
+          );
+        })()}
+
         {/* Unassigned Bookings Warning — Issue #6 */}
         {(analytics?.totals.unassignedBookings ?? 0) > 0 && (
           <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
@@ -482,7 +560,7 @@ const AdminDashboard = () => {
         )}
 
         {/* Pending Enrollees */}
-        <div className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
+        <div id="pending-enrollees-card" className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
           <div className="px-4 py-3 border-b brand-gradient-subtle">
             <h2 className="font-semibold text-sm text-gray-800">
               Pending Enrollees
@@ -499,14 +577,25 @@ const AdminDashboard = () => {
               </TableHeader>
               <TableBody>
                 {pendingEnrollees.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={3}
-                      className="text-center text-muted-foreground py-6 text-sm"
-                    >
-                      No pending enrollees
-                    </TableCell>
-                  </TableRow>
+                  <>
+                    <TableRow className="opacity-40 pointer-events-none select-none">
+                      <TableCell className="text-sm font-medium">Sample Student</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="text-xs">Basic English 10</Badge>
+                      </TableCell>
+                      <TableCell className="text-right space-x-1">
+                        <Button size="sm" variant="default" className="bg-green-600 h-7 px-2 text-xs" disabled>Confirm</Button>
+                        <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" disabled>Reject</Button>
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center py-2">
+                        <p className="text-xs text-muted-foreground italic">
+                          When a student enrolls in a package, they appear here — confirm payment to activate their account.
+                        </p>
+                      </TableCell>
+                    </TableRow>
+                  </>
                 ) : (
                   pendingEnrollees.map((enrollee) => (
                     <TableRow key={enrollee.id}>
@@ -604,7 +693,7 @@ const AdminDashboard = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
+          <div id="todays-classes-card" className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
             <div className="px-4 py-3 border-b brand-gradient-subtle flex items-center justify-between">
               <h2 className="font-semibold text-sm text-gray-800">
                 Today's Upcoming Classes
@@ -630,14 +719,25 @@ const AdminDashboard = () => {
                 </TableHeader>
                 <TableBody>
                   {todayBookings.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={5}
-                        className="text-center text-muted-foreground py-6 text-sm"
-                      >
-                        No classes scheduled for today
-                      </TableCell>
-                    </TableRow>
+                    <>
+                      <TableRow className="opacity-40 pointer-events-none select-none">
+                        <TableCell className="text-sm font-medium">Sample Student</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">9:00 AM</TableCell>
+                        <TableCell className="text-sm">Sample Teacher</TableCell>
+                        <TableCell><Badge variant="secondary" className="text-xs">confirmed</Badge></TableCell>
+                        <TableCell className="text-right space-x-1">
+                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled>View Student</Button>
+                          <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" disabled>Cancel</Button>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-2">
+                          <p className="text-xs text-muted-foreground italic">
+                            Today's booked classes appear here. After a class is done, the teacher marks attendance and writes a class report.
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    </>
                   ) : (
                     todayBookings.slice((todayPage - 1) * todayPerPage, todayPage * todayPerPage).map((b) => (
                       <TableRow key={b.id}>

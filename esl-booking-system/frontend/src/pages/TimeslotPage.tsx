@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import axios from "axios";
 import BookingConfirmationModal from "../components/BookingConfirmationModal";
 import { cn } from "@/lib/utils";
-import { fmtDate, fmtTime, localToMysql, parseUTC } from "@/utils/timezone";
+import { fmtDate, fmtTime, localToMysql } from "@/utils/timezone";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -472,7 +472,7 @@ const TimeslotPage = () => {
           </DialogHeader>
           <div className="space-y-4 py-2">
             {selectedDateBookings.map((b) => {
-              const classTime = parseUTC(b.appointment_date)?.getTime() ?? 0;
+              const classTime = new Date(String(b.appointment_date).replace(' ', 'T') + '+08:00').getTime();
               const canMarkTeacherAbsent = Date.now() >= classTime + 15 * 60 * 1000 && !b.teacher_absent;
               return (
                 <div key={b.id} className="rounded-lg border p-4 space-y-2.5">
@@ -548,7 +548,7 @@ const TimeslotPage = () => {
                     </div>
                   ) : null}
                   {/* Cancel button — only shown for future classes */}
-                  {Date.now() < (parseUTC(b.appointment_date)?.getTime() ?? 0) && (
+                  {Date.now() < new Date(String(b.appointment_date).replace(' ', 'T') + '+08:00').getTime() && (
                     <div className="pt-1">
                       <Button
                         size="sm"

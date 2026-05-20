@@ -17,7 +17,7 @@ import BrandLogo from "@/components/BrandLogo";
 import NotificationBell from "@/components/NotificationBell";
 import InstallAppButton from "@/components/InstallAppButton";
 import ReportModal from "@/components/ReportModal";
-import { fmtDate, fmtDateOnly, parseUTC, TIMEZONES } from "@/utils/timezone";
+import { fmtDate, fmtDateOnly, TIMEZONES } from "@/utils/timezone";
 import AnnouncementPanel from "@/components/AnnouncementPanel";
 import TablePagination from "@/components/TablePagination";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -247,10 +247,9 @@ const TeacherDashboard = () => {
       // Build calendar map
       const calMap: Record<string, { student: string; time: string }[]> = {};
       (dash.bookings as Booking[]).forEach((b) => {
-        const dt = parseUTC(b.appointment_date) ?? new Date(b.appointment_date);
-        const key = dt.toLocaleDateString("en-CA");
+        const key = fmtDate(b.appointment_date, "yyyy-MM-dd");
         if (!calMap[key]) calMap[key] = [];
-        calMap[key].push({ student: b.student_name, time: dt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) });
+        calMap[key].push({ student: b.student_name, time: fmtDate(b.appointment_date, "h:mm a") });
       });
       setCalendarBookings(calMap);
 
@@ -1195,7 +1194,7 @@ const TeacherDashboard = () => {
                       </TableRow>
                     ) : (
                       filteredUpcoming.slice((upcomingPage - 1) * upcomingPageSize, upcomingPage * upcomingPageSize).map((b) => {
-                        const classTime = parseUTC(b.appointment_date)?.getTime() ?? 0;
+                        const classTime = new Date(String(b.appointment_date).replace(' ', 'T') + '+08:00').getTime();
                         const canMarkAbsent = Date.now() >= classTime + 15 * 60 * 1000;
                         return (
                           <TableRow key={b.id} className={selectedBookingIds.has(b.id) ? "bg-primary/10 border-l-2 border-l-primary" : ""}>

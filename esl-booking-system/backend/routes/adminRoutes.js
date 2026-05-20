@@ -1653,7 +1653,8 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
          sp.max_students AS maxStudents,
          sp.max_teachers AS maxTeachers,
          sp.max_admins AS maxAdmins,
-         sp.name AS planName
+         sp.name AS planName,
+         c.trial_ends_at AS trialEndsAt
        FROM companies c
        JOIN subscription_plans sp ON c.subscription_plan_id = sp.id
        WHERE c.id = ?`,

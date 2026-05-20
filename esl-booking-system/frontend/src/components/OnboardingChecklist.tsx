@@ -9,6 +9,10 @@ interface OnboardingChecklistProps {
   teacherCount: number | null;
   studentCount: number;
   bookingCount: number;
+<<<<<<< HEAD
+=======
+  packageCount: number;
+>>>>>>> main
 }
 
 const OnboardingChecklist = ({
@@ -16,6 +20,10 @@ const OnboardingChecklist = ({
   teacherCount,
   studentCount,
   bookingCount,
+<<<<<<< HEAD
+=======
+  packageCount,
+>>>>>>> main
 }: OnboardingChecklistProps) => {
   const storageKey = `onboarding_dismissed_${companyId}`;
 
@@ -25,21 +33,39 @@ const OnboardingChecklist = ({
 
   const steps = [
     {
+<<<<<<< HEAD
       label: "Add a Teacher",
       description: "Add at least one teacher to your school.",
       done: (teacherCount ?? 0) > 0,
       href: "/teachers" as string | null,
+=======
+      label: "Create a Class Package",
+      description: "Set up at least one package so students can be enrolled.",
+      done: packageCount > 0,
+      href: "/packages",
+    },
+    {
+      label: "Add a Teacher",
+      description: "Add at least one teacher to your school.",
+      done: (teacherCount ?? 0) > 0,
+      href: "/teachers",
+>>>>>>> main
     },
     {
       label: "Add a Student",
       description: "Register your first student.",
       done: studentCount > 0,
+<<<<<<< HEAD
       href: "/students" as string | null,
+=======
+      href: "/students",
+>>>>>>> main
     },
     {
       label: "Send Student Credentials",
       description: "Copy the credentials from the Students page and send them to your student.",
       done: studentCount > 0,
+<<<<<<< HEAD
       href: "/students" as string | null,
     },
     {
@@ -47,6 +73,15 @@ const OnboardingChecklist = ({
       description: "Have your student log in and book their first class.",
       done: bookingCount > 0,
       href: null,
+=======
+      href: "/students",
+    },
+    {
+      label: "Book a Class",
+      description: "Have your student log in and book their first class, or book on their behalf from their profile.",
+      done: bookingCount > 0,
+      href: null as string | null,
+>>>>>>> main
     },
   ];
 

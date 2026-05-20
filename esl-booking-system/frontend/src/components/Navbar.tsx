@@ -31,8 +31,9 @@ const NavBar: React.FC = () => {
 
   const logoLink = role === "super_admin" ? "/super-admin" : "/admin-dashboard";
 
-  const NavLink = ({ to, icon: Icon, label }: { to: string; icon: React.ElementType; label: string }) => (
+  const NavLink = ({ to, icon: Icon, label, id }: { to: string; icon: React.ElementType; label: string; id?: string }) => (
     <Link
+      id={id}
       to={to}
       onClick={() => setMobileOpen(false)}
       className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
@@ -61,10 +62,10 @@ const NavBar: React.FC = () => {
     </>
   ) : (
     <>
-      <NavLink to="/admin-dashboard" icon={CalendarDays} label={t("nav.schedule")} />
-      <NavLink to="/packages" icon={Package} label={t("nav.packages")} />
-      <NavLink to="/students" icon={Users} label={t("nav.students")} />
-      <NavLink to="/teachers" icon={GraduationCap} label={t("nav.teachers")} />
+      <NavLink id="nav-admin-dashboard" to="/admin-dashboard" icon={CalendarDays} label={t("nav.schedule")} />
+      <NavLink id="nav-packages"        to="/packages"        icon={Package}      label={t("nav.packages")} />
+      <NavLink id="nav-students"        to="/students"        icon={Users}        label={t("nav.students")} />
+      <NavLink id="nav-teachers"        to="/teachers"        icon={GraduationCap} label={t("nav.teachers")} />
       <NavLink to="/admin-users" icon={UserCog} label={t("nav.admins")} />
     </>
   );

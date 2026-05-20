@@ -465,3 +465,46 @@
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* ─── Intro.js Tour Theme ─────────────────────────────────────────── */
+.brightfolks-tour.introjs-tooltip {
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+  min-width: 280px;
+  max-width: 340px;
+}
+.introjs-tooltip-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #2E6B9E;
+}
+.introjs-tooltiptext {
+  font-size: 0.8rem;
+  color: #374151;
+  line-height: 1.5;
+}
+.introjs-button {
+  background: linear-gradient(135deg, #2E6B9E 0%, #4A9EAF 100%);
+  color: white !important;
+  border: none !important;
+  border-radius: 6px !important;
+  font-size: 0.75rem !important;
+  padding: 6px 14px !important;
+  text-shadow: none !important;
+}
+.introjs-button:hover {
+  opacity: 0.9;
+}
+.introjs-skipbutton {
+  background: transparent !important;
+  color: #9CA3AF !important;
+  border: none !important;
+  font-size: 0.7rem !important;
+}
+.introjs-progressbar {
+  background: linear-gradient(135deg, #2E6B9E 0%, #4A9EAF 100%);
+}
+.introjs-helperLayer {
+  border-radius: 8px;
+  box-shadow: rgba(33, 33, 33, 0.5) 0px 0px 0px 5000px, rgba(46,107,158,0.4) 0px 0px 0px 3px !important;
+}
