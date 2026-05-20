@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import introJs from "intro.js";
 import "intro.js/introjs.css";
 import { useTour } from "@/hooks/useTour";
@@ -416,16 +417,18 @@ function getSteps(segment: TourSegment) {
   return [];
 }
 
+// Logical page order: Dashboard → Packages → Teachers list → Teacher profile → Students list → Student profile
 const nextSegment: Record<TourSegment, TourSegment | "done"> = {
   A: "B",
   B: "C",
-  C: "D",
-  D: "E",
-  E: "F",
+  C: "E",  // Teachers list → Teacher profile
+  E: "D",  // Teacher profile → Students list
+  D: "F",  // Students list → Student profile
   F: "done",
 };
 
-function buildIntro(steps: object[], onComplete: () => void) {
+function buildIntro(steps: object[], onComplete: () => void, onEarlyExit: () => void = () => {}) {
+  let completed = false;
   return introJs()
     .setOptions({
       steps,
@@ -433,31 +436,58 @@ function buildIntro(steps: object[], onComplete: () => void) {
       showBullets: false,
       exitOnOverlayClick: false,
       scrollToElement: true,
-      nextLabel: "Next &rarr;",
-      prevLabel: "&larr; Back",
+      nextLabel: "Next →",
+      prevLabel: "← Back",
       doneLabel: "Got it!",
       tooltipClass: "brightfolks-tour",
     })
-    .oncomplete(onComplete)
-    .onexit(onComplete);
+    .oncomplete(() => { completed = true; onComplete(); })
+    .onexit(() => { if (!completed) onEarlyExit(); });
+}
+
+function navigateForSegment(segment: TourSegment, navigate: ReturnType<typeof useNavigate>) {
+  if (segment === "A") {
+    navigate("/packages");
+  } else if (segment === "B") {
+    navigate("/teachers");
+  } else if (segment === "C") {
+    // Click the first teacher's Profile button; if none exist, user navigates manually
+    const btn = document.querySelector('[data-tour-action="view-teacher"]') as HTMLElement | null;
+    if (btn) btn.click();
+  } else if (segment === "E") {
+    navigate("/students");
+  } else if (segment === "D") {
+    // Click the first student's View button; if none exist, user navigates manually
+    const btn = document.querySelector('[data-tour-action="view-student"]') as HTMLElement | null;
+    if (btn) btn.click();
+  }
 }
 
 export function AdminTour({ segment, companyId, autoStart = false }: Props) {
   const tour = useTour(companyId);
+  const navigate = useNavigate();
   const started = useRef(false);
 
   const startTour = () => {
     const steps = getSteps(segment);
     if (!steps.length) return;
 
-    buildIntro(steps, () => {
-      const next = nextSegment[segment];
-      if (next === "done") {
-        tour.markDone();
-      } else {
-        tour.setSegment(next);
+    buildIntro(
+      steps,
+      () => {
+        // Completed all steps — advance segment and navigate to next page
+        const next = nextSegment[segment];
+        if (next === "done") {
+          tour.markDone();
+        } else {
+          tour.setSegment(next);
+          navigateForSegment(segment, navigate);
+        }
+      },
+      () => {
+        // Early exit (Escape / X) — keep segment so user can resume later
       }
-    }).start();
+    ).start();
   };
 
   useEffect(() => {
@@ -476,12 +506,16 @@ export function AdminTour({ segment, companyId, autoStart = false }: Props) {
 
 export function useStartTour(segment: TourSegment, companyId: number) {
   const tour = useTour(companyId);
+  const navigate = useNavigate();
   return () => {
     tour.resetTour();
     setTimeout(() => {
       const steps = getSteps(segment);
       if (!steps.length) return;
-      buildIntro(steps, () => tour.setSegment("B")).start();
+      buildIntro(steps, () => {
+        tour.setSegment("B");
+        navigate("/packages");
+      }).start();
     }, 100);
   };
 }

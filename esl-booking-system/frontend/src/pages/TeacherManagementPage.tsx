@@ -371,6 +371,7 @@ const TeacherManagementPage = () => {
                       <TableCell>
                         <div className="flex gap-1 flex-wrap">
                           <Button size="sm" variant="outline" className="text-xs h-7"
+                            data-tour-action="view-teacher"
                             onClick={() => navigate(`/admin/teachers/${t.id}`)}>
                             <UserCircle className="h-3 w-3 mr-1" /> Profile
                           </Button>

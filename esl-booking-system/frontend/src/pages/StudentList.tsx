@@ -360,6 +360,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                             size="sm"
                             variant="ghost"
                             className="h-7 text-xs"
+                            data-tour-action="view-student"
                             onClick={() =>
                               navigate(`/admin/students/${student.id}`)
                             }
