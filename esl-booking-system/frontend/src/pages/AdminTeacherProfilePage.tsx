@@ -19,7 +19,7 @@ import {
   BookOpen, KeyRound, ChevronLeft, ChevronRight, Timer, CheckCircle2,
   UserX, Users, FileText, Heart, Search,
 } from "lucide-react";
-import { fmtDate, fmtDateOnly, parseUTC } from "@/utils/timezone";
+import { fmtDate, fmtDateOnly } from "@/utils/timezone";
 import ReportModal from "@/components/ReportModal";
 
 interface TeacherProfile {

@@ -23,7 +23,7 @@ import AuthContext from "@/context/AuthContext";
 import NotificationBell from "@/components/NotificationBell";
 import LanguageToggle from "@/components/LanguageToggle";
 import InstallAppButton from "@/components/InstallAppButton";
-import { fmtDate, fmtDateOnly, fmtTime, parseUTC } from "@/utils/timezone";
+import { fmtDate, fmtDateOnly } from "@/utils/timezone";
 import AnnouncementPanel from "@/components/AnnouncementPanel";
 
 interface Student {
@@ -169,22 +169,14 @@ const StudentDashboard = () => {
       setAbsences(dashRes.data.absences || []);
       setCancellationHours(settingsRes.data.cancellation_hours ?? 1);
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const todayStr = new Date().toLocaleDateString("en-CA");
       const processedBookings: Record<string, string[]> = {};
       const todayAndFutureBookings: Booking[] = [];
 
-      const normalizedBookings = (dashRes.data.bookings as Booking[]).map((booking) => {
-        const dt = parseUTC(booking.appointment_datetime) ?? new Date(booking.appointment_datetime);
-        const localDate = dt.toLocaleDateString("en-CA");
-        const localTime = dt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }).toUpperCase();
-        return { ...booking, appointment_date: localDate, timeslot: localTime };
-      });
-
-      normalizedBookings.forEach((booking: Booking) => {
-        const appointmentDateTime = parseUTC(booking.appointment_datetime) ?? new Date(booking.appointment_datetime);
-        // Include all of today's classes (even past ones) plus future classes
-        if (appointmentDateTime >= today) {
+      // Backend already provides appointment_date (YYYY-MM-DD) and timeslot (hh:mm AM/PM) in PHT.
+      // Use them directly — no re-parsing needed.
+      (dashRes.data.bookings as Booking[]).forEach((booking: Booking) => {
+        if (booking.appointment_date >= todayStr) {
           const dateKey = booking.appointment_date;
           if (!processedBookings[dateKey]) processedBookings[dateKey] = [];
           processedBookings[dateKey].push(booking.timeslot);
@@ -282,16 +274,9 @@ const StudentDashboard = () => {
         `${import.meta.env.VITE_API_URL}/api/student/dashboard`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const todayStr = new Date().toLocaleDateString("en-CA");
       const updated = (response.data.bookings as Booking[])
-        .map((booking) => {
-          const dt = parseUTC(booking.appointment_datetime) ?? new Date(booking.appointment_datetime);
-          const localDate = dt.toLocaleDateString("en-CA");
-          const localTime = dt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }).toUpperCase();
-          return { ...booking, appointment_date: localDate, timeslot: localTime };
-        })
-        .filter((b) => (parseUTC(b.appointment_datetime) ?? new Date(b.appointment_datetime)) >= today);
+        .filter((b) => b.appointment_date >= todayStr);
       setRawBookings(updated);
       // Update the modal's selected bookings too
       setSelectedDateBookings((prev) =>
@@ -306,7 +291,8 @@ const StudentDashboard = () => {
   };
 
   const handleStudentCancel = (booking: Booking) => {
-    const apptTime = parseUTC(booking.appointment_datetime)?.getTime() ?? 0;
+    const raw = String(booking.appointment_datetime).replace(' ', 'T');
+    const apptTime = new Date(raw + '+08:00').getTime();
     const hoursUntil = (apptTime - Date.now()) / (1000 * 60 * 60);
     if (cancellationHours > 0 && hoursUntil < cancellationHours) {
       // Within window — notify teacher via backend (fire-and-forget), show policy modal
@@ -345,25 +331,17 @@ const StudentDashboard = () => {
       setPackageDetails(dashRes.data.package || null);
       setAbsences(dashRes.data.absences || []);
       setCancellationHours(settingsRes.data.cancellation_hours ?? 1);
-      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const todayStr2 = new Date().toLocaleDateString("en-CA");
       const processedBookings: Record<string, string[]> = {};
       const todayAndFutureBookings: Booking[] = [];
-      (dashRes.data.bookings as Booking[])
-        .map((booking) => {
-          const dt = parseUTC(booking.appointment_datetime) ?? new Date(booking.appointment_datetime);
-          const localDate = dt.toLocaleDateString("en-CA");
-          const localTime = dt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }).toUpperCase();
-          return { ...booking, appointment_date: localDate, timeslot: localTime };
-        })
-        .forEach((booking: Booking) => {
-          const dt = parseUTC(booking.appointment_datetime) ?? new Date(booking.appointment_datetime);
-          if (dt >= today) {
-            const dk = booking.appointment_date;
-            if (!processedBookings[dk]) processedBookings[dk] = [];
-            processedBookings[dk].push(booking.timeslot);
-            todayAndFutureBookings.push(booking);
-          }
-        });
+      (dashRes.data.bookings as Booking[]).forEach((booking: Booking) => {
+        if (booking.appointment_date >= todayStr2) {
+          const dk = booking.appointment_date;
+          if (!processedBookings[dk]) processedBookings[dk] = [];
+          processedBookings[dk].push(booking.timeslot);
+          todayAndFutureBookings.push(booking);
+        }
+      });
       setCalendarBookings(processedBookings);
       setRawBookings(todayAndFutureBookings);
     } catch (err: unknown) {
@@ -1194,7 +1172,7 @@ const StudentDashboard = () => {
           </DialogHeader>
           <div className="space-y-4 py-2">
             {selectedDateBookings.map((b) => {
-              const classTime = parseUTC(b.appointment_datetime)?.getTime() ?? 0;
+              const classTime = new Date(String(b.appointment_datetime).replace(' ', 'T') + '+08:00').getTime();
               const canMarkTeacherAbsent = Date.now() >= classTime + 15 * 60 * 1000 && !b.teacher_absent;
               return (
                 <div key={b.id} className="rounded-lg border p-4 space-y-2.5">
@@ -1270,7 +1248,7 @@ const StudentDashboard = () => {
                     </div>
                   ) : null}
                   {/* Cancel button — only shown for future classes */}
-                  {Date.now() < (parseUTC(b.appointment_datetime)?.getTime() ?? 0) && (
+                  {Date.now() < new Date(String(b.appointment_datetime).replace(' ', 'T') + '+08:00').getTime() && (
                     <div className="pt-1">
                       <Button
                         size="sm"
