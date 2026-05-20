@@ -93,11 +93,7 @@ const StudentListPage: React.FC = () => {
   const [teacherFilter, setTeacherFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [copiedId, setCopiedId] = useState<number | null>(null);
-<<<<<<< HEAD
   const [credStudent, setCredStudent] = useState<{ name: string; email: string; password: string; age: string; guardian_name: string } | null>(null);
-=======
-  const [credStudent, setCredStudent] = useState<{ name: string; email: string; password: string } | null>(null);
->>>>>>> main
   const [credCopied, setCredCopied] = useState(false);
 
   const handleCopyInfo = (student: Student) => {
@@ -107,11 +103,7 @@ Guardian: ${student.guardian_name ?? ""}
 Email: ${student.email}
 Password: ${student.password}
 
-<<<<<<< HEAD
-Please use the email and password to login to https://esl-booking-system.pages.dev`;
-=======
 Please use the email and password to login to https://brightfolks.pages.dev`;
->>>>>>> main
     navigator.clipboard.writeText(text);
     setCopiedId(student.id);
     setTimeout(() => setCopiedId(null), 2000);
@@ -177,7 +169,6 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
         { headers: { Authorization: `Bearer ${token}` } },
       );
       setShowAddModal(false);
-<<<<<<< HEAD
       setCredStudent({
         name: addForm.name,
         email: addForm.email,
@@ -185,10 +176,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
         age: addForm.age,
         guardian_name: addForm.guardian_name,
       });
-=======
-      setCredStudent({ name: addForm.name, email: addForm.email, password: addForm.password });
       setCredCopied(false);
->>>>>>> main
       setAddForm(emptyForm);
       fetchStudents();
     } catch (err: unknown) {
@@ -610,19 +598,30 @@ Please use the email and password to login to https://esl-booking-system.pages.d
             Copy these credentials and send them to your student so they can log in.
           </p>
           <div className="rounded-md bg-muted p-4 font-mono text-sm whitespace-pre-wrap select-all">
-{`Name: ${credStudent?.name}
-Email: ${credStudent?.email}
-Password: ${credStudent?.password}
-
-Login at: https://brightfolks.pages.dev`}
+{[
+  `Name: ${credStudent?.name}`,
+  credStudent?.age ? `Age: ${credStudent.age}` : null,
+  credStudent?.guardian_name ? `Guardian: ${credStudent.guardian_name}` : null,
+  `Email: ${credStudent?.email}`,
+  `Password: ${credStudent?.password}`,
+  ``,
+  `Login at: https://brightfolks.pages.dev`,
+].filter(l => l !== null).join("\n")}
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button
               className="student-copy-btn w-full gap-2"
               onClick={() => {
-                navigator.clipboard.writeText(
-                  `Name: ${credStudent?.name}\nEmail: ${credStudent?.email}\nPassword: ${credStudent?.password}\n\nPlease use the email and password to login to https://brightfolks.pages.dev`
-                );
+                const lines = [
+                  `Name: ${credStudent?.name}`,
+                  credStudent?.age ? `Age: ${credStudent.age}` : null,
+                  credStudent?.guardian_name ? `Guardian: ${credStudent.guardian_name}` : null,
+                  `Email: ${credStudent?.email}`,
+                  `Password: ${credStudent?.password}`,
+                  ``,
+                  `Please use the email and password to login to https://brightfolks.pages.dev`,
+                ].filter(l => l !== null).join("\n");
+                navigator.clipboard.writeText(lines);
                 setCredCopied(true);
               }}
             >

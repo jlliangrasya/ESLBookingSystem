@@ -48,11 +48,8 @@ import { fmtDate } from "@/utils/timezone";
 import AnnouncementPanel from "@/components/AnnouncementPanel";
 import AuthContext from "@/context/AuthContext";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
-<<<<<<< HEAD
-=======
 import { AdminTour, useStartTour } from "@/components/AdminTour";
 import { Map } from "lucide-react";
->>>>>>> main
 
 interface Feedback {
   id: number;
@@ -124,10 +121,7 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const authContext = useContext(AuthContext);
   const currentUser = authContext?.user ?? null;
-<<<<<<< HEAD
-=======
   const startTour = useStartTour("A", currentUser?.company_id ?? 0);
->>>>>>> main
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -317,29 +311,6 @@ const AdminDashboard = () => {
       <NavBar />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         <AnnouncementPanel />
-<<<<<<< HEAD
-        {currentUser?.role === "company_admin" && currentUser.company_id != null && (
-          <OnboardingChecklist
-            companyId={currentUser.company_id}
-            teacherCount={teacherCount}
-            studentCount={students.length}
-            bookingCount={bookings.length}
-          />
-        )}
-        {/* Plan badge */}
-        {analytics?.totals.planName && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-primary/10 text-primary border border-primary/20">
-              {analytics.totals.planName} Plan
-            </span>
-            {analytics.totals.totalStudents >= analytics.totals.maxStudents ||
-            analytics.totals.teachersCount >= analytics.totals.maxTeachers ? (
-              <span className="text-xs text-red-600 font-medium">
-                ⚠ You have reached a plan limit — consider upgrading.
-              </span>
-            ) : null}
-          </div>
-=======
 
         {currentUser?.role === "company_admin" && currentUser.company_id != null && (
           <>
@@ -352,7 +323,6 @@ const AdminDashboard = () => {
               bookingCount={bookings.length}
             />
           </>
->>>>>>> main
         )}
 
         {/* Plan badge + Tour button */}
