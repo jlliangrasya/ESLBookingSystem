@@ -14,6 +14,7 @@ interface Props {
 export function AdminTour({ segment, companyId, autoStart = false }: Props) {
   const engine = useTourEngine();
   const tour = useTour(companyId);
+  const navigate = useNavigate();
   const started = useRef(false);
 
   useEffect(() => {

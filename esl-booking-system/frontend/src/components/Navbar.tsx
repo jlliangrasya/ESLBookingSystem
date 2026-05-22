@@ -2,7 +2,7 @@ import { useContext, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import BrandLogo from "@/components/BrandLogo";
-import { CalendarDays, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus, BookOpen, Menu, X, TrendingUp } from "lucide-react";
+import { CalendarDays, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus, BookOpen, Menu, X, TrendingUp, Compass } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +15,7 @@ import AuthContext from "@/context/AuthContext";
 import NotificationBell from "@/components/NotificationBell";
 import LanguageToggle from "@/components/LanguageToggle";
 import InstallAppButton from "@/components/InstallAppButton";
+import { useStartTour } from "@/components/AdminTour";
 
 const NavBar: React.FC = () => {
   const navigate = useNavigate();
@@ -22,7 +23,9 @@ const NavBar: React.FC = () => {
   const authContext = useContext(AuthContext);
   const role = authContext?.user?.role;
   const isOwner = authContext?.user?.is_owner ?? false;
+  const companyId = authContext?.user?.company_id ?? 0;
   const [mobileOpen, setMobileOpen] = useState(false);
+  const startTour = useStartTour("A", companyId);
 
   const handleLogout = () => {
     authContext?.logout();
@@ -101,6 +104,16 @@ const NavBar: React.FC = () => {
             <NavLink to="/documentation" icon={BookOpen} label={t("nav.documentation")} />
           )}
 
+          {role === "company_admin" && (
+            <button
+              onClick={startTour}
+              title="Start Tour"
+              className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
+            >
+              <Compass className="h-5 w-5" />
+              <span className="text-[10px] font-medium">Tour</span>
+            </button>
+          )}
           <InstallAppButton variant="white" />
           <LanguageToggle variant="white" />
           <NotificationBell variant="white" />
@@ -178,6 +191,16 @@ const NavBar: React.FC = () => {
 
           {(role === "super_admin" || (role === "company_admin" && isOwner)) && (
             <MobileNavLink to="/documentation" icon={BookOpen} label={t("nav.documentation")} />
+          )}
+
+          {role === "company_admin" && (
+            <button
+              onClick={() => { setMobileOpen(false); startTour(); }}
+              className="flex items-center gap-3 px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors w-full"
+            >
+              <Compass className="h-5 w-5" />
+              <span className="text-sm font-medium">Start Tour</span>
+            </button>
           )}
 
           {(role === "company_admin" || role === "teacher") && (
