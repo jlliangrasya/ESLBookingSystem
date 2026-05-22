@@ -646,7 +646,7 @@ const PackageSetupPage = () => {
             </div>
             */}
 
-            <Button onClick={handleSaveSettings} disabled={settingsSaving}>
+            <Button id="btn-save-settings" onClick={handleSaveSettings} disabled={settingsSaving}>
               {settingsSaving ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : null}

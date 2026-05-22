@@ -359,7 +359,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-7 text-xs"
+                            className="h-7 text-xs student-profile-btn"
                             onClick={() =>
                               navigate(`/admin/students/${student.id}`)
                             }

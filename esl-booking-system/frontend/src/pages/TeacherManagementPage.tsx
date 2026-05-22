@@ -370,7 +370,7 @@ const TeacherManagementPage = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1 flex-wrap">
-                          <Button size="sm" variant="outline" className="text-xs h-7"
+                          <Button size="sm" variant="outline" className="text-xs h-7 teacher-profile-btn"
                             onClick={() => navigate(`/admin/teachers/${t.id}`)}>
                             <UserCircle className="h-3 w-3 mr-1" /> Profile
                           </Button>
