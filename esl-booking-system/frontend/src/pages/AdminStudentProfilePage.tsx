@@ -826,22 +826,17 @@ const AdminStudentProfilePage = () => {
                               <div
                                 key={i}
                                 title={tooltip}
-                                className={`relative flex flex-col items-center justify-center rounded-md py-1 ${day === null ? "" : "hover:bg-muted/60 transition-colors"} ${isToday ? "bg-primary/10" : ""}`}
+                                className={`relative flex items-center justify-center rounded-md py-1 transition-colors ${day === null ? "" : hasDot ? "bg-green-500/25 hover:bg-green-500/35" : isToday ? "bg-primary/10 hover:bg-primary/20" : "hover:bg-muted/60"}`}
                               >
                                 {day !== null && (
-                                  <>
-                                    <span className={`text-[11px] leading-none ${isToday ? "text-primary font-bold" : "text-foreground"}`}>{day}</span>
-                                    {hasDot && (
-                                      <span className="mt-0.5 h-1 w-1 rounded-full bg-green-500" />
-                                    )}
-                                  </>
+                                  <span className={`text-[11px] leading-none ${isToday ? "text-primary font-bold" : hasDot ? "text-green-700 font-semibold" : "text-foreground"}`}>{day}</span>
                                 )}
                               </div>
                             );
                           })}
                         </div>
                         <div className="flex items-center gap-1.5 mt-2 pt-2 border-t">
-                          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                          <span className="h-3 w-3 rounded-sm bg-green-500/25 border border-green-500/40" />
                           <span className="text-[10px] text-muted-foreground">Confirmed class</span>
                         </div>
                       </div>
