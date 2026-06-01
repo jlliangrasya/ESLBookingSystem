@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { TourEngineProvider } from "./context/TourEngine";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 // Eager-load only the landing page (needed before auth resolves)
@@ -66,6 +67,7 @@ const RecurringSchedulesPage = lazy(
 const AppRoutes = () => {
   return (
     <AuthProvider>
+      <TourEngineProvider>
       <Suspense
         fallback={
           <div className="flex items-center justify-center min-h-screen text-gray-400">
@@ -299,6 +301,7 @@ const AppRoutes = () => {
           <Route path="*" element={<Home />} />
         </Routes>
       </Suspense>
+      </TourEngineProvider>
     </AuthProvider>
   );
 };

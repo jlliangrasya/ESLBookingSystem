@@ -121,7 +121,7 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const authContext = useContext(AuthContext);
   const currentUser = authContext?.user ?? null;
-  const startTour = useStartTour("A", currentUser?.company_id ?? 0);
+  const startTour = useStartTour(currentUser?.company_id ?? 0);
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [showFeedback, setShowFeedback] = useState(false);
