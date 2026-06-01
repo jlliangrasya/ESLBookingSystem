@@ -60,8 +60,18 @@ export default defineConfig({
       },
     }),
   ],
+  optimizeDeps: {
+    include: ['recharts', 'react-redux', '@reduxjs/toolkit'],
+  },
   build: {
-    outDir: 'dist'
+    outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          recharts: ['recharts'],
+        },
+      },
+    },
   },
   server: {
     port: 3000
