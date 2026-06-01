@@ -19,7 +19,8 @@ function computePosition(
   rect: DOMRect | null,
   placement: BubblePlacement = "bottom"
 ): React.CSSProperties {
-  if (!rect || placement === "center") {
+  const isZeroRect = rect && rect.width === 0 && rect.height === 0;
+  if (!rect || isZeroRect || placement === "center") {
     return {
       position: "fixed",
       top: "50%",

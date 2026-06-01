@@ -826,10 +826,10 @@ const AdminStudentProfilePage = () => {
                               <div
                                 key={i}
                                 title={tooltip}
-                                className={`relative flex items-center justify-center rounded-md py-1 transition-colors ${day === null ? "" : hasDot ? "bg-green-500/25 hover:bg-green-500/35" : isToday ? "bg-primary/10 hover:bg-primary/20" : "hover:bg-muted/60"}`}
+                                className={`relative flex items-center justify-center rounded-md py-1 transition-colors ${day === null ? "" : isToday ? "bg-primary/75 hover:bg-primary/85" : hasDot ? "bg-green-500/25 hover:bg-green-500/35" : "hover:bg-muted/60"}`}
                               >
                                 {day !== null && (
-                                  <span className={`text-[11px] leading-none ${isToday ? "text-primary font-bold" : hasDot ? "text-green-700 font-semibold" : "text-foreground"}`}>{day}</span>
+                                  <span className={`text-[11px] leading-none ${isToday ? "text-white font-bold" : hasDot ? "text-green-700 font-semibold" : "text-foreground"}`}>{day}</span>
                                 )}
                               </div>
                             );

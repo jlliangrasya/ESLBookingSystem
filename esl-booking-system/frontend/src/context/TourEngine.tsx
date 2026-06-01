@@ -129,17 +129,29 @@ export function TourEngineProvider({ children }: { children: ReactNode }) {
       const trySetup = (attempts = 0) => {
         const el = document.querySelector(selector);
         if (el) {
-          setTargetRect(el.getBoundingClientRect());
+          // Scroll element into view so it's visible in the viewport
+          el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
 
-          const observer = new ResizeObserver(() =>
-            setTargetRect(el.getBoundingClientRect())
-          );
-          observer.observe(el);
-          observerRef.current = observer;
+          // Defer rect query to after layout/paint settles
+          requestAnimationFrame(() => {
+            const rect = el.getBoundingClientRect();
+            // If element has no dimensions yet, retry
+            if (rect.width === 0 && rect.height === 0 && attempts < 30) {
+              retryTimerRef.current = setTimeout(() => trySetup(attempts + 1), 200);
+              return;
+            }
+            setTargetRect(rect);
 
-          const onScroll = () => setTargetRect(el.getBoundingClientRect());
-          window.addEventListener("scroll", onScroll, true);
-          scrollListenerRef.current = onScroll;
+            const observer = new ResizeObserver(() =>
+              setTargetRect(el.getBoundingClientRect())
+            );
+            observer.observe(el);
+            observerRef.current = observer;
+
+            const onScroll = () => setTargetRect(el.getBoundingClientRect());
+            window.addEventListener("scroll", onScroll, true);
+            scrollListenerRef.current = onScroll;
+          });
         } else if (attempts < 30) {
           retryTimerRef.current = setTimeout(() => trySetup(attempts + 1), 200);
         }
