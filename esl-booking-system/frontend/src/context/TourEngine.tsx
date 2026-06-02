@@ -129,11 +129,11 @@ export function TourEngineProvider({ children }: { children: ReactNode }) {
       const trySetup = (attempts = 0) => {
         const el = document.querySelector(selector);
         if (el) {
-          // Scroll element into view so it's visible in the viewport
-          el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+          // Scroll element into view with instant scroll so rect is accurate immediately
+          el.scrollIntoView({ behavior: "instant", block: "center", inline: "nearest" });
 
-          // Defer rect query to after layout/paint settles
-          requestAnimationFrame(() => {
+          // Wait one frame for layout to settle after scroll
+          const afterScroll = () => {
             const rect = el.getBoundingClientRect();
             // If element has no dimensions yet, retry
             if (rect.width === 0 && rect.height === 0 && attempts < 30) {
@@ -151,7 +151,8 @@ export function TourEngineProvider({ children }: { children: ReactNode }) {
             const onScroll = () => setTargetRect(el.getBoundingClientRect());
             window.addEventListener("scroll", onScroll, true);
             scrollListenerRef.current = onScroll;
-          });
+          };
+          requestAnimationFrame(() => requestAnimationFrame(afterScroll));
         } else if (attempts < 30) {
           retryTimerRef.current = setTimeout(() => trySetup(attempts + 1), 200);
         }
