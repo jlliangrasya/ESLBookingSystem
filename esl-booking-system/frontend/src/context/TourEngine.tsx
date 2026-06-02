@@ -129,8 +129,16 @@ export function TourEngineProvider({ children }: { children: ReactNode }) {
       const trySetup = (attempts = 0) => {
         const el = document.querySelector(selector);
         if (el) {
-          // Scroll element into view so it's visible in the viewport
-          el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+          // Only scroll if the element is not already visible in the viewport
+          const preRect = el.getBoundingClientRect();
+          const alreadyVisible =
+            preRect.width > 0 &&
+            preRect.height > 0 &&
+            preRect.top >= 0 &&
+            preRect.bottom <= window.innerHeight;
+          if (!alreadyVisible) {
+            el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+          }
 
           // Defer rect query to after layout/paint settles
           requestAnimationFrame(() => {
@@ -142,9 +150,15 @@ export function TourEngineProvider({ children }: { children: ReactNode }) {
             }
             setTargetRect(rect);
 
-            const observer = new ResizeObserver(() =>
-              setTargetRect(el.getBoundingClientRect())
-            );
+            // Guard: skip ResizeObserver updates that report zero dimensions
+            // (initial observation fires on the next frame and can briefly return
+            // zero during a layout recalculation, which would snap the bubble to center)
+            const observer = new ResizeObserver(() => {
+              const newRect = el.getBoundingClientRect();
+              if (newRect.width > 0 && newRect.height > 0) {
+                setTargetRect(newRect);
+              }
+            });
             observer.observe(el);
             observerRef.current = observer;
 
