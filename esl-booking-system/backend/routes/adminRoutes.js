@@ -590,6 +590,80 @@ router.post("/teachers/:id/weekly-slots", authenticateToken, requireRole('compan
   }
 });
 
+// POST bulk recurring availability for a teacher (admin)
+router.post("/teachers/:id/weekly-slots/recurring", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const teacherId = req.params.id;
+    const { days, start_time, end_time, weeks } = req.body;
+
+    const validDays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    if (!Array.isArray(days) || days.length === 0 || !days.every(d => validDays.includes(d))) {
+      return res.status(400).json({ message: 'days must be a non-empty array of valid day names' });
+    }
+    if (!start_time || !end_time || start_time >= end_time) {
+      return res.status(400).json({ message: 'start_time and end_time are required and start_time must be before end_time' });
+    }
+    const weeksCount = Math.min(12, Math.max(1, parseInt(weeks) || 4));
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() + 1);
+    startDate.setHours(0, 0, 0, 0);
+
+    const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + weeksCount * 7);
+
+    const [sh, sm] = start_time.split(':').map(Number);
+    const [eh, em] = end_time.split(':').map(Number);
+    const endMins = eh * 60 + em;
+
+    const values = [];
+    for (const cur = new Date(startDate); cur < endDate; cur.setDate(cur.getDate() + 1)) {
+      const dayName = dayNames[cur.getDay()];
+      if (!days.includes(dayName)) continue;
+      const dateStr = cur.toISOString().split('T')[0];
+      let slotMins = sh * 60 + sm;
+      while (slotMins < endMins) {
+        const h = Math.floor(slotMins / 60);
+        const m = slotMins % 60;
+        values.push([companyId, teacherId, dateStr, `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`]);
+        slotMins += 30;
+      }
+    }
+
+    if (values.length === 0) return res.json({ message: 'No future slots to create', slotsCreated: 0 });
+
+    const [result] = await pool.query(
+      'INSERT IGNORE INTO teacher_available_slots (company_id, teacher_id, slot_date, slot_time) VALUES ?',
+      [values]
+    );
+    res.json({ message: 'Recurring schedule set', slotsCreated: result.affectedRows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// DELETE clear a week of open slots for a teacher (admin)
+router.delete("/teachers/:id/weekly-slots/week", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const teacherId = req.params.id;
+    const startDate = req.query.startDate || new Date().toISOString().split('T')[0];
+
+    await pool.query(
+      `DELETE FROM teacher_available_slots
+       WHERE company_id = ? AND teacher_id = ? AND slot_date >= ? AND slot_date < DATE_ADD(?, INTERVAL 7 DAY)`,
+      [companyId, teacherId, startDate, startDate]
+    );
+    res.json({ message: 'Week cleared' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Get teacher schedule (upcoming bookings)
 router.get("/teachers/:id/schedule", authenticateToken, requireRole('company_admin'), async (req, res) => {
   try {

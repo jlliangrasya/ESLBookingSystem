@@ -131,6 +131,16 @@ const AdminTeacherProfilePage = () => {
   const [openSlots, setOpenSlots] = useState<Set<string>>(new Set());
   const [togglingSlot, setTogglingSlot] = useState<string | null>(null);
 
+  // Recurring availability dialog
+  const [showRecurringAvail, setShowRecurringAvail] = useState(false);
+  const [recurringAvailDays, setRecurringAvailDays] = useState<string[]>([]);
+  const [recurringAvailStart, setRecurringAvailStart] = useState("09:00");
+  const [recurringAvailEnd, setRecurringAvailEnd] = useState("17:00");
+  const [recurringAvailWeeks, setRecurringAvailWeeks] = useState(4);
+  const [recurringAvailLoading, setRecurringAvailLoading] = useState(false);
+  const [recurringAvailMsg, setRecurringAvailMsg] = useState<string | null>(null);
+  const [clearingWeek, setClearingWeek] = useState(false);
+
   // Drilldown dialog
   const [drillKey, setDrillKey] = useState<DrilldownKey | null>(null);
 
@@ -221,6 +231,44 @@ const AdminTeacherProfilePage = () => {
       console.error("Error toggling slot:", err);
     } finally {
       setTogglingSlot(null);
+    }
+  };
+
+  const handleRecurringAvailability = async () => {
+    if (recurringAvailDays.length === 0) return;
+    setRecurringAvailLoading(true);
+    setRecurringAvailMsg(null);
+    try {
+      const res = await axios.post(
+        `${base}/api/admin/teachers/${id}/weekly-slots/recurring`,
+        { days: recurringAvailDays, start_time: recurringAvailStart, end_time: recurringAvailEnd, weeks: recurringAvailWeeks },
+        { headers }
+      );
+      setRecurringAvailMsg(`Done! ${res.data.slotsCreated} slots opened.`);
+      fetchOpenSlots(weekStart);
+    } catch (err: unknown) {
+      setRecurringAvailMsg(
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to set recurring schedule."
+      );
+    } finally {
+      setRecurringAvailLoading(false);
+    }
+  };
+
+  const handleClearWeek = async () => {
+    if (!confirm("Clear all open slots for this week?")) return;
+    setClearingWeek(true);
+    try {
+      const startStr = format(weekStart, "yyyy-MM-dd");
+      await axios.delete(
+        `${base}/api/admin/teachers/${id}/weekly-slots/week?startDate=${startStr}`,
+        { headers }
+      );
+      fetchOpenSlots(weekStart);
+    } catch {
+      alert("Failed to clear week.");
+    } finally {
+      setClearingWeek(false);
     }
   };
 
@@ -799,11 +847,21 @@ const AdminTeacherProfilePage = () => {
         {/* Weekly Availability (Opt-in) */}
         <Card id="teacher-availability-card" className="glow-card border-0 rounded-2xl">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <CalendarDays className="h-5 w-5 text-primary" />
-              Weekly Availability
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">Click slots to open/close them for this teacher</p>
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarDays className="h-5 w-5 text-primary" />
+                Weekly Availability
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">Click slots to open/close, or use bulk actions below</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { setRecurringAvailMsg(null); setShowRecurringAvail(true); }}>
+                Set Recurring
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50" disabled={clearingWeek} onClick={handleClearWeek}>
+                {clearingWeek ? <Loader2 className="h-3 w-3 animate-spin" /> : "Clear Week"}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between mb-4">
@@ -1099,6 +1157,120 @@ const AdminTeacherProfilePage = () => {
       {currentUser?.role === "company_admin" && currentUser.company_id != null && (
         <AdminTour segment="E" companyId={currentUser.company_id} autoStart />
       )}
+
+      {/* Recurring Availability Dialog */}
+      <Dialog open={showRecurringAvail} onOpenChange={(o) => { if (!o) { setShowRecurringAvail(false); setRecurringAvailMsg(null); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Set Recurring Availability</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Quick presets */}
+            <div>
+              <p className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wide">Quick Presets</p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: "Weekdays Full Day", days: ["Monday","Tuesday","Wednesday","Thursday","Friday"], start: "09:00", end: "18:00" },
+                  { label: "Weekday Mornings", days: ["Monday","Tuesday","Wednesday","Thursday","Friday"], start: "07:00", end: "12:00" },
+                  { label: "Weekday Afternoons", days: ["Monday","Tuesday","Wednesday","Thursday","Friday"], start: "13:00", end: "18:00" },
+                  { label: "Mon / Wed / Fri", days: ["Monday","Wednesday","Friday"], start: "09:00", end: "18:00" },
+                ].map(p => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => { setRecurringAvailDays(p.days); setRecurringAvailStart(p.start); setRecurringAvailEnd(p.end); }}
+                    className="px-3 py-1 rounded-full text-xs font-medium border bg-white text-muted-foreground border-gray-200 hover:border-primary hover:text-primary transition-colors"
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Day toggles */}
+            <div>
+              <p className="text-sm font-medium mb-2">Days of the week</p>
+              <div className="flex flex-wrap gap-2">
+                {["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map((day) => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => setRecurringAvailDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${recurringAvailDays.includes(day) ? "bg-primary text-white border-primary" : "bg-white text-muted-foreground border-gray-200 hover:border-primary"}`}
+                  >
+                    {day.substring(0, 3)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Time range */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium block mb-1">Start Time</label>
+                <select
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  value={recurringAvailStart}
+                  onChange={e => setRecurringAvailStart(e.target.value)}
+                >
+                  {Array.from({ length: 32 }, (_, i) => {
+                    const h = Math.floor(i / 2) + 7;
+                    const m = i % 2 === 0 ? "00" : "30";
+                    return `${String(h).padStart(2, "0")}:${m}`;
+                  }).filter(t => t < recurringAvailEnd).map(t => {
+                    const [hh, mm] = t.split(":");
+                    const h = Number(hh);
+                    return <option key={t} value={t}>{`${h % 12 === 0 ? 12 : h % 12}:${mm} ${h >= 12 ? "PM" : "AM"}`}</option>;
+                  })}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1">End Time</label>
+                <select
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  value={recurringAvailEnd}
+                  onChange={e => setRecurringAvailEnd(e.target.value)}
+                >
+                  {Array.from({ length: 32 }, (_, i) => {
+                    const h = Math.floor(i / 2) + 7;
+                    const m = i % 2 === 0 ? "00" : "30";
+                    return `${String(h).padStart(2, "0")}:${m}`;
+                  }).filter(t => t > recurringAvailStart).map(t => {
+                    const [hh, mm] = t.split(":");
+                    const h = Number(hh);
+                    return <option key={t} value={t}>{`${h % 12 === 0 ? 12 : h % 12}:${mm} ${h >= 12 ? "PM" : "AM"}`}</option>;
+                  })}
+                </select>
+              </div>
+            </div>
+
+            {/* Weeks */}
+            <div>
+              <label className="text-sm font-medium block mb-1">Number of Weeks</label>
+              <select
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+                value={recurringAvailWeeks}
+                onChange={e => setRecurringAvailWeeks(Number(e.target.value))}
+              >
+                {[1,2,3,4,6,8,12].map(w => (
+                  <option key={w} value={w}>{w} week{w > 1 ? "s" : ""}</option>
+                ))}
+              </select>
+            </div>
+
+            {recurringAvailMsg && (
+              <p className={`text-sm ${recurringAvailMsg.startsWith("Done") ? "text-green-600" : "text-red-600"}`}>{recurringAvailMsg}</p>
+            )}
+          </div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button variant="outline" className="flex-1" onClick={() => { setShowRecurringAvail(false); setRecurringAvailMsg(null); }}>Cancel</Button>
+            <Button className="flex-1" disabled={recurringAvailLoading || recurringAvailDays.length === 0} onClick={handleRecurringAvailability}>
+              {recurringAvailLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {recurringAvailMsg?.startsWith("Done") ? "Close" : "Apply"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

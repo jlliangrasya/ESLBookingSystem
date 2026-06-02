@@ -975,4 +975,24 @@ router.post('/weekly-slots/recurring', authenticateToken, requireRole('teacher')
     }
 });
 
+// DELETE /api/teacher/weekly-slots/week?startDate=YYYY-MM-DD — clear all open slots for a 7-day window
+router.delete('/weekly-slots/week', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const teacherId = req.user.id;
+        const companyId = req.user.company_id;
+        const startDate = req.query.startDate || new Date().toISOString().split('T')[0];
+
+        await pool.query(
+            `DELETE FROM teacher_available_slots
+             WHERE company_id = ? AND teacher_id = ? AND slot_date >= ? AND slot_date < DATE_ADD(?, INTERVAL 7 DAY)`,
+            [companyId, teacherId, startDate, startDate]
+        );
+
+        res.json({ message: 'Week cleared' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 module.exports = router;
