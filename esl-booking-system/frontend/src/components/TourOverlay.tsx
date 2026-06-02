@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import { useEffect, useRef, useState } from "react";
 import { TourBubble } from "./TourBubble";
 import type { TourStep } from "@/data/tourSteps";
 
@@ -13,40 +14,79 @@ interface Props {
   canGoBack: boolean;
 }
 
-const PAD = 8;
+const PAD = 10;
 const RADIUS = 8;
 
 export function TourOverlay(props: Props) {
   const { step, targetRect } = props;
+
+  // Track viewport size reactively so the SVG always covers the full screen
+  const [viewport, setViewport] = useState({
+    w: window.innerWidth,
+    h: window.innerHeight,
+  });
+  useEffect(() => {
+    const onResize = () =>
+      setViewport({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   const hasTarget = !!step.targetSelector && !!targetRect;
 
-  const vw = typeof window !== "undefined" ? window.innerWidth : 1920;
-  const vh = typeof window !== "undefined" ? window.innerHeight : 1080;
+  // Guard against zero-size rects (element not yet painted)
+  const rectIsValid =
+    hasTarget &&
+    (targetRect!.width > 0 || targetRect!.height > 0);
 
-  const cut = hasTarget
+  const cut = rectIsValid
     ? {
-        x: targetRect!.left - PAD,
-        y: targetRect!.top - PAD,
-        w: targetRect!.width + PAD * 2,
-        h: targetRect!.height + PAD * 2,
+        x: Math.round(targetRect!.left - PAD),
+        y: Math.round(targetRect!.top - PAD),
+        w: Math.round(targetRect!.width + PAD * 2),
+        h: Math.round(targetRect!.height + PAD * 2),
       }
     : null;
 
+  // Unique mask ID per render to avoid conflicts with other SVG masks on page
+  const maskId = useRef(
+    `tour-mask-${Math.random().toString(36).slice(2)}`
+  ).current;
+
   return createPortal(
     <div
-      style={{ position: "fixed", inset: 0, zIndex: 9998, pointerEvents: "none" }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9998,
+        pointerEvents: "none",
+      }}
     >
-      {/* Dim overlay with spotlight cut-out */}
+      {/* Full-viewport SVG dim layer with cut-out spotlight */}
       <svg
-        width={vw}
-        height={vh}
-        style={{ position: "absolute", inset: 0, display: "block" }}
+        style={{
+          position: "fixed",
+          inset: 0,
+          width: "100vw",
+          height: "100vh",
+          display: "block",
+          overflow: "hidden",
+        }}
+        // Explicit px dimensions match the viewport state so the mask math is correct
+        width={viewport.w}
+        height={viewport.h}
       >
         <defs>
-          <mask id="tour-spotlight-mask">
-            {/* white = show dim */}
-            <rect x={0} y={0} width={vw} height={vh} fill="white" />
-            {/* black = cut-out (transparent) */}
+          <mask id={maskId}>
+            {/* white = visible dim region */}
+            <rect
+              x={0}
+              y={0}
+              width={viewport.w}
+              height={viewport.h}
+              fill="white"
+            />
+            {/* black = transparent cut-out */}
             {cut && (
               <rect
                 x={cut.x}
@@ -60,15 +100,18 @@ export function TourOverlay(props: Props) {
             )}
           </mask>
         </defs>
+
+        {/* The dark overlay, punched through by the mask */}
         <rect
           x={0}
           y={0}
-          width={vw}
-          height={vh}
-          fill="rgba(0,0,0,0.65)"
-          mask="url(#tour-spotlight-mask)"
+          width={viewport.w}
+          height={viewport.h}
+          fill="rgba(0,0,0,0.6)"
+          mask={`url(#${maskId})`}
         />
-        {/* Highlight ring around the target */}
+
+        {/* Animated highlight ring around the target */}
         {cut && (
           <rect
             x={cut.x}
@@ -78,31 +121,49 @@ export function TourOverlay(props: Props) {
             rx={RADIUS}
             ry={RADIUS}
             fill="none"
-            stroke="rgba(37,137,201,0.8)"
-            strokeWidth={2}
+            stroke="#2589c9"
+            strokeWidth={2.5}
+            opacity={0.9}
           />
         )}
       </svg>
 
-      {/* Pass-through click area over the spotlight — lets user interact with target */}
+      {/*
+        Click pass-through over spotlight: sits above the dim layer (z 9999)
+        but lets pointer events reach the underlying DOM element.
+        We use pointer-events:none here and let the actual element handle clicks —
+        the TourEngine attaches its listener directly to the DOM node, so this
+        div just needs to NOT block the element.
+      */}
       {cut && (
         <div
           style={{
-            position: "absolute",
+            position: "fixed",
             left: cut.x,
             top: cut.y,
             width: cut.w,
             height: cut.h,
-            pointerEvents: "auto",
+            pointerEvents: "none", // let clicks fall through to the real element
             zIndex: 9999,
+            borderRadius: RADIUS,
+            // Subtle pulsing glow to draw attention
+            boxShadow: "0 0 0 3px rgba(37,137,201,0.35), 0 0 20px 4px rgba(37,137,201,0.15)",
+            animation: "tour-pulse 2s ease-in-out infinite",
           }}
         />
       )}
 
-      {/* The bubble itself — always interactive */}
+      {/* Bubble — position:fixed is set on the bubble itself; just re-enable pointer events */}
       <div style={{ pointerEvents: "auto" }}>
         <TourBubble {...props} />
       </div>
+
+      <style>{`
+        @keyframes tour-pulse {
+          0%, 100% { box-shadow: 0 0 0 3px rgba(37,137,201,0.4), 0 0 20px 4px rgba(37,137,201,0.15); }
+          50%       { box-shadow: 0 0 0 5px rgba(37,137,201,0.2), 0 0 28px 8px rgba(37,137,201,0.08); }
+        }
+      `}</style>
     </div>,
     document.body
   );

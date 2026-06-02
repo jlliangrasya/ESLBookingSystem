@@ -45,12 +45,13 @@ interface TourEngineContextType {
 }
 
 const TourEngineContext = createContext<TourEngineContextType | undefined>(
-  undefined
+  undefined,
 );
 
 export function useTourEngine() {
   const ctx = useContext(TourEngineContext);
-  if (!ctx) throw new Error("useTourEngine must be used inside TourEngineProvider");
+  if (!ctx)
+    throw new Error("useTourEngine must be used inside TourEngineProvider");
   return ctx;
 }
 
@@ -74,12 +75,16 @@ export function TourEngineProvider({ children }: { children: ReactNode }) {
   // Keep latest values accessible in callbacks without stale closures
   const stepIndexRef = useRef(stepIndex);
   const segmentIdRef = useRef(segmentId);
-  useEffect(() => { stepIndexRef.current = stepIndex; }, [stepIndex]);
-  useEffect(() => { segmentIdRef.current = segmentId; }, [segmentId]);
+  useEffect(() => {
+    stepIndexRef.current = stepIndex;
+  }, [stepIndex]);
+  useEffect(() => {
+    segmentIdRef.current = segmentId;
+  }, [segmentId]);
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const currentSegment = segmentId
-    ? TOUR_SEGMENTS.find((s) => s.id === segmentId) ?? null
+    ? (TOUR_SEGMENTS.find((s) => s.id === segmentId) ?? null)
     : null;
   const steps: TourStep[] = currentSegment?.steps ?? [];
   const currentStep: TourStep | null = steps[stepIndex] ?? null;
@@ -105,7 +110,7 @@ export function TourEngineProvider({ children }: { children: ReactNode }) {
         }
       }, 150);
     },
-    [stopPolling]
+    [stopPolling],
   );
 
   // ── Rect tracking ─────────────────────────────────────────────────────────
@@ -137,15 +142,22 @@ export function TourEngineProvider({ children }: { children: ReactNode }) {
             preRect.top >= 0 &&
             preRect.bottom <= window.innerHeight;
           if (!alreadyVisible) {
-            el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+            el.scrollIntoView({
+              behavior: "smooth",
+              block: "nearest",
+              inline: "nearest",
+            });
           }
 
-          // Defer rect query to after layout/paint settles
-          requestAnimationFrame(() => {
+          // Wait one frame for layout to settle after scroll
+          const afterScroll = () => {
             const rect = el.getBoundingClientRect();
             // If element has no dimensions yet, retry
             if (rect.width === 0 && rect.height === 0 && attempts < 30) {
-              retryTimerRef.current = setTimeout(() => trySetup(attempts + 1), 200);
+              retryTimerRef.current = setTimeout(
+                () => trySetup(attempts + 1),
+                200,
+              );
               return;
             }
             setTargetRect(rect);
@@ -165,7 +177,8 @@ export function TourEngineProvider({ children }: { children: ReactNode }) {
             const onScroll = () => setTargetRect(el.getBoundingClientRect());
             window.addEventListener("scroll", onScroll, true);
             scrollListenerRef.current = onScroll;
-          });
+          };
+          requestAnimationFrame(() => requestAnimationFrame(afterScroll));
         } else if (attempts < 30) {
           retryTimerRef.current = setTimeout(() => trySetup(attempts + 1), 200);
         }
@@ -173,13 +186,16 @@ export function TourEngineProvider({ children }: { children: ReactNode }) {
 
       trySetup();
     },
-    [cleanupTracking]
+    [cleanupTracking],
   );
 
   // ── Click listener cleanup ────────────────────────────────────────────────
   const cleanupClickListener = useCallback(() => {
     if (clickHandlerRef.current && clickTargetRef.current) {
-      clickTargetRef.current.removeEventListener("click", clickHandlerRef.current);
+      clickTargetRef.current.removeEventListener(
+        "click",
+        clickHandlerRef.current,
+      );
       clickHandlerRef.current = null;
       clickTargetRef.current = null;
     }
@@ -225,11 +241,13 @@ export function TourEngineProvider({ children }: { children: ReactNode }) {
       if (!el) return false;
 
       const handler = () => {
-        const waitFor = (currentStep as { waitForElement?: string }).waitForElement;
-        const timeout = (currentStep as { waitTimeout?: number }).waitTimeout ?? 8000;
+        const waitFor = (currentStep as { waitForElement?: string })
+          .waitForElement;
+        const timeout =
+          (currentStep as { waitTimeout?: number }).waitTimeout ?? 8000;
         if (waitFor) {
           pollForElement(waitFor, timeout, () =>
-            doAdvance(stepIndexRef.current, segmentIdRef.current!)
+            doAdvance(stepIndexRef.current, segmentIdRef.current!),
           );
         } else {
           doAdvance(stepIndexRef.current, segmentIdRef.current!);
@@ -255,7 +273,7 @@ export function TourEngineProvider({ children }: { children: ReactNode }) {
       cleanupClickListener();
       stopPolling();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, stepIndex, segmentId]);
 
   // ── Track target rect ─────────────────────────────────────────────────────
@@ -267,7 +285,7 @@ export function TourEngineProvider({ children }: { children: ReactNode }) {
     }
     setupTracking(currentStep.targetSelector);
     return cleanupTracking;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, stepIndex, segmentId]);
 
   // ── Resize handler ────────────────────────────────────────────────────────
@@ -322,7 +340,9 @@ export function TourEngineProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <TourEngineContext.Provider value={{ active, startTour, resetAndStart, exit }}>
+    <TourEngineContext.Provider
+      value={{ active, startTour, resetAndStart, exit }}
+    >
       {children}
       {active && currentStep && (
         <TourOverlay
@@ -333,9 +353,7 @@ export function TourEngineProvider({ children }: { children: ReactNode }) {
           onNext={advance}
           onBack={back}
           onExit={exit}
-          canGoBack={
-            stepIndex > 0 && steps[stepIndex - 1]?.type === "explain"
-          }
+          canGoBack={stepIndex > 0 && steps[stepIndex - 1]?.type === "explain"}
         />
       )}
     </TourEngineContext.Provider>
