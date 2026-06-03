@@ -87,6 +87,19 @@ type DrilldownKey =
   | "total_present"
   | "classes_this_month";
 
+const SLOT_TIMES: string[] = Array.from({ length: 32 }, (_, i) => {
+  const totalMins = 7 * 60 + i * 30;
+  const h = Math.floor(totalMins / 60).toString().padStart(2, "0");
+  const m = (totalMins % 60).toString().padStart(2, "0");
+  return `${h}:${m}`;
+});
+
+const fmt12 = (t: string) => {
+  const [hh, mm] = t.split(":");
+  const h = Number(hh);
+  return `${h % 12 === 0 ? 12 : h % 12}:${mm} ${h >= 12 ? "PM" : "AM"}`;
+};
+
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
   confirmed: "bg-green-100 text-green-800",
@@ -1174,12 +1187,13 @@ const AdminTeacherProfilePage = () => {
                   { label: "Weekday Mornings", days: ["Monday","Tuesday","Wednesday","Thursday","Friday"], start: "07:00", end: "12:00" },
                   { label: "Weekday Afternoons", days: ["Monday","Tuesday","Wednesday","Thursday","Friday"], start: "13:00", end: "18:00" },
                   { label: "Mon / Wed / Fri", days: ["Monday","Wednesday","Friday"], start: "09:00", end: "18:00" },
+                  { label: "⭐ Peak Hours", days: ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"], start: "18:00", end: "22:00" },
                 ].map(p => (
                   <button
                     key={p.label}
                     type="button"
                     onClick={() => { setRecurringAvailDays(p.days); setRecurringAvailStart(p.start); setRecurringAvailEnd(p.end); }}
-                    className="px-3 py-1 rounded-full text-xs font-medium border bg-white text-muted-foreground border-gray-200 hover:border-primary hover:text-primary transition-colors"
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${p.label.startsWith("⭐") ? "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100 hover:border-amber-400" : "bg-white text-muted-foreground border-gray-200 hover:border-primary hover:text-primary"}`}
                   >
                     {p.label}
                   </button>
@@ -1211,17 +1225,18 @@ const AdminTeacherProfilePage = () => {
                 <select
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                   value={recurringAvailStart}
-                  onChange={e => setRecurringAvailStart(e.target.value)}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setRecurringAvailStart(v);
+                    if (v >= recurringAvailEnd) {
+                      const next = SLOT_TIMES.find(t => t > v);
+                      if (next) setRecurringAvailEnd(next);
+                    }
+                  }}
                 >
-                  {Array.from({ length: 32 }, (_, i) => {
-                    const h = Math.floor(i / 2) + 7;
-                    const m = i % 2 === 0 ? "00" : "30";
-                    return `${String(h).padStart(2, "0")}:${m}`;
-                  }).filter(t => t < recurringAvailEnd).map(t => {
-                    const [hh, mm] = t.split(":");
-                    const h = Number(hh);
-                    return <option key={t} value={t}>{`${h % 12 === 0 ? 12 : h % 12}:${mm} ${h >= 12 ? "PM" : "AM"}`}</option>;
-                  })}
+                  {SLOT_TIMES.slice(0, -1).map(t => (
+                    <option key={t} value={t}>{fmt12(t)}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -1229,17 +1244,18 @@ const AdminTeacherProfilePage = () => {
                 <select
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                   value={recurringAvailEnd}
-                  onChange={e => setRecurringAvailEnd(e.target.value)}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setRecurringAvailEnd(v);
+                    if (v <= recurringAvailStart) {
+                      const prev = [...SLOT_TIMES].reverse().find(t => t < v);
+                      if (prev) setRecurringAvailStart(prev);
+                    }
+                  }}
                 >
-                  {Array.from({ length: 32 }, (_, i) => {
-                    const h = Math.floor(i / 2) + 7;
-                    const m = i % 2 === 0 ? "00" : "30";
-                    return `${String(h).padStart(2, "0")}:${m}`;
-                  }).filter(t => t > recurringAvailStart).map(t => {
-                    const [hh, mm] = t.split(":");
-                    const h = Number(hh);
-                    return <option key={t} value={t}>{`${h % 12 === 0 ? 12 : h % 12}:${mm} ${h >= 12 ? "PM" : "AM"}`}</option>;
-                  })}
+                  {SLOT_TIMES.slice(1).map(t => (
+                    <option key={t} value={t}>{fmt12(t)}</option>
+                  ))}
                 </select>
               </div>
             </div>
