@@ -109,7 +109,7 @@ const ReportModal: React.FC<ReportModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
             {readOnly ? "Class Report" : isEditing ? "Edit Report" : "Class Report"} — {studentName}
@@ -119,7 +119,7 @@ const ReportModal: React.FC<ReportModalProps> = ({
           )}
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className="py-2">
           {isFetching && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading report...
@@ -127,13 +127,13 @@ const ReportModal: React.FC<ReportModalProps> = ({
           )}
 
           {!isFetching && error && (
-            <Alert variant="destructive">
+            <Alert variant="destructive" className="mb-3">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
           {!isFetching && success && (
-            <Alert className="border-green-500 bg-green-50 text-green-700">
+            <Alert className="border-green-500 bg-green-50 text-green-700 mb-3">
               <CheckCircle2 className="h-4 w-4 text-green-600" />
               <AlertDescription>
                 {isEditing ? "Report updated successfully!" : "Report submitted successfully!"}
@@ -142,55 +142,61 @@ const ReportModal: React.FC<ReportModalProps> = ({
           )}
 
           {!isFetching && (
-            <>
-              <div className="space-y-1.5">
-                <Label>New Words</Label>
-                <Textarea
-                  rows={2}
-                  placeholder="e.g. persevere, eloquent, ambiguous..."
-                  value={newWords}
-                  onChange={(e) => !readOnly && setNewWords(e.target.value)}
-                  className="resize-none"
-                  readOnly={readOnly}
-                />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Left column */}
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label>New Words</Label>
+                  <Textarea
+                    rows={5}
+                    placeholder="e.g. persevere, eloquent, ambiguous..."
+                    value={newWords}
+                    onChange={(e) => !readOnly && setNewWords(e.target.value)}
+                    className="resize-none"
+                    readOnly={readOnly}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Sentences</Label>
+                  <Textarea
+                    rows={6}
+                    placeholder="Sample sentences used in class..."
+                    value={sentences}
+                    onChange={(e) => !readOnly && setSentences(e.target.value)}
+                    className="resize-none"
+                    readOnly={readOnly}
+                  />
+                </div>
               </div>
 
-              <div className="space-y-1.5">
-                <Label>Sentences</Label>
-                <Textarea
-                  rows={3}
-                  placeholder="Sample sentences used in class..."
-                  value={sentences}
-                  onChange={(e) => !readOnly && setSentences(e.target.value)}
-                  className="resize-none"
-                  readOnly={readOnly}
-                />
-              </div>
+              {/* Right column */}
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label>Notes</Label>
+                  <Textarea
+                    rows={5}
+                    placeholder="Topic covered, areas practiced..."
+                    value={notes}
+                    onChange={(e) => !readOnly && setNotes(e.target.value)}
+                    className="resize-none"
+                    readOnly={readOnly}
+                  />
+                </div>
 
-              <div className="space-y-1.5">
-                <Label>Notes</Label>
-                <Textarea
-                  rows={3}
-                  placeholder="Topic covered, areas practiced..."
-                  value={notes}
-                  onChange={(e) => !readOnly && setNotes(e.target.value)}
-                  className="resize-none"
-                  readOnly={readOnly}
-                />
+                <div className="space-y-1.5">
+                  <Label>Remarks</Label>
+                  <Textarea
+                    rows={6}
+                    placeholder="Overall performance and feedback..."
+                    value={remarks}
+                    onChange={(e) => !readOnly && setRemarks(e.target.value)}
+                    className="resize-none"
+                    readOnly={readOnly}
+                  />
+                </div>
               </div>
-
-              <div className="space-y-1.5">
-                <Label>Remarks</Label>
-                <Textarea
-                  rows={2}
-                  placeholder="Overall performance and feedback..."
-                  value={remarks}
-                  onChange={(e) => !readOnly && setRemarks(e.target.value)}
-                  className="resize-none"
-                  readOnly={readOnly}
-                />
-              </div>
-            </>
+            </div>
           )}
         </div>
 
