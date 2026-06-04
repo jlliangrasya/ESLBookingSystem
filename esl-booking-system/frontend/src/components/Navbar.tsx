@@ -25,7 +25,7 @@ const NavBar: React.FC = () => {
   const isOwner = authContext?.user?.is_owner ?? false;
   const companyId = authContext?.user?.company_id ?? 0;
   const [mobileOpen, setMobileOpen] = useState(false);
-  const startTour = useStartTour("A", companyId);
+  const startTour = useStartTour(companyId);
 
   const handleLogout = () => {
     authContext?.logout();

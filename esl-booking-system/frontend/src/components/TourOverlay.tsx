@@ -71,6 +71,7 @@ export function TourOverlay(props: Props) {
           height: "100vh",
           display: "block",
           overflow: "hidden",
+          pointerEvents: "none",
         }}
         // Explicit px dimensions match the viewport state so the mask math is correct
         width={viewport.w}

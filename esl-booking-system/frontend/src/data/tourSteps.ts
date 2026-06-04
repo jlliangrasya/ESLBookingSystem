@@ -44,55 +44,20 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
         type: "explain",
         id: "A-welcome",
         title: "Welcome to Brightfolks! 🎉",
-        content: `This quick interactive tour will walk you through everything you need to get your school up and running:<br/><br/>
-          📦 <strong>Packages</strong> — Create your class packages &amp; configure school settings<br/>
-          👩‍🏫 <strong>Teachers</strong> — Add teachers and set their availability<br/>
+        content: `This interactive tour will walk you through everything you need to get your school up and running.<br/><br/>
+          📦 <strong>Packages</strong> — Create class packages &amp; configure school settings<br/>
+          👩‍🏫 <strong>Teachers</strong> — Add teachers and set their weekly availability<br/>
           🎓 <strong>Students</strong> — Register students, assign packages, and book classes<br/><br/>
-          At each step, you'll be asked to <strong>actually click the button</strong> — just follow the arrows!`,
+          At each step, <strong>follow the arrows</strong> and click the highlighted element to move forward!`,
       },
       {
-        type: "explain",
-        id: "A-packages",
+        type: "action",
+        id: "A-go-packages",
         targetSelector: "#nav-packages",
         title: "Step 1 — Class Packages",
         content: `Before you can enroll a student, you need at least one <strong>class package</strong>.<br/><br/>
-          A package defines the subject, number of sessions, duration per class, and price.<br/><br/>
-          You'll also set up your <strong>company settings</strong> and <strong>payment method</strong> here.`,
-        placement: "bottom",
-      },
-      {
-        type: "explain",
-        id: "A-teachers",
-        targetSelector: "#nav-teachers",
-        title: "Step 2 — Teachers",
-        content: `Add your teachers here. Each teacher gets their own login account to manage their schedule and view classes.<br/><br/>
-          ⚠️ <strong>Critical:</strong> After adding a teacher, open their <strong>weekly availability slots</strong> on their profile page. Students can only book into open (green) slots.`,
-        placement: "bottom",
-      },
-      {
-        type: "explain",
-        id: "A-students",
-        targetSelector: "#nav-students",
-        title: "Step 3 — Students",
-        content: `Register your students here. You set their login credentials and share them.<br/><br/>
-          <strong>Student booking flow:</strong><br/>
-          1️⃣ Student browses packages and selects one<br/>
-          2️⃣ They submit payment<br/>
-          3️⃣ You confirm their payment on the dashboard<br/>
-          4️⃣ They can then pick an available slot and book a class`,
-        placement: "bottom",
-      },
-      {
-        type: "explain",
-        id: "A-dashboard",
-        targetSelector: "#nav-admin-dashboard",
-        title: "Step 4 — Dashboard",
-        content: `Your command center. It shows:<br/>
-          • Today's scheduled classes<br/>
-          • Students waiting for payment confirmation<br/>
-          • Teacher workload overview<br/>
-          • Analytics and growth charts<br/><br/>
-          You can also book classes on behalf of students directly from their profile.`,
+          A package defines the subject, number of sessions, duration per class, and price. You'll also configure your school settings and payment method here.`,
+        actionHint: "Click Packages in the navbar to continue",
         placement: "bottom",
       },
     ],
@@ -116,6 +81,8 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
       {
         type: "explain",
         id: "B-fill-package",
+        targetSelector: "[role=dialog]",
+        placement: "bottom",
         title: "Fill In Package Details",
         content: `Fill in the following fields:<br/><br/>
           • <strong>Package Name</strong> — e.g. "Basic English 10"<br/>
@@ -127,16 +94,8 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
       },
       {
         type: "explain",
-        id: "B-settings-overview",
-        targetSelector: "#company-settings-card",
-        title: "Company Settings",
-        content: `This section controls how your school operates. Let's walk through each setting so you know exactly what they do.`,
-        placement: "top",
-      },
-      {
-        type: "explain",
         id: "B-teacher-picker",
-        targetSelector: "#company-settings-card",
+        targetSelector: "#setting-teacher-picker",
         title: "Allow Students to Select Their Own Teacher",
         content: `🎓 <strong>Allow students to pick their teacher</strong><br/><br/>
           <strong>ON</strong> — students choose a teacher themselves during enrollment.<br/>
@@ -147,7 +106,7 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
       {
         type: "explain",
         id: "B-adj-visibility",
-        targetSelector: "#company-settings-card",
+        targetSelector: "#setting-adj-visibility",
         title: "Class Adjustment Visibility",
         content: `📋 <strong>Class adjustment visibility</strong><br/><br/>
           <strong>ON</strong> — students can see any sessions you've added or deducted (with your reason) in their Student Record.<br/>
@@ -157,22 +116,11 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
       {
         type: "explain",
         id: "B-cancellation",
-        targetSelector: "#company-settings-card",
+        targetSelector: "#setting-cancellation",
         title: "Cancellation Policy",
         content: `⏱ <strong>Cancellation Policy</strong><br/><br/>
-          Set how many hours before a class a student or teacher can still cancel without penalty.<br/>
-          Set to <strong>0</strong> to allow cancellation at any time.<br/><br/>
-          This protects both teachers and students from last-minute no-shows.`,
-        placement: "top",
-      },
-      {
-        type: "explain",
-        id: "B-penalty",
-        targetSelector: "#company-settings-card",
-        title: "Penalty Notice for Late Teacher Cancellations",
-        content: `⚠️ <strong>Penalty notice</strong><br/><br/>
-          When enabled, teachers who cancel within the cancellation window will see a <strong>penalty warning</strong> reminding them of the school's policy.<br/><br/>
-          This is a notice only — no automatic deduction is applied.`,
+          Set how many hours before a class a student or teacher can still cancel without penalty. Set to <strong>0</strong> to allow cancellation at any time.<br/><br/>
+          ⚠️ <strong>Penalty notice</strong> — when enabled, teachers who cancel within the window will see a penalty warning reminding them of the school's policy. This is a notice only — no automatic deduction is applied.`,
         placement: "top",
       },
       {
@@ -193,6 +141,15 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
         content: `You've reviewed all the company settings. Now make sure to <strong>save them</strong> so your preferences are applied.`,
         actionHint: "Click Save Settings to continue",
         placement: "top",
+      },
+      {
+        type: "action",
+        id: "B-go-teachers",
+        targetSelector: "#nav-teachers",
+        title: "Page 2 — Teachers",
+        content: `Your packages and settings are all saved! Next, let's add your first teacher so students have someone to book classes with.`,
+        actionHint: "Click Teachers in the navbar to continue",
+        placement: "bottom",
       },
     ],
   },
@@ -215,6 +172,8 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
       {
         type: "explain",
         id: "C-fill-teacher",
+        targetSelector: "[role=dialog]",
+        placement: "bottom",
         title: "Fill In Teacher Details",
         content: `Fill in the teacher's information:<br/><br/>
           • <strong>Full Name</strong><br/>
@@ -322,6 +281,15 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
           • <strong>Password:</strong> the temporary password you set<br/><br/>
           The teacher can log in and start managing their availability right away.`,
       },
+      {
+        type: "action",
+        id: "C-go-students",
+        targetSelector: "#nav-students",
+        title: "Page 3 — Students",
+        content: `Your teachers are set up! Now let's register your first student so they can enroll in a package and start booking classes.`,
+        actionHint: "Click Students in the navbar to continue",
+        placement: "bottom",
+      },
     ],
   },
 
@@ -343,6 +311,8 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
       {
         type: "explain",
         id: "D-fill-student",
+        targetSelector: "[role=dialog]",
+        placement: "bottom",
         title: "Fill In Student Details",
         content: `Fill in the student's information:<br/><br/>
           • <strong>Full Name</strong><br/>
@@ -431,6 +401,8 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
       {
         type: "explain",
         id: "D-assign-package-fill",
+        targetSelector: "[role=dialog]",
+        placement: "bottom",
         title: "Select a Package",
         content: `Choose a package from the list and optionally assign a teacher.<br/><br/>
           Once you confirm, the student's package will be active and they'll be able to start booking classes.<br/><br/>
@@ -495,6 +467,8 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
       {
         type: "explain",
         id: "D-add-class-types",
+        targetSelector: "[role=dialog]",
+        placement: "bottom",
         title: "One-by-One vs. Recurring",
         content: `📅 <strong>One by One</strong> — Pick a specific date and time from the teacher's open slots. Great for one-off sessions.<br/><br/>
           🔁 <strong>Recurring</strong> — Set a day of the week, start time, and number of weeks. The system creates all classes at once. The student can still cancel individual sessions without affecting the rest.<br/><br/>

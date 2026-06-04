@@ -412,7 +412,7 @@ const PackageSetupPage = () => {
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Teacher picker toggle */}
-            <div className="flex items-center justify-between border rounded-lg p-4">
+            <div id="setting-teacher-picker" className="flex items-center justify-between border rounded-lg p-4">
               <div>
                 <p className="font-medium text-sm">
                   Allow students to select their own teacher
@@ -434,7 +434,7 @@ const PackageSetupPage = () => {
             </div>
 
             {/* Class adjustment visibility toggle */}
-            <div className="flex items-center justify-between border rounded-lg p-4">
+            <div id="setting-adj-visibility" className="flex items-center justify-between border rounded-lg p-4">
               <div>
                 <p className="font-medium text-sm">
                   Class adjustment visibility
@@ -458,7 +458,7 @@ const PackageSetupPage = () => {
             </div>
 
             {/* Cancellation window */}
-            <div className="border rounded-lg p-4 space-y-3">
+            <div id="setting-cancellation" className="border rounded-lg p-4 space-y-3">
               <p className="font-medium text-sm">Cancellation Policy</p>
               <div className="flex items-center gap-3">
                 <div className="flex-1">
