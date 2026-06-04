@@ -946,7 +946,10 @@ router.post('/weekly-slots/recurring', authenticateToken, requireRole('teacher')
             const dayName = dayNames[cur.getDay()];
             if (!days.includes(dayName)) continue;
 
-            const dateStr = cur.toISOString().split('T')[0];
+            const y = cur.getFullYear();
+            const mo = String(cur.getMonth() + 1).padStart(2, '0');
+            const d = String(cur.getDate()).padStart(2, '0');
+            const dateStr = `${y}-${mo}-${d}`;
 
             // Generate 30-min slots from start_time to end_time (exclusive)
             let slotMins = sh * 60 + sm;

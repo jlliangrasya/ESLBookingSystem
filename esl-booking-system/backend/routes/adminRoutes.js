@@ -622,7 +622,10 @@ router.post("/teachers/:id/weekly-slots/recurring", authenticateToken, requireRo
     for (const cur = new Date(startDate); cur < endDate; cur.setDate(cur.getDate() + 1)) {
       const dayName = dayNames[cur.getDay()];
       if (!days.includes(dayName)) continue;
-      const dateStr = cur.toISOString().split('T')[0];
+      const y = cur.getFullYear();
+      const mo = String(cur.getMonth() + 1).padStart(2, '0');
+      const d = String(cur.getDate()).padStart(2, '0');
+      const dateStr = `${y}-${mo}-${d}`;
       let slotMins = sh * 60 + sm;
       while (slotMins < endMins) {
         const h = Math.floor(slotMins / 60);
