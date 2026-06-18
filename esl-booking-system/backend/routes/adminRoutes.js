@@ -785,6 +785,12 @@ router.post("/teacher-leaves/:id/approve", authenticateToken, requireRole('compa
        ) AS times`,
       [companyId, leave.teacher_id, leave.leave_date]
     );
+    // Also clear any opt-in slots the teacher had opened for that date, so the
+    // student-facing calendar doesn't keep showing stale "open" slots for a day off
+    await pool.query(
+      `DELETE FROM teacher_available_slots WHERE company_id = ? AND teacher_id = ? AND slot_date = ?`,
+      [companyId, leave.teacher_id, leave.leave_date]
+    );
 
     // Find bookings on this date that conflict with the leave
     const [conflictingBookings] = await pool.query(

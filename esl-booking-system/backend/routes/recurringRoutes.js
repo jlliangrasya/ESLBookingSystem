@@ -195,6 +195,16 @@ router.post('/', authenticateToken, requireRole('student', 'company_admin'), asy
                     [companyId, teacherId, dateStr, timeStr]
                 );
                 if (openRows.length === 0) {
+                    // TEMP DIAGNOSTIC — remove once root cause of the false-negative is confirmed.
+                    const [allRowsThatDay] = await connection.query(
+                        `SELECT teacher_id, slot_date, TIME_FORMAT(slot_time, '%H:%i:%s') AS slot_time_raw
+                         FROM teacher_available_slots WHERE company_id = ? AND slot_date = ?`,
+                        [companyId, dateStr]
+                    );
+                    console.log('[recurring debug] no match', {
+                        companyId, teacherId, teacherIdType: typeof teacherId, dateStr, timeStr,
+                        rowsThatDayAnyTeacher: allRowsThatDay,
+                    });
                     skippedDates.push({ date: dateStr, reason: `Teacher not available at ${timeStr}` });
                     slotMissing = true; break;
                 }
