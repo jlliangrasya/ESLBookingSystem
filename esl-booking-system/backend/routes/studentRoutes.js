@@ -373,14 +373,23 @@ router.get('/teacher-slots', authenticateToken, requireRole('student'), async (r
 
         let openSlots = [];
         if (teacher_id) {
-            // Get open slots for specific teacher
-            const [rows] = await pool.query(
-                `SELECT TIME_FORMAT(slot_time, '%H:%i') AS slot_time
-                 FROM teacher_available_slots
-                 WHERE company_id = ? AND teacher_id = ? AND slot_date = ?`,
-                [companyId, teacher_id, date]
+            // A teacher on leave that day has no real availability
+            const [leaveRows] = await pool.query(
+                `SELECT id FROM teacher_leaves WHERE teacher_id = ? AND company_id = ? AND leave_date = ? AND status IN ('pending', 'approved')`,
+                [teacher_id, companyId, date]
             );
-            openSlots = rows.map(r => r.slot_time);
+            if (leaveRows.length > 0) {
+                openSlots = [];
+            } else {
+                // Get open slots for specific teacher
+                const [rows] = await pool.query(
+                    `SELECT TIME_FORMAT(slot_time, '%H:%i') AS slot_time
+                     FROM teacher_available_slots
+                     WHERE company_id = ? AND teacher_id = ? AND slot_date = ?`,
+                    [companyId, teacher_id, date]
+                );
+                openSlots = rows.map(r => r.slot_time);
+            }
         } else {
             // No specific teacher — general schedule: only show slots where ≥1 teacher is truly free
             const [slotRows] = await pool.query(
