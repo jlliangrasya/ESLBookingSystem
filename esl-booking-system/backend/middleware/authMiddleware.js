@@ -72,8 +72,14 @@ const authenticateToken = async (req, res, next) => {
                     company = row || null;
                     if (company) cacheSet(`company:${decoded.company_id}`, company);
                 }
-                if (!company || company.status !== 'active') {
+                if (!company || (company.status !== 'active' && company.status !== 'locked' && company.status !== 'suspended')) {
                     return res.status(403).json({ message: 'Your company account is not active.' });
+                }
+                if (company.status === 'suspended') {
+                    return res.status(403).json({ message: 'Your company account is suspended. Please complete payment to restore access.' });
+                }
+                if (company.status === 'locked') {
+                    return res.status(403).json({ message: 'Your company account has been locked. Please contact support.' });
                 }
                 if (company.trial_ends_at && new Date(company.trial_ends_at) < new Date()) {
                     return res.status(403).json({ message: 'Your free trial has expired. Please upgrade your plan.' });

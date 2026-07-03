@@ -111,8 +111,9 @@ function groupBookings(rows: BookingRecord[]): BookingRecord[] {
       groups.get(key)!.slot_count = (groups.get(key)!.slot_count ?? 1) + 1;
     }
   }
-  // Reverse so newest classes appear at the top of the list
-  return Array.from(groups.values()).reverse();
+  // Keep ASC order so the earliest class of the filtered month is at the top
+  // (e.g. July 2 first, July 30 last) instead of starting from the farthest date
+  return Array.from(groups.values());
 }
 
 interface Teacher {

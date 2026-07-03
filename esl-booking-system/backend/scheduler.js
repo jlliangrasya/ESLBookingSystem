@@ -3,31 +3,68 @@ const pool = require('./db');
 const notify = require('./utils/notify');
 const { sendMail } = require('./utils/mailer');
 const logger = require('./utils/logger');
+const { phtNowSql, phtTodaySql, formatPHT } = require('./utils/phtTime');
 
-// appointment_date is stored in Philippine time (UTC+8).
-// Format it for display in notifications, labelled as PHT.
-function formatPHT(appointmentDate) {
-    const raw = new Date(appointmentDate);
-    // mysql2 on a UTC server interprets the naive datetime as UTC,
-    // but the value is actually PHT — shift to real UTC then format in Manila tz
-    const realUtc = new Date(raw.getTime() - (8 * 60 * 60 * 1000));
-    return realUtc.toLocaleString('en-US', {
-        timeZone: 'Asia/Manila',
-        dateStyle: 'medium',
-        timeStyle: 'short',
-    }) + ' (PHT)';
+// ── Reliability notes (Render free tier) ─────────────────────────────────────
+// The free tier idle-sleeps the process after ~15 min without inbound HTTP
+// traffic, killing all in-memory cron timers. Three defenses:
+//   1. keepAlive self-pings the public /health URL (inbound HTTP resets the
+//      idle timer — a DB query does NOT).
+//   2. startScheduler() runs every check once on boot, so waking up from a
+//      sleep/deploy immediately catches anything still inside its window.
+//   3. Daily jobs are claimed through the scheduler_runs table instead of a
+//      fixed clock tick, so a missed 10:00 AM run still happens at 10:15,
+//      14:00, or whenever the process is next awake that day.
+// Reminder sends are claim-first (UPDATE ... WHERE reminded = FALSE), so the
+// boot catch-up overlapping a cron tick can never double-send.
+
+// ── Schema the scheduler needs (safe to run every boot) ───────────────────────
+async function ensureSchedulerSchema() {
+    await pool.query(`CREATE TABLE IF NOT EXISTS scheduler_runs (
+        job_name VARCHAR(64) PRIMARY KEY,
+        last_run_date DATE NOT NULL,
+        last_run_at DATETIME NOT NULL)`);
+
+    const addCols = [
+        ['companies', 'onboarding_followup_sent', 'TINYINT(1) NOT NULL DEFAULT 0'],
+        ['push_subscriptions', 'failure_count', 'INT NOT NULL DEFAULT 0'],
+    ];
+    for (const [table, col, def] of addCols) {
+        try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); }
+        catch (err) { if (!err.message.includes('Duplicate column')) logger.error(`[Scheduler] Add column ${table}.${col} failed`, { error: err.message }); }
+    }
 }
 
-// ── Billing Checks (daily at 2:00 AM) ─────────────────────────────────────────
+// Atomically claim a daily job for today (PHT). Returns true if this call won
+// the claim (job hasn't run today yet), false if it already ran.
+// Safe under overlapping ticks and multiple instances.
+async function claimDailyRun(jobName) {
+    const today = phtTodaySql();
+    const now = phtNowSql();
+    const [result] = await pool.query(
+        `INSERT INTO scheduler_runs (job_name, last_run_date, last_run_at) VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           last_run_at  = IF(last_run_date < VALUES(last_run_date), VALUES(last_run_at), last_run_at),
+           last_run_date = IF(last_run_date < VALUES(last_run_date), VALUES(last_run_date), last_run_date)`,
+        [jobName, today, now]
+    );
+    // affectedRows: 1 = inserted, 2 = updated (claimed); 0 = already ran today
+    return result.affectedRows > 0;
+}
+
+// ── Billing Checks (daily, PHT calendar dates) ────────────────────────────────
 async function runBillingChecks() {
     logger.info('[Scheduler] Running billing checks...');
 
     try {
+        const today = phtTodaySql();
+
         // A. Notify company owner 5 days before due date
         const [due5] = await pool.query(
             `SELECT c.id, c.company_name AS name FROM companies c
-             WHERE c.next_due_date = DATE_ADD(CURDATE(), INTERVAL 5 DAY)
-             AND c.status = 'active'`
+             WHERE c.next_due_date = ?
+             AND c.status = 'active'`,
+            [phtTodaySql(5)]
         );
         await Promise.all(due5.map(async (company) => {
             const [owners] = await pool.query(
@@ -46,8 +83,9 @@ async function runBillingChecks() {
         // B. Notify super admins 3 days before due date
         const [due3] = await pool.query(
             `SELECT c.id, c.company_name AS name FROM companies c
-             WHERE c.next_due_date = DATE_ADD(CURDATE(), INTERVAL 3 DAY)
-             AND c.status = 'active'`
+             WHERE c.next_due_date = ?
+             AND c.status = 'active'`,
+            [phtTodaySql(3)]
         );
         if (due3.length > 0) {
             const [superAdmins] = await pool.query("SELECT id FROM users WHERE role = 'super_admin'");
@@ -62,14 +100,15 @@ async function runBillingChecks() {
             ));
         }
 
-        // C. Auto-lock companies past their due date
+        // C. Auto-suspend companies past their due date (self-service recovery via suspended page)
         const [overdue] = await pool.query(
             `SELECT c.id, c.company_name AS name FROM companies c
-             WHERE c.next_due_date < CURDATE()
-             AND c.status = 'active'`
+             WHERE c.next_due_date < ?
+             AND c.status = 'active'`,
+            [today]
         );
         await Promise.all(overdue.map(async (company) => {
-            await pool.query("UPDATE companies SET status = 'locked' WHERE id = ?", [company.id]);
+            await pool.query("UPDATE companies SET status = 'suspended' WHERE id = ?", [company.id]);
             const [owners] = await pool.query(
                 "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin' AND is_owner = TRUE",
                 [company.id]
@@ -78,21 +117,22 @@ async function runBillingChecks() {
                 userId: owner.id,
                 companyId: company.id,
                 type: 'account_locked',
-                title: 'Account locked — payment overdue',
-                message: `Your account for "${company.name}" has been locked because the subscription payment is overdue. Please contact support to restore access.`,
+                title: 'Account suspended — payment overdue',
+                message: `Your account for "${company.name}" has been suspended because the subscription payment is overdue. Please log in and complete payment to restore access.`,
             })));
-            logger.warn(`[Scheduler] Locked company: ${company.name} (id=${company.id})`);
+            logger.warn(`[Scheduler] Suspended company (overdue): ${company.name} (id=${company.id})`);
         }));
 
-        // D. Auto-lock companies whose free trial has expired
+        // D. Auto-suspend companies whose free trial has expired (self-service recovery via suspended page)
         const [expiredTrials] = await pool.query(
             `SELECT c.id, c.company_name AS name FROM companies c
-             WHERE c.trial_ends_at < CURDATE()
+             WHERE c.trial_ends_at < ?
              AND c.status = 'active'
-             AND c.next_due_date IS NULL`
+             AND c.next_due_date IS NULL`,
+            [today]
         );
         await Promise.all(expiredTrials.map(async (company) => {
-            await pool.query("UPDATE companies SET status = 'locked' WHERE id = ?", [company.id]);
+            await pool.query("UPDATE companies SET status = 'suspended' WHERE id = ?", [company.id]);
             const [owners] = await pool.query(
                 "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin' AND is_owner = TRUE",
                 [company.id]
@@ -102,24 +142,26 @@ async function runBillingChecks() {
                 companyId: company.id,
                 type: 'trial_expired',
                 title: 'Free trial has ended',
-                message: `Your free trial for "${company.name}" has expired. Please upgrade to a paid plan to continue using the service.`,
+                message: `Your free trial for "${company.name}" has expired. Please log in and select a plan to continue using the service.`,
             })));
-            logger.warn(`[Scheduler] Locked expired trial: ${company.name} (id=${company.id})`);
+            logger.warn(`[Scheduler] Suspended company (trial expired): ${company.name} (id=${company.id})`);
         }));
 
-        logger.info(`[Scheduler] Done. Notified (5d): ${due5.length}, Notified SA (3d): ${due3.length}, Locked: ${overdue.length}, Trial expired: ${expiredTrials.length}`);
+        logger.info(`[Scheduler] Done. Notified (5d): ${due5.length}, Notified SA (3d): ${due3.length}, Suspended (overdue): ${overdue.length}, Suspended (trial expired): ${expiredTrials.length}`);
     } catch (err) {
         logger.error('[Scheduler] Error during billing checks:', err);
     }
 }
 
 // ── 5-Hour Class Reminder (runs every 15 minutes) ────────────────────────────
-// NOTE: appointment_date stores local Philippine time (UTC+8) but TiDB NOW()
-// returns UTC, so we convert NOW() to Asia/Manila before comparing.
+// appointment_date stores naive PHT wall-clock time; the window bounds are
+// computed in Node (see utils/phtTime.js) so no SQL/session-TZ assumptions.
 async function run5HourReminders() {
     try {
+        const windowStart = phtNowSql(4 * 60);      // now + 4h  (PHT)
+        const windowEnd = phtNowSql(5.5 * 60);      // now + 5.5h (PHT)
         const [upcoming] = await pool.query(`
-            SELECT b.id, b.appointment_date, b.teacher_id,
+            SELECT b.id, b.appointment_date, b.teacher_id, b.booking_group_id,
                    sp.student_id, u_student.name AS student_name,
                    u_teacher.name AS teacher_name
             FROM bookings b
@@ -128,15 +170,23 @@ async function run5HourReminders() {
             LEFT JOIN users u_teacher ON b.teacher_id = u_teacher.id
             WHERE b.status IN ('confirmed', 'pending')
               AND b.reminded_5h = FALSE
-              AND b.appointment_date BETWEEN DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 4 HOUR)
-                                          AND DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 5.5 HOUR)
+              AND b.appointment_date BETWEEN ? AND ?
               AND (b.booking_group_id IS NULL OR b.appointment_date = (
                   SELECT MIN(b2.appointment_date) FROM bookings b2
                   WHERE b2.booking_group_id = b.booking_group_id
               ))
-        `);
+        `, [windowStart, windowEnd]);
 
+        let sent = 0;
         for (const booking of upcoming) {
+            // Claim before sending — if another tick (or the boot catch-up)
+            // already claimed this booking, affectedRows is 0 and we skip.
+            const [claim] = booking.booking_group_id
+                ? await pool.query('UPDATE bookings SET reminded_5h = TRUE WHERE booking_group_id = ? AND reminded_5h = FALSE', [booking.booking_group_id])
+                : await pool.query('UPDATE bookings SET reminded_5h = TRUE WHERE id = ? AND reminded_5h = FALSE', [booking.id]);
+            if (claim.affectedRows === 0) continue;
+            sent++;
+
             const dateStr = formatPHT(booking.appointment_date);
 
             notify({
@@ -156,29 +206,23 @@ async function run5HourReminders() {
                     message: `Reminder: Your class with ${booking.student_name} is at ${dateStr}.`,
                 });
             }
-
-            // Mark all slots in the group (first + second for 50-min classes) so no duplicate fires
-            if (booking.booking_group_id) {
-                await pool.query('UPDATE bookings SET reminded_5h = TRUE WHERE booking_group_id = ?', [booking.booking_group_id]);
-            } else {
-                await pool.query('UPDATE bookings SET reminded_5h = TRUE WHERE id = ?', [booking.id]);
-            }
         }
 
-        if (upcoming.length > 0) {
-            logger.info(`[Scheduler] Sent ${upcoming.length} 5-hour reminder(s)`);
-        }
+        // Heartbeat: always log, even on 0 — distinguishes "ran, nothing due"
+        // from "never ran" (asleep) when reading Render logs.
+        logger.info(`[Scheduler] 5-hour reminder check: ${sent}/${upcoming.length} sent (window ${windowStart} → ${windowEnd} PHT)`);
     } catch (err) {
         logger.error('[Scheduler] Error during 5-hour reminders:', err);
     }
 }
 
 // ── 30-Minute Class Reminder (runs every 10 minutes) ─────────────────────────
-// NOTE: appointment_date stores local Philippine time (UTC+8) — see 5-hour note.
 async function run30MinReminders() {
     try {
+        const windowStart = phtNowSql(0);           // now (PHT)
+        const windowEnd = phtNowSql(40);            // now + 40min (PHT)
         const [upcoming] = await pool.query(`
-            SELECT b.id, b.appointment_date, b.teacher_id, b.class_mode, b.meeting_link,
+            SELECT b.id, b.appointment_date, b.teacher_id, b.class_mode, b.meeting_link, b.booking_group_id,
                    sp.student_id, u_student.name AS student_name, u_student.email AS student_email,
                    u_teacher.name AS teacher_name, u_teacher.email AS teacher_email
             FROM bookings b
@@ -187,15 +231,21 @@ async function run30MinReminders() {
             LEFT JOIN users u_teacher ON b.teacher_id = u_teacher.id
             WHERE b.status IN ('confirmed', 'pending')
               AND b.reminded = FALSE
-              AND b.appointment_date BETWEEN CONVERT_TZ(NOW(), '+00:00', '+08:00')
-                                          AND DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 40 MINUTE)
+              AND b.appointment_date BETWEEN ? AND ?
               AND (b.booking_group_id IS NULL OR b.appointment_date = (
                   SELECT MIN(b2.appointment_date) FROM bookings b2
                   WHERE b2.booking_group_id = b.booking_group_id
               ))
-        `);
+        `, [windowStart, windowEnd]);
 
+        let sent = 0;
         for (const booking of upcoming) {
+            const [claim] = booking.booking_group_id
+                ? await pool.query('UPDATE bookings SET reminded = TRUE WHERE booking_group_id = ? AND reminded = FALSE', [booking.booking_group_id])
+                : await pool.query('UPDATE bookings SET reminded = TRUE WHERE id = ? AND reminded = FALSE', [booking.id]);
+            if (claim.affectedRows === 0) continue;
+            sent++;
+
             const dateStr = formatPHT(booking.appointment_date);
             const meetingInfo = booking.meeting_link ? ` Meeting link: ${booking.meeting_link}` : '';
 
@@ -237,38 +287,33 @@ async function run30MinReminders() {
                            ${booking.meeting_link ? `<p>Meeting link: <a href="${booking.meeting_link}">${booking.meeting_link}</a></p>` : ''}`,
                 }).catch(() => {});
             }
-
-            // Mark all slots in the group (first + second for 50-min classes) so no duplicate fires
-            if (booking.booking_group_id) {
-                await pool.query('UPDATE bookings SET reminded = TRUE WHERE booking_group_id = ?', [booking.booking_group_id]);
-            } else {
-                await pool.query('UPDATE bookings SET reminded = TRUE WHERE id = ?', [booking.id]);
-            }
         }
 
-        if (upcoming.length > 0) {
-            logger.info(`[Scheduler] Sent ${upcoming.length} 30-min reminder(s)`);
-        }
+        logger.info(`[Scheduler] 30-min reminder check: ${sent}/${upcoming.length} sent (window ${windowStart} → ${windowEnd} PHT)`);
     } catch (err) {
         logger.error('[Scheduler] Error during 30-min reminders:', err);
     }
 }
 
-// ── Issue #14: Company Onboarding Follow-up (daily at 9:00 AM) ─────────────────
+// ── Issue #14: Company Onboarding Follow-up (daily) ────────────────────────────
 async function runOnboardingFollowUp() {
     try {
-        // Companies pending for more than 48 hours — notify super admins
+        // Every pending company older than 48h that hasn't had a follow-up yet.
+        // (Flag-based, not a time window: the old 48-49h window only caught
+        // companies registered in one specific hour of the day.)
         const [stalePending] = await pool.query(`
             SELECT c.id, c.company_name, c.company_email, c.created_at
             FROM companies c
             WHERE c.status = 'pending'
+              AND c.onboarding_followup_sent = 0
               AND c.created_at < DATE_SUB(NOW(), INTERVAL 48 HOUR)
-              AND c.created_at > DATE_SUB(NOW(), INTERVAL 49 HOUR)
         `);
 
         if (stalePending.length > 0) {
             const [superAdmins] = await pool.query("SELECT id FROM users WHERE role = 'super_admin'");
             for (const company of stalePending) {
+                await pool.query('UPDATE companies SET onboarding_followup_sent = 1 WHERE id = ?', [company.id]);
+
                 // Notify super admins about stale pending companies
                 await Promise.all(superAdmins.map(sa => notify({
                     userId: sa.id,
@@ -310,7 +355,7 @@ async function runOnboardingFollowUp() {
     }
 }
 
-// ── Issue #12: Database Backup (daily at 3:00 AM) ──────────────────────────────
+// ── Issue #12: Database Backup (daily) ──────────────────────────────────────────
 async function runDatabaseBackup() {
     try {
         // Log critical data counts for disaster recovery monitoring
@@ -362,39 +407,80 @@ async function runDatabaseBackup() {
     }
 }
 
-// ── Issue #9: Keep-alive ping (every 14 minutes — prevents Render free tier sleep) ──
-async function keepAlive() {
-    try {
-        await pool.query('SELECT 1');
-    } catch (err) {
-        logger.error('[KeepAlive] Ping failed:', err.message);
+// ── Daily job sweep ───────────────────────────────────────────────────────────
+// Daily jobs run at a target PHT hour, but through claimDailyRun() rather than
+// a one-shot cron tick: the sweep runs every 15 min and on boot, so if the
+// server was asleep at the target time, the job still runs at the next moment
+// the process is awake that day — exactly once.
+const DAILY_JOBS = [
+    { name: 'billing_checks', targetHourPHT: 10, run: runBillingChecks },        // was 2:00 UTC
+    { name: 'database_backup', targetHourPHT: 11, run: runDatabaseBackup },      // was 3:00 UTC
+    { name: 'onboarding_followup', targetHourPHT: 17, run: runOnboardingFollowUp }, // was 9:00 UTC
+];
+
+async function runDailyJobsSweep() {
+    const hourPHT = Number(phtNowSql().slice(11, 13));
+    for (const job of DAILY_JOBS) {
+        if (hourPHT < job.targetHourPHT) continue;
+        try {
+            if (await claimDailyRun(job.name)) {
+                logger.info(`[Scheduler] Daily job '${job.name}' claimed for ${phtTodaySql()} (PHT), running`);
+                await job.run();
+            }
+        } catch (err) {
+            logger.error(`[Scheduler] Daily job '${job.name}' failed:`, err);
+        }
     }
 }
 
-function startScheduler() {
-    // Billing checks — daily at 2:00 AM UTC
-    cron.schedule('0 2 * * *', runBillingChecks);
-    logger.info('[Scheduler] Billing scheduler started (runs daily at 2:00 AM)');
+// ── Keep-alive (every 10 minutes — prevents Render free tier idle sleep) ──────
+// Render's idle detector counts INBOUND HTTP traffic, so we must ping our own
+// public URL (RENDER_EXTERNAL_URL is set automatically by Render). A plain DB
+// query does not count and does NOT keep the service awake.
+async function keepAlive() {
+    const baseUrl = process.env.RENDER_EXTERNAL_URL;
+    if (baseUrl && typeof fetch === 'function') {
+        try {
+            const res = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(20000) });
+            if (!res.ok) logger.warn(`[KeepAlive] Self-ping returned ${res.status}`);
+        } catch (err) {
+            logger.error('[KeepAlive] Self-ping failed:', err.message);
+        }
+    } else {
+        try {
+            await pool.query('SELECT 1');
+        } catch (err) {
+            logger.error('[KeepAlive] DB ping failed:', err.message);
+        }
+    }
+}
 
-    // 5-hour reminders — every 15 minutes
-    cron.schedule('*/15 * * * *', run5HourReminders);
-    logger.info('[Scheduler] 5-hour reminder scheduler started (runs every 15 minutes)');
+async function startScheduler() {
+    try {
+        await ensureSchedulerSchema();
+    } catch (err) {
+        logger.error('[Scheduler] Schema check failed (continuing):', err);
+    }
 
-    // 30-minute reminders — every 10 minutes
-    cron.schedule('*/10 * * * *', run30MinReminders);
-    logger.info('[Scheduler] 30-min reminder scheduler started (runs every 10 minutes)');
+    // timezone pinned so cron evaluation never depends on the host's clock
+    // settings; noOverlap prevents a slow run from stacking with the next tick.
+    const opts = { timezone: 'Etc/UTC', noOverlap: true };
 
-    // Onboarding follow-up — daily at 9:00 AM UTC
-    cron.schedule('0 9 * * *', runOnboardingFollowUp);
-    logger.info('[Scheduler] Onboarding follow-up scheduler started (runs daily at 9:00 AM)');
+    cron.schedule('*/10 * * * *', run30MinReminders, opts);
+    cron.schedule('*/15 * * * *', run5HourReminders, opts);
+    cron.schedule('*/15 * * * *', runDailyJobsSweep, opts);
+    cron.schedule('*/10 * * * *', keepAlive, opts);
+    logger.info('[Scheduler] Cron jobs registered (30-min reminders q10m, 5-hour reminders q15m, daily sweep q15m, keep-alive q10m)');
 
-    // Database backup/integrity check — daily at 3:00 AM UTC
-    cron.schedule('0 3 * * *', runDatabaseBackup);
-    logger.info('[Scheduler] Database backup scheduler started (runs daily at 3:00 AM)');
-
-    // Keep-alive ping — every 14 minutes (prevents Render free tier cold starts)
-    cron.schedule('*/14 * * * *', keepAlive);
-    logger.info('[Scheduler] Keep-alive ping started (every 14 minutes)');
+    // Boot catch-up: the server may have just woken from an idle sleep or a
+    // deploy — check immediately instead of waiting for the next tick.
+    // Claim-first updates make this safe to run alongside the cron ticks.
+    setTimeout(() => {
+        logger.info('[Scheduler] Boot catch-up: running all checks now');
+        run30MinReminders();
+        run5HourReminders();
+        runDailyJobsSweep();
+    }, 5000);
 }
 
 module.exports = { startScheduler, runBillingChecks, run5HourReminders, run30MinReminders, runOnboardingFollowUp, runDatabaseBackup };

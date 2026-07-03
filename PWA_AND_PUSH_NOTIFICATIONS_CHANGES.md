@@ -46,21 +46,22 @@ This document contains every file that was created or modified to add Progressiv
    mysql -u <user> -p <database> < backend/migrations/003_add_push_subscriptions.sql
    ```
 
-2. **VAPID keys (already generated and added to `.env` files):**
+2. **VAPID keys — generate your own and add them to `.env` files (never commit the actual values):**
 
    **Backend `.env`:**
    ```
-   VAPID_PUBLIC_KEY=BATX-wdjdEM4-_-vbDBw33GzDdFBjntV-HARqdD9opFJDmUZkb9KgFwzSEvvbqYlRluFCSFc_04FVGn9mfP2s5M
-   VAPID_PRIVATE_KEY=VNdhl1_PgSoyIkY4Drj0hWBEkbrbUNWQLTEMnxNiNPU
-   VAPID_SUBJECT=mailto:jlliangracia.snaps@gmail.com
+   VAPID_PUBLIC_KEY=<your-public-key>
+   VAPID_PRIVATE_KEY=<your-private-key>
+   VAPID_SUBJECT=mailto:<your-contact-email>
    ```
 
    **Frontend `.env`:**
    ```
-   VITE_VAPID_PUBLIC_KEY=BATX-wdjdEM4-_-vbDBw33GzDdFBjntV-HARqdD9opFJDmUZkb9KgFwzSEvvbqYlRluFCSFc_04FVGn9mfP2s5M
+   VITE_VAPID_PUBLIC_KEY=<your-public-key>
    ```
 
-   > To regenerate keys: `npx web-push generate-vapid-keys`
+   > To generate keys: `npx web-push generate-vapid-keys`
+   > These must also be set in the Render dashboard (they are not in `render.yaml`).
 
 ---
 

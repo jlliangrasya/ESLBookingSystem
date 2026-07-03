@@ -20,7 +20,7 @@ router.post('/subscribe', authenticateToken, async (req, res) => {
         await pool.query(
             `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent)
              VALUES (?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), p256dh = VALUES(p256dh), auth = VALUES(auth), user_agent = VALUES(user_agent)`,
+             ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), p256dh = VALUES(p256dh), auth = VALUES(auth), user_agent = VALUES(user_agent), failure_count = 0`,
             [req.user.id, endpoint, keys.p256dh, keys.auth, req.headers['user-agent'] || null]
         );
 

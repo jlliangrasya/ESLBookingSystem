@@ -358,7 +358,7 @@ router.post('/:id/lock', authenticateToken, requireRole('super_admin'), async (r
 router.post('/:id/unlock', authenticateToken, requireRole('super_admin'), async (req, res) => {
     try {
         const { id } = req.params;
-        await pool.query("UPDATE companies SET status = 'active' WHERE id = ?", [id]);
+        await pool.query("UPDATE companies SET status = 'active', trial_ends_at = NULL WHERE id = ?", [id]);
 
         const [[owner]] = await pool.query(
             "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin' AND is_owner = TRUE LIMIT 1", [id]
@@ -411,7 +411,8 @@ router.post('/:id/mark-paid', authenticateToken, requireRole('super_admin'), asy
         await pool.query(
             `UPDATE companies SET last_paid_at = NOW(),
              next_due_date = DATE_ADD(COALESCE(next_due_date, CURDATE()), INTERVAL 1 MONTH),
-             status = IF(status = 'locked', 'active', status)
+             trial_ends_at = NULL,
+             status = IF(status IN ('locked', 'suspended'), 'active', status)
              WHERE id = ?`,
             [id]
         );
