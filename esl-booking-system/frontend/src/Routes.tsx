@@ -63,6 +63,7 @@ const StudentAssignmentsPage = lazy(
 const RecurringSchedulesPage = lazy(
   () => import("./pages/RecurringSchedulesPage.tsx"),
 );
+const AdminCalendarPage = lazy(() => import("./pages/AdminCalendarPage.tsx"));
 
 const AppRoutes = () => {
   return (
@@ -121,6 +122,14 @@ const AppRoutes = () => {
             element={
               <ProtectedRoute allowedRoles={["company_admin"]}>
                 <StudentListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/calendar"
+            element={
+              <ProtectedRoute allowedRoles={["company_admin"]}>
+                <AdminCalendarPage />
               </ProtectedRoute>
             }
           />

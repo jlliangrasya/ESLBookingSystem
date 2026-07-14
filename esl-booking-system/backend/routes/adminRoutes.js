@@ -667,21 +667,28 @@ router.delete("/teachers/:id/weekly-slots/week", authenticateToken, requireRole(
   }
 });
 
-// Get teacher schedule (upcoming bookings)
+// Get teacher schedule (upcoming bookings, or a specific week via ?startDate=YYYY-MM-DD)
 router.get("/teachers/:id/schedule", authenticateToken, requireRole('company_admin'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const { id } = req.params;
+    const { startDate } = req.query;
+    const dateFilter = startDate
+      ? `b.appointment_date >= ? AND b.appointment_date < DATE_ADD(?, INTERVAL 7 DAY)`
+      : `b.appointment_date >= NOW()`;
+    const params = startDate ? [id, companyId, startDate, startDate] : [id, companyId];
     const [rows] = await pool.query(`
       SELECT b.id, b.appointment_date, b.status,
-             u.name AS student_name, tp.package_name
+             b.booking_group_id, b.recurring_schedule_id,
+             u.id AS student_id, u.name AS student_name,
+             tp.package_name, tp.duration_minutes
       FROM bookings b
       JOIN student_packages sp ON b.student_package_id = sp.id
       JOIN users u ON sp.student_id = u.id
       JOIN tutorial_packages tp ON sp.package_id = tp.id
-      WHERE b.teacher_id = ? AND b.company_id = ? AND b.appointment_date >= NOW()
+      WHERE b.teacher_id = ? AND b.company_id = ? AND b.status != 'cancelled' AND ${dateFilter}
       ORDER BY b.appointment_date ASC
-    `, [id, companyId]);
+    `, params);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -1008,6 +1015,29 @@ router.get('/feedback', authenticateToken, requireRole('company_admin'), async (
 
 // ——— Student Management ———
 
+// List students with a bookable package (paid + sessions remaining) — one row per package
+router.get('/bookable-students', authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT u.id AS student_id, u.name AS student_name,
+              sp.id AS student_package_id, sp.sessions_remaining, sp.subject,
+              sp.teacher_id, t.name AS teacher_name,
+              tp.package_name, tp.duration_minutes
+       FROM student_packages sp
+       JOIN users u ON sp.student_id = u.id
+       JOIN tutorial_packages tp ON sp.package_id = tp.id
+       LEFT JOIN users t ON t.id = sp.teacher_id
+       WHERE sp.company_id = ? AND sp.payment_status = 'paid'
+         AND sp.sessions_remaining > 0 AND u.role = 'student' AND u.is_active = TRUE
+       ORDER BY u.name ASC, sp.purchased_at DESC`,
+      [req.user.company_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Get student profile + booking history (company_admin only)
 router.get('/students/:id', authenticateToken, requireRole('company_admin'), async (req, res) => {
   try {
@@ -1194,6 +1224,23 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
         return res.status(409).json({ message: `Cannot book a ${durationMinutes}-minute class at this time — not enough slots in the day.` });
       }
       slotList.push(`${baseDate} ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`);
+    }
+
+    // Optionally require every slot to be open in teacher_available_slots (calendar-originated bookings)
+    if (req.body.require_open_slot && teacher_id) {
+      for (const slotDt of slotList) {
+        const slotDate = slotDt.slice(0, 10);
+        const slotTime = slotDt.slice(11, 16);
+        const [openRows] = await connection.query(
+          `SELECT id FROM teacher_available_slots
+           WHERE company_id = ? AND teacher_id = ? AND slot_date = ? AND TIME_FORMAT(slot_time, '%H:%i') = ?`,
+          [companyId, teacher_id, slotDate, slotTime]
+        );
+        if (openRows.length === 0) {
+          await connection.rollback();
+          return res.status(409).json({ message: `Teacher's ${slotTime} slot is not open. A ${durationMinutes}-minute class needs all its consecutive slots open.` });
+        }
+      }
     }
 
     // Validate ALL consecutive slots

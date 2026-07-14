@@ -2,7 +2,7 @@ import { useContext, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import BrandLogo from "@/components/BrandLogo";
-import { CalendarDays, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus, BookOpen, Menu, X, TrendingUp, Compass } from "lucide-react";
+import { CalendarDays, CalendarRange, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus, BookOpen, Menu, X, TrendingUp, Compass } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,6 +66,7 @@ const NavBar: React.FC = () => {
   ) : (
     <>
       <NavLink id="nav-admin-dashboard" to="/admin-dashboard" icon={CalendarDays} label={t("nav.schedule")} />
+      <NavLink id="nav-admin-calendar"  to="/admin/calendar"  icon={CalendarRange} label={t("nav.calendar")} />
       <NavLink id="nav-packages"        to="/packages"        icon={Package}      label={t("nav.packages")} />
       <NavLink id="nav-students"        to="/students"        icon={Users}        label={t("nav.students")} />
       <NavLink id="nav-teachers"        to="/teachers"        icon={GraduationCap} label={t("nav.teachers")} />
@@ -81,6 +82,7 @@ const NavBar: React.FC = () => {
   ) : (
     <>
       <MobileNavLink to="/admin-dashboard" icon={CalendarDays} label={t("nav.schedule")} />
+      <MobileNavLink to="/admin/calendar" icon={CalendarRange} label={t("nav.calendar")} />
       <MobileNavLink to="/packages" icon={Package} label={t("nav.packages")} />
       <MobileNavLink to="/students" icon={Users} label={t("nav.students")} />
       <MobileNavLink to="/teachers" icon={GraduationCap} label={t("nav.teachers")} />
