@@ -946,7 +946,10 @@ router.post('/weekly-slots/recurring', authenticateToken, requireRole('teacher')
             const dayName = dayNames[cur.getDay()];
             if (!days.includes(dayName)) continue;
 
-            const dateStr = cur.toISOString().split('T')[0];
+            const y = cur.getFullYear();
+            const mo = String(cur.getMonth() + 1).padStart(2, '0');
+            const d = String(cur.getDate()).padStart(2, '0');
+            const dateStr = `${y}-${mo}-${d}`;
 
             // Generate 30-min slots from start_time to end_time (exclusive)
             let slotMins = sh * 60 + sm;
@@ -969,6 +972,26 @@ router.post('/weekly-slots/recurring', authenticateToken, requireRole('teacher')
         );
 
         res.json({ message: 'Recurring schedule set', slotsCreated: result.affectedRows });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// DELETE /api/teacher/weekly-slots/week?startDate=YYYY-MM-DD — clear all open slots for a 7-day window
+router.delete('/weekly-slots/week', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const teacherId = req.user.id;
+        const companyId = req.user.company_id;
+        const startDate = req.query.startDate || new Date().toISOString().split('T')[0];
+
+        await pool.query(
+            `DELETE FROM teacher_available_slots
+             WHERE company_id = ? AND teacher_id = ? AND slot_date >= ? AND slot_date < DATE_ADD(?, INTERVAL 7 DAY)`,
+            [companyId, teacherId, startDate, startDate]
+        );
+
+        res.json({ message: 'Week cleared' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });

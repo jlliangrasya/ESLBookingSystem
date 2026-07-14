@@ -12,7 +12,7 @@ const CompanyLockedUserPage = () => {
 
   useEffect(() => {
     if (!authContext?.token) { navigate("/"); return; }
-    if (authContext.companyStatus !== "locked") navigate("/");
+    if (authContext.companyStatus !== "locked" && authContext.companyStatus !== "suspended") navigate("/");
   }, []);
 
   const handleLogout = () => {

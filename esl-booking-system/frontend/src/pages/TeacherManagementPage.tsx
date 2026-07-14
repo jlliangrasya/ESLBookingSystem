@@ -15,6 +15,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, GraduationCap, CalendarDays, CheckCircle, XCircle, Clock, Plus, Pencil, Trash2, AlertCircle, UserCircle, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import AuthContext from "@/context/AuthContext";
+import { AdminTour } from "@/components/AdminTour";
 import { fmtDate, fmtDateOnly } from "@/utils/timezone";
 
 interface Teacher {
@@ -269,7 +270,7 @@ const TeacherManagementPage = () => {
               Teachers
             </CardTitle>
             {(myPermissions.is_owner || myPermissions.can_add_teacher) && (
-              <Button size="sm" onClick={() => setShowAddModal(true)} className="gap-1">
+              <Button id="btn-add-teacher" size="sm" onClick={() => setShowAddModal(true)} className="gap-1">
                 <Plus className="h-4 w-4" /> Add Teacher
               </Button>
             )}
@@ -369,7 +370,7 @@ const TeacherManagementPage = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1 flex-wrap">
-                          <Button size="sm" variant="outline" className="text-xs h-7"
+                          <Button size="sm" variant="outline" className="text-xs h-7 teacher-profile-btn"
                             onClick={() => navigate(`/admin/teachers/${t.id}`)}>
                             <UserCircle className="h-3 w-3 mr-1" /> Profile
                           </Button>
@@ -610,6 +611,10 @@ const TeacherManagementPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {authContext?.user?.role === "company_admin" && authContext.user.company_id != null && (
+        <AdminTour segment="C" companyId={authContext.user.company_id} autoStart />
+      )}
     </>
   );
 };

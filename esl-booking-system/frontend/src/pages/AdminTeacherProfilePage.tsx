@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
+import AuthContext from "@/context/AuthContext";
+import { AdminTour } from "@/components/AdminTour";
 import { format, addDays, startOfWeek } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,6 +87,19 @@ type DrilldownKey =
   | "total_present"
   | "classes_this_month";
 
+const SLOT_TIMES: string[] = Array.from({ length: 32 }, (_, i) => {
+  const totalMins = 7 * 60 + i * 30;
+  const h = Math.floor(totalMins / 60).toString().padStart(2, "0");
+  const m = (totalMins % 60).toString().padStart(2, "0");
+  return `${h}:${m}`;
+});
+
+const fmt12 = (t: string) => {
+  const [hh, mm] = t.split(":");
+  const h = Number(hh);
+  return `${h % 12 === 0 ? 12 : h % 12}:${mm} ${h >= 12 ? "PM" : "AM"}`;
+};
+
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
   confirmed: "bg-green-100 text-green-800",
@@ -103,6 +118,8 @@ const UPCOMING_PAGE_SIZE = 10;
 const AdminTeacherProfilePage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const authContext = useContext(AuthContext);
+  const currentUser = authContext?.user ?? null;
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
   const base = import.meta.env.VITE_API_URL;
@@ -126,6 +143,16 @@ const AdminTeacherProfilePage = () => {
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [openSlots, setOpenSlots] = useState<Set<string>>(new Set());
   const [togglingSlot, setTogglingSlot] = useState<string | null>(null);
+
+  // Recurring availability dialog
+  const [showRecurringAvail, setShowRecurringAvail] = useState(false);
+  const [recurringAvailDays, setRecurringAvailDays] = useState<string[]>([]);
+  const [recurringAvailStart, setRecurringAvailStart] = useState("09:00");
+  const [recurringAvailEnd, setRecurringAvailEnd] = useState("17:00");
+  const [recurringAvailWeeks, setRecurringAvailWeeks] = useState(4);
+  const [recurringAvailLoading, setRecurringAvailLoading] = useState(false);
+  const [recurringAvailMsg, setRecurringAvailMsg] = useState<string | null>(null);
+  const [clearingWeek, setClearingWeek] = useState(false);
 
   // Drilldown dialog
   const [drillKey, setDrillKey] = useState<DrilldownKey | null>(null);
@@ -217,6 +244,44 @@ const AdminTeacherProfilePage = () => {
       console.error("Error toggling slot:", err);
     } finally {
       setTogglingSlot(null);
+    }
+  };
+
+  const handleRecurringAvailability = async () => {
+    if (recurringAvailDays.length === 0) return;
+    setRecurringAvailLoading(true);
+    setRecurringAvailMsg(null);
+    try {
+      const res = await axios.post(
+        `${base}/api/admin/teachers/${id}/weekly-slots/recurring`,
+        { days: recurringAvailDays, start_time: recurringAvailStart, end_time: recurringAvailEnd, weeks: recurringAvailWeeks },
+        { headers }
+      );
+      setRecurringAvailMsg(`Done! ${res.data.slotsCreated} slots opened.`);
+      fetchOpenSlots(weekStart);
+    } catch (err: unknown) {
+      setRecurringAvailMsg(
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to set recurring schedule."
+      );
+    } finally {
+      setRecurringAvailLoading(false);
+    }
+  };
+
+  const handleClearWeek = async () => {
+    if (!confirm("Clear all open slots for this week?")) return;
+    setClearingWeek(true);
+    try {
+      const startStr = format(weekStart, "yyyy-MM-dd");
+      await axios.delete(
+        `${base}/api/admin/teachers/${id}/weekly-slots/week?startDate=${startStr}`,
+        { headers }
+      );
+      fetchOpenSlots(weekStart);
+    } catch {
+      alert("Failed to clear week.");
+    } finally {
+      setClearingWeek(false);
     }
   };
 
@@ -346,11 +411,11 @@ const AdminTeacherProfilePage = () => {
               Teacher Profile
             </CardTitle>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="gap-1"
+              <Button id="teacher-btn-reset-pw" size="sm" variant="outline" className="gap-1"
                 onClick={() => { setShowResetPw(true); setResetPw(""); setResetPwMsg(null); }}>
                 <KeyRound className="h-4 w-4" /> Reset Password
               </Button>
-              <Button size="sm" variant="outline" className="gap-1" onClick={openEdit}>
+              <Button id="teacher-btn-edit" size="sm" variant="outline" className="gap-1" onClick={openEdit}>
                 <Pencil className="h-4 w-4" /> Edit
               </Button>
             </div>
@@ -373,7 +438,7 @@ const AdminTeacherProfilePage = () => {
 
         {/* KPIs */}
         {kpi && (
-          <Card className="glow-card border-0 rounded-2xl">
+          <Card id="teacher-performance-card" className="glow-card border-0 rounded-2xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <FileText className="h-5 w-5 text-primary" /> Performance Overview
@@ -624,7 +689,7 @@ const AdminTeacherProfilePage = () => {
 
         {/* Health */}
         {health && (
-          <Card className="glow-card border-0 rounded-2xl">
+          <Card id="teacher-attendance-card" className="glow-card border-0 rounded-2xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Heart className="h-5 w-5 text-rose-500" /> Attendance Health
@@ -662,7 +727,7 @@ const AdminTeacherProfilePage = () => {
         )}
 
         {/* Upcoming Schedule */}
-        <Card className="glow-card border-0 rounded-2xl">
+        <Card id="teacher-schedule-card" className="glow-card border-0 rounded-2xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5 text-primary" />
@@ -793,13 +858,23 @@ const AdminTeacherProfilePage = () => {
         </Card>
 
         {/* Weekly Availability (Opt-in) */}
-        <Card className="glow-card border-0 rounded-2xl">
+        <Card id="teacher-availability-card" className="glow-card border-0 rounded-2xl">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <CalendarDays className="h-5 w-5 text-primary" />
-              Weekly Availability
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">Click slots to open/close them for this teacher</p>
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarDays className="h-5 w-5 text-primary" />
+                Weekly Availability
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">Click slots to open/close, or use bulk actions below</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { setRecurringAvailMsg(null); setShowRecurringAvail(true); }}>
+                Set Recurring
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50" disabled={clearingWeek} onClick={handleClearWeek}>
+                {clearingWeek ? <Loader2 className="h-3 w-3 animate-spin" /> : "Clear Week"}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between mb-4">
@@ -882,7 +957,7 @@ const AdminTeacherProfilePage = () => {
         </Card>
 
         {/* Leave Requests */}
-        <Card className="glow-card border-0 rounded-2xl">
+        <Card id="teacher-leave-card" className="glow-card border-0 rounded-2xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <BookOpen className="h-5 w-5 text-primary" />
@@ -1087,6 +1162,127 @@ const AdminTeacherProfilePage = () => {
             >
               {editLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {currentUser?.role === "company_admin" && currentUser.company_id != null && (
+        <AdminTour segment="E" companyId={currentUser.company_id} autoStart />
+      )}
+
+      {/* Recurring Availability Dialog */}
+      <Dialog open={showRecurringAvail} onOpenChange={(o) => { if (!o) { setShowRecurringAvail(false); setRecurringAvailMsg(null); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Set Recurring Availability</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Quick presets */}
+            <div>
+              <p className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wide">Quick Presets</p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: "Weekdays Full Day", days: ["Monday","Tuesday","Wednesday","Thursday","Friday"], start: "09:00", end: "18:00" },
+                  { label: "Weekday Mornings", days: ["Monday","Tuesday","Wednesday","Thursday","Friday"], start: "07:00", end: "12:00" },
+                  { label: "Weekday Afternoons", days: ["Monday","Tuesday","Wednesday","Thursday","Friday"], start: "13:00", end: "18:00" },
+                  { label: "Mon / Wed / Fri", days: ["Monday","Wednesday","Friday"], start: "09:00", end: "18:00" },
+                  { label: "⭐ Peak Hours", days: ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"], start: "18:00", end: "22:00" },
+                ].map(p => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => { setRecurringAvailDays(p.days); setRecurringAvailStart(p.start); setRecurringAvailEnd(p.end); }}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${p.label.startsWith("⭐") ? "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100 hover:border-amber-400" : "bg-white text-muted-foreground border-gray-200 hover:border-primary hover:text-primary"}`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Day toggles */}
+            <div>
+              <p className="text-sm font-medium mb-2">Days of the week</p>
+              <div className="flex flex-wrap gap-2">
+                {["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map((day) => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => setRecurringAvailDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${recurringAvailDays.includes(day) ? "bg-primary text-white border-primary" : "bg-white text-muted-foreground border-gray-200 hover:border-primary"}`}
+                  >
+                    {day.substring(0, 3)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Time range */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium block mb-1">Start Time</label>
+                <select
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  value={recurringAvailStart}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setRecurringAvailStart(v);
+                    if (v >= recurringAvailEnd) {
+                      const next = SLOT_TIMES.find(t => t > v);
+                      if (next) setRecurringAvailEnd(next);
+                    }
+                  }}
+                >
+                  {SLOT_TIMES.slice(0, -1).map(t => (
+                    <option key={t} value={t}>{fmt12(t)}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1">End Time</label>
+                <select
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                  value={recurringAvailEnd}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setRecurringAvailEnd(v);
+                    if (v <= recurringAvailStart) {
+                      const prev = [...SLOT_TIMES].reverse().find(t => t < v);
+                      if (prev) setRecurringAvailStart(prev);
+                    }
+                  }}
+                >
+                  {SLOT_TIMES.slice(1).map(t => (
+                    <option key={t} value={t}>{fmt12(t)}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Weeks */}
+            <div>
+              <label className="text-sm font-medium block mb-1">Number of Weeks</label>
+              <select
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+                value={recurringAvailWeeks}
+                onChange={e => setRecurringAvailWeeks(Number(e.target.value))}
+              >
+                {[1,2,3,4,6,8,12].map(w => (
+                  <option key={w} value={w}>{w} week{w > 1 ? "s" : ""}</option>
+                ))}
+              </select>
+            </div>
+
+            {recurringAvailMsg && (
+              <p className={`text-sm ${recurringAvailMsg.startsWith("Done") ? "text-green-600" : "text-red-600"}`}>{recurringAvailMsg}</p>
+            )}
+          </div>
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button variant="outline" className="flex-1" onClick={() => { setShowRecurringAvail(false); setRecurringAvailMsg(null); }}>Cancel</Button>
+            <Button className="flex-1" disabled={recurringAvailLoading || recurringAvailDays.length === 0} onClick={handleRecurringAvailability}>
+              {recurringAvailLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {recurringAvailMsg?.startsWith("Done") ? "Close" : "Apply"}
             </Button>
           </DialogFooter>
         </DialogContent>

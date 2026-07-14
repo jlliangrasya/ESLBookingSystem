@@ -118,7 +118,7 @@ router.post('/register', registerLimiter, async (req, res) => {
                 companyId: Number(company_id),
                 type: notifType,
                 title: notifTitle,
-                message: `${name} joined "${company.name}" as a ${role}.`,
+                message: `${name} joined "${company.company_name}" as a ${role}.`,
             })),
         ]);
 

@@ -1,7 +1,7 @@
 import { createContext, useState, useEffect } from "react";
 import axios from "axios";
 import { setUserTimezone } from "@/utils/timezone";
-import { unsubscribeFromPush } from "@/utils/pushNotifications";
+import { unsubscribeFromPush, ensurePushSubscription } from "@/utils/pushNotifications";
 
 export type UserRole = 'super_admin' | 'company_admin' | 'teacher' | 'student';
 
@@ -75,6 +75,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       unsubscribeFromPush(currentToken).catch(() => {});
     }
   };
+
+  // Re-sync the push subscription whenever the app loads with a logged-in
+  // user. Silent (never prompts) — repairs subscriptions lost to backend
+  // cold starts or VAPID key changes.
+  useEffect(() => {
+    if (token) {
+      ensurePushSubscription(token).catch(() => {});
+    }
+  }, [token]);
 
   // Auto-logout on expired/invalid token (401 response)
   useEffect(() => {

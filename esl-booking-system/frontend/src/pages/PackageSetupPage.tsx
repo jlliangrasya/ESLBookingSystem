@@ -1,6 +1,8 @@
-﻿import { useState, useEffect } from "react";
+﻿import { useState, useEffect, useContext } from "react";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
+import AuthContext from "@/context/AuthContext";
+import { AdminTour } from "@/components/AdminTour";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -95,6 +97,8 @@ const EMPTY_FORM = {
 const PackageSetupPage = () => {
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
+  const authContext = useContext(AuthContext);
+  const currentUser = authContext?.user ?? null;
 
   const [packages, setPackages] = useState<TutorialPackage[]>([]);
   const [monthlyStats, setMonthlyStats] = useState<Record<number, number>>({});
@@ -286,7 +290,7 @@ const PackageSetupPage = () => {
               <Package className="h-5 w-5 text-primary" />
               Class Packages
             </CardTitle>
-            <Button size="sm" onClick={openAdd} className="gap-1">
+            <Button id="btn-add-package" size="sm" onClick={openAdd} className="gap-1">
               <Plus className="h-4 w-4" /> Add Package
             </Button>
           </CardHeader>
@@ -399,7 +403,7 @@ const PackageSetupPage = () => {
         </Card>
 
         {/* Company Settings Card */}
-        <Card className="glow-card border-0 rounded-2xl">
+        <Card id="company-settings-card" className="glow-card border-0 rounded-2xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Settings2 className="h-5 w-5 text-primary" />
@@ -501,7 +505,7 @@ const PackageSetupPage = () => {
             </div>
 
             {/* Payment Method — only one can be active at a time */}
-            <div className="border rounded-lg p-4 space-y-3">
+            <div id="payment-method-card" className="border rounded-lg p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <QrCode className="h-4 w-4 text-primary" />
                 <p className="font-medium text-sm">Payment Method</p>
@@ -642,7 +646,7 @@ const PackageSetupPage = () => {
             </div>
             */}
 
-            <Button onClick={handleSaveSettings} disabled={settingsSaving}>
+            <Button id="btn-save-settings" onClick={handleSaveSettings} disabled={settingsSaving}>
               {settingsSaving ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : null}
@@ -797,6 +801,10 @@ const PackageSetupPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {currentUser?.role === "company_admin" && currentUser.company_id != null && (
+        <AdminTour segment="B" companyId={currentUser.company_id} autoStart />
+      )}
     </>
   );
 };

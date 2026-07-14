@@ -2,7 +2,7 @@ import { useContext, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import BrandLogo from "@/components/BrandLogo";
-import { CalendarDays, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus, BookOpen, Menu, X, TrendingUp } from "lucide-react";
+import { CalendarDays, CalendarRange, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus, BookOpen, Menu, X, TrendingUp, Compass } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +15,7 @@ import AuthContext from "@/context/AuthContext";
 import NotificationBell from "@/components/NotificationBell";
 import LanguageToggle from "@/components/LanguageToggle";
 import InstallAppButton from "@/components/InstallAppButton";
+import { useStartTour } from "@/components/AdminTour";
 
 const NavBar: React.FC = () => {
   const navigate = useNavigate();
@@ -22,7 +23,9 @@ const NavBar: React.FC = () => {
   const authContext = useContext(AuthContext);
   const role = authContext?.user?.role;
   const isOwner = authContext?.user?.is_owner ?? false;
+  const companyId = authContext?.user?.company_id ?? 0;
   const [mobileOpen, setMobileOpen] = useState(false);
+  const startTour = useStartTour("A", companyId);
 
   const handleLogout = () => {
     authContext?.logout();
@@ -31,8 +34,9 @@ const NavBar: React.FC = () => {
 
   const logoLink = role === "super_admin" ? "/super-admin" : "/admin-dashboard";
 
-  const NavLink = ({ to, icon: Icon, label }: { to: string; icon: React.ElementType; label: string }) => (
+  const NavLink = ({ to, icon: Icon, label, id }: { to: string; icon: React.ElementType; label: string; id?: string }) => (
     <Link
+      id={id}
       to={to}
       onClick={() => setMobileOpen(false)}
       className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
@@ -61,10 +65,11 @@ const NavBar: React.FC = () => {
     </>
   ) : (
     <>
-      <NavLink to="/admin-dashboard" icon={CalendarDays} label={t("nav.schedule")} />
-      <NavLink to="/packages" icon={Package} label={t("nav.packages")} />
-      <NavLink to="/students" icon={Users} label={t("nav.students")} />
-      <NavLink to="/teachers" icon={GraduationCap} label={t("nav.teachers")} />
+      <NavLink id="nav-admin-dashboard" to="/admin-dashboard" icon={CalendarDays} label={t("nav.schedule")} />
+      <NavLink id="nav-admin-calendar"  to="/admin/calendar"  icon={CalendarRange} label={t("nav.calendar")} />
+      <NavLink id="nav-packages"        to="/packages"        icon={Package}      label={t("nav.packages")} />
+      <NavLink id="nav-students"        to="/students"        icon={Users}        label={t("nav.students")} />
+      <NavLink id="nav-teachers"        to="/teachers"        icon={GraduationCap} label={t("nav.teachers")} />
       <NavLink to="/admin-users" icon={UserCog} label={t("nav.admins")} />
     </>
   );
@@ -77,6 +82,7 @@ const NavBar: React.FC = () => {
   ) : (
     <>
       <MobileNavLink to="/admin-dashboard" icon={CalendarDays} label={t("nav.schedule")} />
+      <MobileNavLink to="/admin/calendar" icon={CalendarRange} label={t("nav.calendar")} />
       <MobileNavLink to="/packages" icon={Package} label={t("nav.packages")} />
       <MobileNavLink to="/students" icon={Users} label={t("nav.students")} />
       <MobileNavLink to="/teachers" icon={GraduationCap} label={t("nav.teachers")} />
@@ -100,6 +106,16 @@ const NavBar: React.FC = () => {
             <NavLink to="/documentation" icon={BookOpen} label={t("nav.documentation")} />
           )}
 
+          {role === "company_admin" && (
+            <button
+              onClick={startTour}
+              title="Start Tour"
+              className="flex flex-col items-center gap-0.5 text-white/70 hover:text-white transition-colors"
+            >
+              <Compass className="h-5 w-5" />
+              <span className="text-[10px] font-medium">Tour</span>
+            </button>
+          )}
           <InstallAppButton variant="white" />
           <LanguageToggle variant="white" />
           <NotificationBell variant="white" />
@@ -177,6 +193,16 @@ const NavBar: React.FC = () => {
 
           {(role === "super_admin" || (role === "company_admin" && isOwner)) && (
             <MobileNavLink to="/documentation" icon={BookOpen} label={t("nav.documentation")} />
+          )}
+
+          {role === "company_admin" && (
+            <button
+              onClick={() => { setMobileOpen(false); startTour(); }}
+              className="flex items-center gap-3 px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors w-full"
+            >
+              <Compass className="h-5 w-5" />
+              <span className="text-sm font-medium">Start Tour</span>
+            </button>
           )}
 
           {(role === "company_admin" || role === "teacher") && (

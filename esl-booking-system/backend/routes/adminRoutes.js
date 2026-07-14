@@ -590,21 +590,105 @@ router.post("/teachers/:id/weekly-slots", authenticateToken, requireRole('compan
   }
 });
 
-// Get teacher schedule (upcoming bookings)
+// POST bulk recurring availability for a teacher (admin)
+router.post("/teachers/:id/weekly-slots/recurring", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const teacherId = req.params.id;
+    const { days, start_time, end_time, weeks } = req.body;
+
+    const validDays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    if (!Array.isArray(days) || days.length === 0 || !days.every(d => validDays.includes(d))) {
+      return res.status(400).json({ message: 'days must be a non-empty array of valid day names' });
+    }
+    if (!start_time || !end_time || start_time >= end_time) {
+      return res.status(400).json({ message: 'start_time and end_time are required and start_time must be before end_time' });
+    }
+    const weeksCount = Math.min(12, Math.max(1, parseInt(weeks) || 4));
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() + 1);
+    startDate.setHours(0, 0, 0, 0);
+
+    const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + weeksCount * 7);
+
+    const [sh, sm] = start_time.split(':').map(Number);
+    const [eh, em] = end_time.split(':').map(Number);
+    const endMins = eh * 60 + em;
+
+    const values = [];
+    for (const cur = new Date(startDate); cur < endDate; cur.setDate(cur.getDate() + 1)) {
+      const dayName = dayNames[cur.getDay()];
+      if (!days.includes(dayName)) continue;
+      const y = cur.getFullYear();
+      const mo = String(cur.getMonth() + 1).padStart(2, '0');
+      const d = String(cur.getDate()).padStart(2, '0');
+      const dateStr = `${y}-${mo}-${d}`;
+      let slotMins = sh * 60 + sm;
+      while (slotMins < endMins) {
+        const h = Math.floor(slotMins / 60);
+        const m = slotMins % 60;
+        values.push([companyId, teacherId, dateStr, `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`]);
+        slotMins += 30;
+      }
+    }
+
+    if (values.length === 0) return res.json({ message: 'No future slots to create', slotsCreated: 0 });
+
+    const [result] = await pool.query(
+      'INSERT IGNORE INTO teacher_available_slots (company_id, teacher_id, slot_date, slot_time) VALUES ?',
+      [values]
+    );
+    res.json({ message: 'Recurring schedule set', slotsCreated: result.affectedRows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// DELETE clear a week of open slots for a teacher (admin)
+router.delete("/teachers/:id/weekly-slots/week", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const teacherId = req.params.id;
+    const startDate = req.query.startDate || new Date().toISOString().split('T')[0];
+
+    await pool.query(
+      `DELETE FROM teacher_available_slots
+       WHERE company_id = ? AND teacher_id = ? AND slot_date >= ? AND slot_date < DATE_ADD(?, INTERVAL 7 DAY)`,
+      [companyId, teacherId, startDate, startDate]
+    );
+    res.json({ message: 'Week cleared' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get teacher schedule (upcoming bookings, or a specific week via ?startDate=YYYY-MM-DD)
 router.get("/teachers/:id/schedule", authenticateToken, requireRole('company_admin'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const { id } = req.params;
+    const { startDate } = req.query;
+    const dateFilter = startDate
+      ? `b.appointment_date >= ? AND b.appointment_date < DATE_ADD(?, INTERVAL 7 DAY)`
+      : `b.appointment_date >= NOW()`;
+    const params = startDate ? [id, companyId, startDate, startDate] : [id, companyId];
     const [rows] = await pool.query(`
       SELECT b.id, b.appointment_date, b.status,
-             u.name AS student_name, tp.package_name
+             b.booking_group_id, b.recurring_schedule_id,
+             u.id AS student_id, u.name AS student_name,
+             tp.package_name, tp.duration_minutes
       FROM bookings b
       JOIN student_packages sp ON b.student_package_id = sp.id
       JOIN users u ON sp.student_id = u.id
       JOIN tutorial_packages tp ON sp.package_id = tp.id
-      WHERE b.teacher_id = ? AND b.company_id = ? AND b.appointment_date >= NOW()
+      WHERE b.teacher_id = ? AND b.company_id = ? AND b.status != 'cancelled' AND ${dateFilter}
       ORDER BY b.appointment_date ASC
-    `, [id, companyId]);
+    `, params);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -931,6 +1015,29 @@ router.get('/feedback', authenticateToken, requireRole('company_admin'), async (
 
 // ——— Student Management ———
 
+// List students with a bookable package (paid + sessions remaining) — one row per package
+router.get('/bookable-students', authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT u.id AS student_id, u.name AS student_name,
+              sp.id AS student_package_id, sp.sessions_remaining, sp.subject,
+              sp.teacher_id, t.name AS teacher_name,
+              tp.package_name, tp.duration_minutes
+       FROM student_packages sp
+       JOIN users u ON sp.student_id = u.id
+       JOIN tutorial_packages tp ON sp.package_id = tp.id
+       LEFT JOIN users t ON t.id = sp.teacher_id
+       WHERE sp.company_id = ? AND sp.payment_status = 'paid'
+         AND sp.sessions_remaining > 0 AND u.role = 'student' AND u.is_active = TRUE
+       ORDER BY u.name ASC, sp.purchased_at DESC`,
+      [req.user.company_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Get student profile + booking history (company_admin only)
 router.get('/students/:id', authenticateToken, requireRole('company_admin'), async (req, res) => {
   try {
@@ -1117,6 +1224,23 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
         return res.status(409).json({ message: `Cannot book a ${durationMinutes}-minute class at this time — not enough slots in the day.` });
       }
       slotList.push(`${baseDate} ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`);
+    }
+
+    // Optionally require every slot to be open in teacher_available_slots (calendar-originated bookings)
+    if (req.body.require_open_slot && teacher_id) {
+      for (const slotDt of slotList) {
+        const slotDate = slotDt.slice(0, 10);
+        const slotTime = slotDt.slice(11, 16);
+        const [openRows] = await connection.query(
+          `SELECT id FROM teacher_available_slots
+           WHERE company_id = ? AND teacher_id = ? AND slot_date = ? AND TIME_FORMAT(slot_time, '%H:%i') = ?`,
+          [companyId, teacher_id, slotDate, slotTime]
+        );
+        if (openRows.length === 0) {
+          await connection.rollback();
+          return res.status(409).json({ message: `Teacher's ${slotTime} slot is not open. A ${durationMinutes}-minute class needs all its consecutive slots open.` });
+        }
+      }
     }
 
     // Validate ALL consecutive slots
@@ -1659,7 +1783,8 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
          sp.max_students AS maxStudents,
          sp.max_teachers AS maxTeachers,
          sp.max_admins AS maxAdmins,
-         sp.name AS planName
+         sp.name AS planName,
+         c.trial_ends_at AS trialEndsAt
        FROM companies c
        JOIN subscription_plans sp ON c.subscription_plan_id = sp.id
        WHERE c.id = ?`,
