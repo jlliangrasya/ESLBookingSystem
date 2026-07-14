@@ -22,8 +22,7 @@ import AnnouncementPanel from "@/components/AnnouncementPanel";
 import TablePagination from "@/components/TablePagination";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import Calendar from "react-calendar";
-import "react-calendar/dist/Calendar.css";
+import MonthCalendar from "@/components/MonthCalendar";
 
 type Page = "dashboard" | "classes" | "profile";
 
@@ -246,7 +245,9 @@ const TeacherDashboard = () => {
 
       // Build calendar map
       const calMap: Record<string, { student: string; time: string }[]> = {};
-      (dash.bookings as Booking[]).forEach((b) => {
+      [...(dash.bookings as Booking[])]
+        .sort((a, b) => new Date(a.appointment_date).getTime() - new Date(b.appointment_date).getTime())
+        .forEach((b) => {
         const key = fmtDate(b.appointment_date, "yyyy-MM-dd");
         if (!calMap[key]) calMap[key] = [];
         calMap[key].push({ student: b.student_name, time: fmtDate(b.appointment_date, "h:mm a") });
@@ -832,29 +833,13 @@ const TeacherDashboard = () => {
               {/* Right: Calendar — 3/5 width */}
               <div className="lg:col-span-3">
                 <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-4">My Schedule</h2>
-                <div className="bg-white rounded-xl border shadow-sm p-4 flex justify-center">
-                  <Calendar
-                    className="custom-calendar w-full"
-                    tileContent={({ date }) => {
-                      const key = date.toLocaleDateString("en-CA");
-                      return calendarBookings[key] ? (
-                        <div className="booking-name">
-                          {calendarBookings[key].map((e, i) => (
-                            <p key={i} className="m-0">
-                              <span style={{ fontWeight: 600 }}>{e.student}</span>
-                              <span> {e.time}</span>
-                            </p>
-                          ))}
-                        </div>
-                      ) : null;
-                    }}
-                    onClickDay={(date) => {
-                      const key = date.toLocaleDateString("en-CA");
-                      const dayBkgs = bookings.filter(b => fmtDate(b.appointment_date, "yyyy-MM-dd") === key);
-                      if (dayBkgs.length > 0) { setSelectedDayBookings(dayBkgs); setShowDayModal(true); }
-                    }}
-                  />
-                </div>
+                <MonthCalendar
+                  events={calendarBookings}
+                  onDayClick={(key) => {
+                    const dayBkgs = bookings.filter(b => fmtDate(b.appointment_date, "yyyy-MM-dd") === key);
+                    if (dayBkgs.length > 0) { setSelectedDayBookings(dayBkgs); setShowDayModal(true); }
+                  }}
+                />
               </div>
             </div>
 
