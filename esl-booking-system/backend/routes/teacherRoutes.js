@@ -689,18 +689,24 @@ router.post('/bookings/:id/done', authenticateToken, requireRole('teacher'), asy
             message: `Please submit your class report for ${booking.student_name}.`,
         });
 
-        // Low-session notifications
+        // Low-session notifications — based on unused sessions
+        // (remaining + still-booked classes), not just unbooked ones
         const [[updatedPkg]] = await pool.query(
-            `SELECT sessions_remaining, student_id, u.name AS student_name
+            `SELECT sp.sessions_remaining + IFNULL((
+                        SELECT COUNT(*) FROM bookings b
+                        WHERE b.student_package_id = sp.id
+                          AND b.status IN ('pending', 'confirmed')
+                    ), 0) AS unused_sessions,
+                    sp.student_id, u.name AS student_name
              FROM student_packages sp JOIN users u ON sp.student_id = u.id
              WHERE sp.id = ?`, [booking.student_package_id]
         );
-        if (updatedPkg && updatedPkg.sessions_remaining <= 2 && updatedPkg.sessions_remaining > 0) {
+        if (updatedPkg && updatedPkg.unused_sessions <= 2 && updatedPkg.unused_sessions > 0) {
             await notify({
                 userId: updatedPkg.student_id, companyId,
                 type: 'low_sessions',
                 title: 'Low sessions remaining',
-                message: `You have ${updatedPkg.sessions_remaining} session(s) left. Please consider enrolling in a new package soon.`,
+                message: `You have ${updatedPkg.unused_sessions} session(s) left. Please consider enrolling in a new package soon.`,
             });
             const [admins] = await pool.query(
                 "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin'", [companyId]
@@ -709,9 +715,9 @@ router.post('/bookings/:id/done', authenticateToken, requireRole('teacher'), asy
                 userId: admin.id, companyId,
                 type: 'low_sessions',
                 title: 'Student low on sessions',
-                message: `${updatedPkg.student_name} has only ${updatedPkg.sessions_remaining} session(s) remaining.`,
+                message: `${updatedPkg.student_name} has only ${updatedPkg.unused_sessions} session(s) remaining.`,
             })));
-        } else if (updatedPkg && updatedPkg.sessions_remaining === 0) {
+        } else if (updatedPkg && updatedPkg.unused_sessions === 0) {
             await notify({
                 userId: updatedPkg.student_id, companyId,
                 type: 'package_exhausted',

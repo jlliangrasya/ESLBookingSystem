@@ -306,9 +306,9 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                           <div className="flex gap-1 flex-wrap">
                             <Badge
                               variant={
-                                (student.unused_sessions ?? student.sessions_remaining) > 0
-                                  ? "default"
-                                  : "destructive"
+                                (student.unused_sessions ?? student.sessions_remaining ?? 0) <= 3
+                                  ? "destructive"
+                                  : "default"
                               }
                             >
                               {student.unused_sessions ?? student.sessions_remaining ?? 0} remaining
