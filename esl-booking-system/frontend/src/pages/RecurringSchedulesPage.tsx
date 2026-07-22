@@ -14,9 +14,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { StudentPackagePicker } from "@/components/StudentPackagePicker";
 import AuthContext from "@/context/AuthContext";
 import NavBar from "@/components/Navbar";
 import { fmtDate as fmtDateTz } from "@/utils/timezone";
@@ -303,16 +301,19 @@ const RecurringSchedulesPage: React.FC = () => {
               {packages.length > 0 && (
                 <div>
                   <Label>Student Package</Label>
-                  <Select value={selectedPkgId} onValueChange={setSelectedPkgId}>
-                    <SelectTrigger><SelectValue placeholder="Select student" /></SelectTrigger>
-                    <SelectContent>
-                      {packages.map(p => (
-                        <SelectItem key={p.id} value={p.id.toString()}>
-                          {p.student_name} — {p.package_name} ({p.sessions_remaining} sessions, {p.duration_minutes}min)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <StudentPackagePicker
+                    items={packages.map(p => ({
+                      id: p.id.toString(),
+                      name: p.student_name,
+                      durationMinutes: p.duration_minutes,
+                      sessionsRemaining: p.sessions_remaining,
+                    }))}
+                    value={selectedPkgId}
+                    onChange={setSelectedPkgId}
+                    durationOptions={["25", "50"]}
+                    placeholder="Select student"
+                    emptyMessage="No assigned students with paid packages found."
+                  />
                 </div>
               )}
               {packages.length === 0 && (

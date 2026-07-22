@@ -11,6 +11,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { StudentPackagePicker } from "@/components/StudentPackagePicker";
 import {
   CalendarRange, ChevronLeft, ChevronRight, Loader2, GraduationCap,
 } from "lucide-react";
@@ -191,6 +192,16 @@ const AdminCalendarPage = () => {
   };
 
   const selectedPkg = bookableStudents.find(p => String(p.student_package_id) === selectedPkgId) ?? null;
+
+  const studentPickerItems = useMemo(() => bookableStudents.map(p => ({
+    id: String(p.student_package_id),
+    name: p.student_name,
+    durationMinutes: p.duration_minutes || 25,
+    sessionsRemaining: p.sessions_remaining,
+    note: p.teacher_id && teacher && p.teacher_id !== teacher.id && p.teacher_name
+      ? `assigned to ${p.teacher_name}`
+      : undefined,
+  })), [bookableStudents, teacher]);
 
   // Validate that every consecutive slot the selected package needs is bookable
   const bookingValidation = useMemo(() => {
@@ -459,21 +470,13 @@ const AdminCalendarPage = () => {
               <p className="text-sm text-muted-foreground">
                 {teacher?.name} · {format(new Date(`${bookingSlot.date}T00:00:00`), "EEEE, MMM d, yyyy")} at {fmt12(bookingSlot.time)}
               </p>
-              <Select value={selectedPkgId} onValueChange={v => { setSelectedPkgId(v); setBookingError(null); }}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a student…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {bookableStudents.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">No students with a paid package and sessions remaining.</div>
-                  ) : bookableStudents.map(p => (
-                    <SelectItem key={p.student_package_id} value={String(p.student_package_id)}>
-                      {p.student_name} — {p.package_name} ({p.duration_minutes || 25} min, {p.sessions_remaining} left)
-                      {p.teacher_id && teacher && p.teacher_id !== teacher.id && p.teacher_name ? ` · assigned to ${p.teacher_name}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <StudentPackagePicker
+                items={studentPickerItems}
+                value={selectedPkgId}
+                onChange={v => { setSelectedPkgId(v); setBookingError(null); }}
+                durationOptions={["25", "50"]}
+                emptyMessage="No students with a paid package and sessions remaining."
+              />
               {selectedPkg && !bookingValidation && (
                 <p className="text-xs text-muted-foreground">{bookingSpanSummary()}</p>
               )}

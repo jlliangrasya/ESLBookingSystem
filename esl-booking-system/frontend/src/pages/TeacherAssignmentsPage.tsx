@@ -12,9 +12,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { StudentPackagePicker } from "@/components/StudentPackagePicker";
 import AuthContext from "@/context/AuthContext";
 import NavBar from "@/components/Navbar";
 
@@ -225,14 +223,13 @@ const TeacherAssignmentsPage: React.FC = () => {
           <div className="space-y-4">
             <div>
               <Label>Student</Label>
-              <Select value={studentId} onValueChange={setStudentId}>
-                <SelectTrigger><SelectValue placeholder="Select student" /></SelectTrigger>
-                <SelectContent>
-                  {students.map(s => (
-                    <SelectItem key={s.student_id} value={s.student_id.toString()}>{s.student_name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <StudentPackagePicker
+                items={students.map(s => ({ id: s.student_id.toString(), name: s.student_name }))}
+                value={studentId}
+                onChange={setStudentId}
+                placeholder="Select student"
+                emptyMessage="No assigned students found."
+              />
             </div>
             <div><Label>Title</Label><Input value={title} onChange={e => setTitle(e.target.value)} /></div>
             <div>
