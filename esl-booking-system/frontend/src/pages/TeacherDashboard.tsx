@@ -81,6 +81,13 @@ const fmt12 = (time: string): string => {
   return `${h}:${mStr} ${ampm}`;
 };
 
+// Formats a "yyyy-MM-dd" calendar key as a local date, avoiding the UTC
+// off-by-one that plain `new Date("yyyy-MM-dd")` parsing can introduce.
+const fmtDayKey = (key: string): string => {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
+
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
   confirmed: "bg-green-100 text-green-800",
@@ -162,6 +169,8 @@ const TeacherDashboard = () => {
     return merged;
   }, [calendarBookings, calendarNotes]);
   const [selectedDayBookings, setSelectedDayBookings] = useState<Booking[]>([]);
+  const [selectedDayNotes, setSelectedDayNotes] = useState<MonthCalendarEvent[]>([]);
+  const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
   const [showDayModal, setShowDayModal] = useState(false);
   // Inline class-info editing inside the day modal
   const [dayModalEditingId, setDayModalEditingId] = useState<number | null>(null);
@@ -427,7 +436,7 @@ const TeacherDashboard = () => {
         .forEach((n) => {
           if (!noteMap[n.note_date]) noteMap[n.note_date] = [];
           noteMap[n.note_date].push({
-            kind: "note", time: n.slot_time,
+            kind: "note", time: fmt12(n.slot_time),
             noteText: n.note_text, noteColor: n.note_color, noteIcon: n.note_icon,
           });
         });
@@ -1020,7 +1029,13 @@ const TeacherDashboard = () => {
                   events={monthCalendarEvents}
                   onDayClick={(key) => {
                     const dayBkgs = bookings.filter(b => fmtDate(b.appointment_date, "yyyy-MM-dd") === key);
-                    if (dayBkgs.length > 0) { setSelectedDayBookings(dayBkgs); setShowDayModal(true); }
+                    const dayNotes = calendarNotes[key] || [];
+                    if (dayBkgs.length > 0 || dayNotes.length > 0) {
+                      setSelectedDayBookings(dayBkgs);
+                      setSelectedDayNotes(dayNotes);
+                      setSelectedDayKey(key);
+                      setShowDayModal(true);
+                    }
                   }}
                   onMonthChange={(year, month) => { if (token) fetchMonthNotes(year, month); }}
                 />
@@ -1161,13 +1176,16 @@ const TeacherDashboard = () => {
                                       ? "bg-green-100 hover:bg-green-200 text-green-700"
                                       : "bg-white hover:bg-gray-100 text-gray-400"
                                   }`}
-                                  onClick={() => !isToggling && handleSlotClick(dateStr, time)}
-                                  onDoubleClick={() => handleSlotDoubleClick(dateStr, time)}
+                                  onClick={() => {
+                                    if (note) openNoteDialog(dateStr, time);
+                                    else if (!isToggling) handleSlotClick(dateStr, time);
+                                  }}
+                                  onDoubleClick={() => !isOpen && handleSlotDoubleClick(dateStr, time)}
                                   title={
                                     note
-                                      ? `${note.note_icon ? note.note_icon + " " : ""}${note.note_text}${note.admin_visibility ? " (visible to admin)" : " (private)"} — double-click to edit`
+                                      ? `${note.note_icon ? note.note_icon + " " : ""}${note.note_text}${note.admin_visibility ? " (visible to admin)" : " (private)"} — click to edit`
                                       : isOpen
-                                      ? "Click to close slot · double-click to add a note"
+                                      ? "Click to close slot · close it first to add a note"
                                       : "Click to open slot · double-click to add a note"
                                   }
                                 >
@@ -1738,10 +1756,24 @@ const TeacherDashboard = () => {
         <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {selectedDayBookings[0] ? fmtDate(selectedDayBookings[0].appointment_date, "MMM d, yyyy") : ""} Schedule
+              {selectedDayKey ? fmtDayKey(selectedDayKey) : ""} Schedule
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
+            {selectedDayNotes.map((n, idx) => {
+              const bg = isValidHex(n.noteColor) ? n.noteColor! : DEFAULT_NOTE_COLOR;
+              return (
+                <div
+                  key={`note-${idx}`}
+                  className="rounded-lg border p-3 flex items-center gap-2"
+                  style={{ backgroundColor: bg, borderColor: bg, color: getContrastText(bg) }}
+                >
+                  {n.noteIcon && <span className="shrink-0">{n.noteIcon}</span>}
+                  <span className="font-medium text-sm truncate">{n.noteText}</span>
+                  {n.time && <span className="ml-auto shrink-0 text-xs font-semibold">{n.time}</span>}
+                </div>
+              );
+            })}
             {selectedDayBookings.map(b => {
               const isEditing = dayModalEditingId === b.id;
               const hasInfo = !!(b.class_mode || b.meeting_link);

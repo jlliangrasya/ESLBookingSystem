@@ -131,9 +131,7 @@ export default function MonthCalendar({ events, onDayClick, onMonthChange }: Mon
           const isToday = key === todayKey;
           const isPast = key < todayKey;
           const dayEvents = events[key] || [];
-          // Only bookings open the day modal — notes are display-only on this calendar,
-          // so a note-only day shouldn't look/behave like a clickable one.
-          const hasBookings = dayEvents.some((e) => e.kind !== "note");
+          const hasEvents = dayEvents.length > 0;
           const visible = dayEvents.slice(0, 10);
           const overflow = dayEvents.length - visible.length;
           const isWeekend = date.getDay() === 0 || date.getDay() === 6;
@@ -141,12 +139,12 @@ export default function MonthCalendar({ events, onDayClick, onMonthChange }: Mon
           return (
             <div
               key={key}
-              onClick={() => hasBookings && onDayClick?.(key)}
+              onClick={() => hasEvents && onDayClick?.(key)}
               className={[
                 "relative flex flex-col gap-1 p-1.5 border-b border-r border-slate-100 transition-colors",
                 i % 7 === 0 ? "border-l-0" : "",
                 isToday ? "bg-brand-light/25" : !inMonth ? "bg-slate-50/70" : isWeekend ? "bg-slate-50/40" : "bg-white",
-                hasBookings ? "cursor-pointer hover:bg-brand-light/30" : "",
+                hasEvents ? "cursor-pointer hover:bg-brand-light/30" : "",
               ].join(" ")}
             >
               <div className="flex justify-end">
@@ -177,6 +175,7 @@ export default function MonthCalendar({ events, onDayClick, onMonthChange }: Mon
                     >
                       {e.noteIcon && <span className="shrink-0">{e.noteIcon}</span>}
                       <span className="font-semibold truncate">{e.noteText}</span>
+                      {e.time && <span className="ml-auto shrink-0">{e.time}</span>}
                     </div>
                   );
                 }
