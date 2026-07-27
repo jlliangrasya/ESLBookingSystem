@@ -1047,7 +1047,7 @@ router.post('/notes', authenticateToken, requireRole('teacher'), async (req, res
             return res.status(400).json({ message: 'note_date, slot_time, and note_text are required' });
         }
         const color = typeof note_color === 'string' && HEX_COLOR_RE.test(note_color) ? note_color : DEFAULT_NOTE_COLOR;
-        const icon = typeof note_icon === 'string' ? note_icon.trim().slice(0, 10) || null : null;
+        const icon = typeof note_icon === 'string' ? Array.from(note_icon.trim()).slice(0, 10).join('') || null : null;
 
         await pool.query(
             `DELETE FROM teacher_available_slots WHERE company_id = ? AND teacher_id = ? AND slot_date = ? AND slot_time = ?`,

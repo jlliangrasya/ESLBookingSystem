@@ -33,4 +33,9 @@ export const getContrastText = (hex: string | undefined | null): string => {
   return luminance > 0.6 ? "#1f2937" : "#ffffff";
 };
 
-export const NOTE_ICONS: string[] = ["🍽️", "☕", "📞", "🏠", "🚗", "🩺", "📚", "🛌", "⚠️", "✈️"];
+export const NOTE_ICONS: string[] = [
+  "🍽️", "☕", "🍕", "🍎", "📞", "📅", "📝", "📚", "💻", "🖊️",
+  "🏠", "🚗", "🚌", "✈️", "🩺", "💊", "🤒", "🛌", "😴", "🎧",
+  "🎮", "🎨", "🎵", "⚠️", "✅", "❌", "🚫", "⏰", "🔔", "☀️",
+  "🌧️", "❄️", "🎉", "🌟", "❤️", "🙌",
+];

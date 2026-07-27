@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useContext } from "react";
+﻿import { useState, useEffect, useContext, useRef } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import AuthContext from "@/context/AuthContext";
@@ -22,6 +22,7 @@ import { NOTE_COLOR_PRESETS, NOTE_ICONS, DEFAULT_NOTE_COLOR, isValidHex, getCont
 import AnnouncementPanel from "@/components/AnnouncementPanel";
 import TablePagination from "@/components/TablePagination";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import MonthCalendar from "@/components/MonthCalendar";
 
@@ -216,6 +217,7 @@ const TeacherDashboard = () => {
   const [noteIcon, setNoteIcon] = useState("");
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
 
   // Recurring availability dialog
   const [showRecurringAvail, setShowRecurringAvail] = useState(false);
@@ -354,6 +356,27 @@ const TeacherDashboard = () => {
     } finally {
       setTogglingSlot(null);
     }
+  };
+
+  // A native double-click fires two "click" events before "dblclick" — without this guard,
+  // both clicks would read the same stale openSlots state and toggle the slot before the
+  // note dialog opens. Delay the single-click toggle briefly so a following dblclick can cancel it.
+  const slotClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSlotClick = (dateStr: string, time: string) => {
+    if (slotClickTimer.current) clearTimeout(slotClickTimer.current);
+    slotClickTimer.current = setTimeout(() => {
+      slotClickTimer.current = null;
+      toggleSlot(dateStr, time);
+    }, 250);
+  };
+
+  const handleSlotDoubleClick = (dateStr: string, time: string) => {
+    if (slotClickTimer.current) {
+      clearTimeout(slotClickTimer.current);
+      slotClickTimer.current = null;
+    }
+    openNoteDialog(dateStr, time);
   };
 
   const fetchSlotNotes = async (start: Date) => {
@@ -1099,8 +1122,8 @@ const TeacherDashboard = () => {
                                       ? "bg-green-100 hover:bg-green-200 text-green-700"
                                       : "bg-white hover:bg-gray-100 text-gray-400"
                                   }`}
-                                  onClick={() => !isToggling && toggleSlot(dateStr, time)}
-                                  onDoubleClick={() => openNoteDialog(dateStr, time)}
+                                  onClick={() => !isToggling && handleSlotClick(dateStr, time)}
+                                  onDoubleClick={() => handleSlotDoubleClick(dateStr, time)}
                                   title={
                                     note
                                       ? `${note.note_icon ? note.note_icon + " " : ""}${note.note_text}${note.admin_visibility ? " (visible to admin)" : " (private)"} — double-click to edit`
@@ -1856,27 +1879,39 @@ const TeacherDashboard = () => {
             </div>
             <div className="space-y-1.5">
               <Label>Icon</Label>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {NOTE_ICONS.map((icon) => (
-                  <button
-                    key={icon}
-                    type="button"
-                    onClick={() => setNoteIcon(icon === noteIcon ? "" : icon)}
-                    className={`h-8 w-8 flex items-center justify-center rounded border text-base transition-colors ${
-                      icon === noteIcon ? "border-primary bg-primary/10" : "border-transparent hover:bg-gray-100"
-                    }`}
-                    title={icon}
-                  >
-                    {icon}
-                  </button>
-                ))}
-                <Input
-                  value={noteIcon}
-                  onChange={e => setNoteIcon(e.target.value.slice(0, 10))}
-                  placeholder="or type any emoji"
-                  className="w-32 h-8 text-sm"
-                />
-              </div>
+              <Popover open={iconPickerOpen} onOpenChange={setIconPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button type="button" variant="outline" className="h-9 w-20 text-lg">
+                    {noteIcon || <span className="text-xs text-muted-foreground">Pick</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-2" align="start">
+                  <div className="grid grid-cols-6 gap-1">
+                    {NOTE_ICONS.map((icon) => (
+                      <button
+                        key={icon}
+                        type="button"
+                        onClick={() => { setNoteIcon(icon); setIconPickerOpen(false); }}
+                        className={`h-8 w-8 flex items-center justify-center rounded text-lg transition-colors ${
+                          icon === noteIcon ? "bg-primary/10 ring-1 ring-primary" : "hover:bg-gray-100"
+                        }`}
+                        title={icon}
+                      >
+                        {icon}
+                      </button>
+                    ))}
+                  </div>
+                  {noteIcon && (
+                    <button
+                      type="button"
+                      onClick={() => { setNoteIcon(""); setIconPickerOpen(false); }}
+                      className="mt-2 w-full text-xs text-muted-foreground hover:text-foreground text-center py-1 border-t"
+                    >
+                      Clear icon
+                    </button>
+                  )}
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="space-y-1.5">
               <Label>Color</Label>
