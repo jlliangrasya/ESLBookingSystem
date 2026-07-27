@@ -5,7 +5,8 @@ import { DEFAULT_NOTE_COLOR, isValidHex, getContrastText } from "@/utils/noteCol
 export interface MonthCalendarEvent {
   kind?: "booking" | "note";
   student?: string;
-  time?: string;
+  time?: string; // formatted display time, e.g. "8:00 AM"
+  sortTime?: string; // 24-hour "HH:mm" — used to order bookings/notes chronologically
   // note-only fields (admin-visible teacher notes)
   noteText?: string;
   noteColor?: string;
@@ -130,7 +131,9 @@ export default function MonthCalendar({ events, onDayClick, onMonthChange }: Mon
           const inMonth = date.getMonth() === viewMonth;
           const isToday = key === todayKey;
           const isPast = key < todayKey;
-          const dayEvents = events[key] || [];
+          const dayEvents = [...(events[key] || [])].sort((a, b) =>
+            (a.sortTime || "").localeCompare(b.sortTime || "")
+          );
           const hasEvents = dayEvents.length > 0;
           const visible = dayEvents.slice(0, 10);
           const overflow = dayEvents.length - visible.length;

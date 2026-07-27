@@ -156,7 +156,7 @@ const TeacherDashboard = () => {
   const [cancellationHours, setCancellationHours] = useState(1);
 
   // Calendar
-  const [calendarBookings, setCalendarBookings] = useState<Record<string, { student: string; time: string }[]>>({});
+  const [calendarBookings, setCalendarBookings] = useState<Record<string, { student: string; time: string; sortTime: string }[]>>({});
   // Admin-visible notes shown as chips on the main month calendar, keyed by yyyy-MM-dd
   const [calendarNotes, setCalendarNotes] = useState<Record<string, MonthCalendarEvent[]>>({});
   const monthNotesReqIdRef = useRef(0);
@@ -171,6 +171,21 @@ const TeacherDashboard = () => {
   const [selectedDayBookings, setSelectedDayBookings] = useState<Booking[]>([]);
   const [selectedDayNotes, setSelectedDayNotes] = useState<MonthCalendarEvent[]>([]);
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
+  // Bookings + notes merged into one chronological list for the day-schedule modal
+  const dayScheduleItems = useMemo(() => {
+    type DayItem =
+      | { kind: "booking"; sortTime: string; booking: Booking }
+      | { kind: "note"; sortTime: string; note: MonthCalendarEvent };
+    const items: DayItem[] = [
+      ...selectedDayBookings.map((b) => ({
+        kind: "booking" as const, sortTime: fmtDate(b.appointment_date, "HH:mm"), booking: b,
+      })),
+      ...selectedDayNotes.map((n) => ({
+        kind: "note" as const, sortTime: n.sortTime || "", note: n,
+      })),
+    ];
+    return items.sort((a, b) => a.sortTime.localeCompare(b.sortTime));
+  }, [selectedDayBookings, selectedDayNotes]);
   const [showDayModal, setShowDayModal] = useState(false);
   // Inline class-info editing inside the day modal
   const [dayModalEditingId, setDayModalEditingId] = useState<number | null>(null);
@@ -278,13 +293,16 @@ const TeacherDashboard = () => {
       setFeedback(feedbackRes.data || []);
 
       // Build calendar map
-      const calMap: Record<string, { student: string; time: string }[]> = {};
+      const calMap: Record<string, { student: string; time: string; sortTime: string }[]> = {};
       [...(dash.bookings as Booking[])]
         .sort((a, b) => new Date(a.appointment_date).getTime() - new Date(b.appointment_date).getTime())
         .forEach((b) => {
         const key = fmtDate(b.appointment_date, "yyyy-MM-dd");
         if (!calMap[key]) calMap[key] = [];
-        calMap[key].push({ student: b.student_name, time: fmtDate(b.appointment_date, "h:mm a") });
+        calMap[key].push({
+          student: b.student_name, time: fmtDate(b.appointment_date, "h:mm a"),
+          sortTime: fmtDate(b.appointment_date, "HH:mm"),
+        });
       });
       setCalendarBookings(calMap);
 
@@ -436,7 +454,7 @@ const TeacherDashboard = () => {
         .forEach((n) => {
           if (!noteMap[n.note_date]) noteMap[n.note_date] = [];
           noteMap[n.note_date].push({
-            kind: "note", time: fmt12(n.slot_time),
+            kind: "note", time: fmt12(n.slot_time), sortTime: n.slot_time,
             noteText: n.note_text, noteColor: n.note_color, noteIcon: n.note_icon,
           });
         });
@@ -1760,21 +1778,24 @@ const TeacherDashboard = () => {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            {selectedDayNotes.map((n, idx) => {
-              const bg = isValidHex(n.noteColor) ? n.noteColor! : DEFAULT_NOTE_COLOR;
-              return (
-                <div
-                  key={`note-${idx}`}
-                  className="rounded-lg border p-3 flex items-center gap-2"
-                  style={{ backgroundColor: bg, borderColor: bg, color: getContrastText(bg) }}
-                >
-                  {n.noteIcon && <span className="shrink-0">{n.noteIcon}</span>}
-                  <span className="font-medium text-sm truncate">{n.noteText}</span>
-                  {n.time && <span className="ml-auto shrink-0 text-xs font-semibold">{n.time}</span>}
-                </div>
-              );
-            })}
-            {selectedDayBookings.map(b => {
+            {dayScheduleItems.map((item, idx) => {
+              if (item.kind === "note") {
+                const n = item.note;
+                const bg = isValidHex(n.noteColor) ? n.noteColor! : DEFAULT_NOTE_COLOR;
+                return (
+                  <div
+                    key={`note-${idx}`}
+                    className="rounded-lg border p-3 flex items-center gap-2"
+                    style={{ backgroundColor: bg, borderColor: bg, color: getContrastText(bg) }}
+                  >
+                    {n.noteIcon && <span className="shrink-0">{n.noteIcon}</span>}
+                    <span className="font-medium text-sm truncate">{n.noteText}</span>
+                    {n.time && <span className="ml-auto shrink-0 text-xs font-semibold">{n.time}</span>}
+                  </div>
+                );
+              }
+
+              const b = item.booking;
               const isEditing = dayModalEditingId === b.id;
               const hasInfo = !!(b.class_mode || b.meeting_link);
               return (
