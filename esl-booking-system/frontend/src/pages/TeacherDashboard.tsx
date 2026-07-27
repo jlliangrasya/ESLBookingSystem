@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useContext, useRef } from "react";
+﻿import { useState, useEffect, useContext, useRef, useMemo } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import AuthContext from "@/context/AuthContext";
@@ -24,7 +24,7 @@ import TablePagination from "@/components/TablePagination";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import MonthCalendar from "@/components/MonthCalendar";
+import MonthCalendar, { MonthCalendarEvent } from "@/components/MonthCalendar";
 
 type Page = "dashboard" | "classes" | "profile";
 
@@ -150,6 +150,17 @@ const TeacherDashboard = () => {
 
   // Calendar
   const [calendarBookings, setCalendarBookings] = useState<Record<string, { student: string; time: string }[]>>({});
+  // Admin-visible notes shown as chips on the main month calendar, keyed by yyyy-MM-dd
+  const [calendarNotes, setCalendarNotes] = useState<Record<string, MonthCalendarEvent[]>>({});
+  const monthNotesReqIdRef = useRef(0);
+  const monthCalendarEvents = useMemo(() => {
+    const merged: Record<string, MonthCalendarEvent[]> = {};
+    Object.entries(calendarBookings).forEach(([key, list]) => { merged[key] = [...list]; });
+    Object.entries(calendarNotes).forEach(([key, list]) => {
+      merged[key] = [...(merged[key] || []), ...list];
+    });
+    return merged;
+  }, [calendarBookings, calendarNotes]);
   const [selectedDayBookings, setSelectedDayBookings] = useState<Booking[]>([]);
   const [showDayModal, setShowDayModal] = useState(false);
   // Inline class-info editing inside the day modal
@@ -394,6 +405,33 @@ const TeacherDashboard = () => {
         });
       });
       setSlotNotes(noteMap);
+    } catch {
+      // non-critical
+    }
+  };
+
+  // Admin-visible notes for the month shown behind the main calendar (MonthCalendar).
+  const fetchMonthNotes = async (year: number, month: number) => {
+    const reqId = ++monthNotesReqIdRef.current;
+    try {
+      const start = new Date(year, month, 1).toLocaleDateString("en-CA");
+      const end = new Date(year, month + 1, 1).toLocaleDateString("en-CA");
+      const res = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/teacher/notes?startDate=${start}&endDate=${end}`,
+        { headers }
+      );
+      if (reqId !== monthNotesReqIdRef.current) return; // a newer month was requested since
+      const noteMap: Record<string, MonthCalendarEvent[]> = {};
+      (res.data as { note_date: string; slot_time: string; note_text: string; admin_visibility: boolean; note_color: string; note_icon: string | null }[])
+        .filter((n) => n.admin_visibility)
+        .forEach((n) => {
+          if (!noteMap[n.note_date]) noteMap[n.note_date] = [];
+          noteMap[n.note_date].push({
+            kind: "note", time: n.slot_time,
+            noteText: n.note_text, noteColor: n.note_color, noteIcon: n.note_icon,
+          });
+        });
+      setCalendarNotes(noteMap);
     } catch {
       // non-critical
     }
@@ -979,11 +1017,12 @@ const TeacherDashboard = () => {
               <div className="lg:col-span-3">
                 <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-4">My Schedule</h2>
                 <MonthCalendar
-                  events={calendarBookings}
+                  events={monthCalendarEvents}
                   onDayClick={(key) => {
                     const dayBkgs = bookings.filter(b => fmtDate(b.appointment_date, "yyyy-MM-dd") === key);
                     if (dayBkgs.length > 0) { setSelectedDayBookings(dayBkgs); setShowDayModal(true); }
                   }}
+                  onMonthChange={(year, month) => { if (token) fetchMonthNotes(year, month); }}
                 />
               </div>
             </div>

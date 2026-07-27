@@ -1,14 +1,21 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { DEFAULT_NOTE_COLOR, isValidHex, getContrastText } from "@/utils/noteColors";
 
 export interface MonthCalendarEvent {
-  student: string;
-  time: string;
+  kind?: "booking" | "note";
+  student?: string;
+  time?: string;
+  // note-only fields (admin-visible teacher notes)
+  noteText?: string;
+  noteColor?: string;
+  noteIcon?: string | null;
 }
 
 interface MonthCalendarProps {
   events: Record<string, MonthCalendarEvent[]>; // keyed by yyyy-MM-dd
   onDayClick?: (key: string) => void;
+  onMonthChange?: (year: number, month: number) => void; // month is 0-indexed
 }
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -19,10 +26,15 @@ const MONTH_NAMES = [
 
 const dateKey = (d: Date) => d.toLocaleDateString("en-CA");
 
-export default function MonthCalendar({ events, onDayClick }: MonthCalendarProps) {
+export default function MonthCalendar({ events, onDayClick, onMonthChange }: MonthCalendarProps) {
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
+
+  useEffect(() => {
+    onMonthChange?.(viewYear, viewMonth);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewYear, viewMonth]);
 
   const goToday = () => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); };
   const goPrev = () => {
@@ -52,7 +64,8 @@ export default function MonthCalendar({ events, onDayClick }: MonthCalendarProps
     () =>
       Object.entries(events).reduce((sum, [key, list]) => {
         const [y, m] = key.split("-").map(Number);
-        return y === viewYear && m - 1 === viewMonth ? sum + list.length : sum;
+        if (y !== viewYear || m - 1 !== viewMonth) return sum;
+        return sum + list.filter((e) => e.kind !== "note").length;
       }, 0),
     [events, viewYear, viewMonth]
   );
@@ -118,7 +131,9 @@ export default function MonthCalendar({ events, onDayClick }: MonthCalendarProps
           const isToday = key === todayKey;
           const isPast = key < todayKey;
           const dayEvents = events[key] || [];
-          const hasEvents = dayEvents.length > 0;
+          // Only bookings open the day modal — notes are display-only on this calendar,
+          // so a note-only day shouldn't look/behave like a clickable one.
+          const hasBookings = dayEvents.some((e) => e.kind !== "note");
           const visible = dayEvents.slice(0, 10);
           const overflow = dayEvents.length - visible.length;
           const isWeekend = date.getDay() === 0 || date.getDay() === 6;
@@ -126,12 +141,12 @@ export default function MonthCalendar({ events, onDayClick }: MonthCalendarProps
           return (
             <div
               key={key}
-              onClick={() => hasEvents && onDayClick?.(key)}
+              onClick={() => hasBookings && onDayClick?.(key)}
               className={[
                 "relative flex flex-col gap-1 p-1.5 border-b border-r border-slate-100 transition-colors",
                 i % 7 === 0 ? "border-l-0" : "",
                 isToday ? "bg-brand-light/25" : !inMonth ? "bg-slate-50/70" : isWeekend ? "bg-slate-50/40" : "bg-white",
-                hasEvents ? "cursor-pointer hover:bg-brand-light/30" : "",
+                hasBookings ? "cursor-pointer hover:bg-brand-light/30" : "",
               ].join(" ")}
             >
               <div className="flex justify-end">
@@ -150,28 +165,44 @@ export default function MonthCalendar({ events, onDayClick }: MonthCalendarProps
                 )}
               </div>
 
-              {visible.map((e, idx) => (
-                <div
-                  key={idx}
-                  title={`${e.student} · ${e.time}`}
-                  className={[
-                    "flex items-center gap-1.5 rounded-md border px-1.5 py-[3px] text-[10px] leading-tight min-w-0",
-                    isPast
-                      ? "bg-slate-50 border-slate-200 text-slate-400"
-                      : "bg-brand-light/50 border-brand-light text-[#1B3D5C]",
-                  ].join(" ")}
-                >
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full shrink-0 ${
-                      isPast ? "bg-slate-300" : isToday ? "bg-accent-gold" : "bg-brand"
-                    }`}
-                  />
-                  <span className="font-semibold truncate">{e.student}</span>
-                  <span className={`ml-auto shrink-0 ${isPast ? "text-slate-400" : "text-brand"}`}>
-                    {e.time}
-                  </span>
-                </div>
-              ))}
+              {visible.map((e, idx) => {
+                if (e.kind === "note") {
+                  const bg = isValidHex(e.noteColor) ? e.noteColor : DEFAULT_NOTE_COLOR;
+                  return (
+                    <div
+                      key={idx}
+                      title={`${e.noteIcon ? e.noteIcon + " " : ""}${e.noteText}${e.time ? " · " + e.time : ""}`}
+                      className="flex items-center gap-1 rounded-md border px-1.5 py-[3px] text-[10px] leading-tight min-w-0"
+                      style={{ backgroundColor: bg, borderColor: bg, color: getContrastText(bg) }}
+                    >
+                      {e.noteIcon && <span className="shrink-0">{e.noteIcon}</span>}
+                      <span className="font-semibold truncate">{e.noteText}</span>
+                    </div>
+                  );
+                }
+                return (
+                  <div
+                    key={idx}
+                    title={`${e.student} · ${e.time}`}
+                    className={[
+                      "flex items-center gap-1.5 rounded-md border px-1.5 py-[3px] text-[10px] leading-tight min-w-0",
+                      isPast
+                        ? "bg-slate-50 border-slate-200 text-slate-400"
+                        : "bg-brand-light/50 border-brand-light text-[#1B3D5C]",
+                    ].join(" ")}
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                        isPast ? "bg-slate-300" : isToday ? "bg-accent-gold" : "bg-brand"
+                      }`}
+                    />
+                    <span className="font-semibold truncate">{e.student}</span>
+                    <span className={`ml-auto shrink-0 ${isPast ? "text-slate-400" : "text-brand"}`}>
+                      {e.time}
+                    </span>
+                  </div>
+                );
+              })}
 
               {overflow > 0 && (
                 <span className="text-[10px] font-semibold text-brand pl-1">+{overflow} more</span>
@@ -191,6 +222,9 @@ export default function MonthCalendar({ events, onDayClick }: MonthCalendarProps
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-1.5 w-1.5 rounded-full bg-slate-300" /> Past
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: DEFAULT_NOTE_COLOR }} /> Note
         </span>
         <span className="ml-auto hidden sm:block text-slate-400">Click a day to view details</span>
       </div>

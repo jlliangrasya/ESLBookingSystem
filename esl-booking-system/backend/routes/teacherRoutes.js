@@ -1007,15 +1007,20 @@ router.delete('/weekly-slots/week', authenticateToken, requireRole('teacher'), a
     }
 });
 
-// GET /api/teacher/notes?startDate=YYYY-MM-DD — teacher's own calendar notes for the week
+// GET /api/teacher/notes?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD — teacher's own calendar
+// notes. Defaults to a 7-day window from startDate when endDate is omitted (weekly grid);
+// callers can pass an explicit endDate to pull a wider range (e.g. a full month).
 router.get('/notes', authenticateToken, requireRole('teacher'), async (req, res) => {
     try {
         const teacherId = req.user.id;
         const companyId = req.user.company_id;
         const startDate = req.query.startDate || new Date().toISOString().split('T')[0];
-        const endDt = new Date(startDate);
-        endDt.setDate(endDt.getDate() + 7);
-        const endDate = endDt.toISOString().split('T')[0];
+        let endDate = req.query.endDate;
+        if (!endDate) {
+            const endDt = new Date(startDate);
+            endDt.setDate(endDt.getDate() + 7);
+            endDate = endDt.toISOString().split('T')[0];
+        }
 
         const [rows] = await pool.query(
             `SELECT id,
