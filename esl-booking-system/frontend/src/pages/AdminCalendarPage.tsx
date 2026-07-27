@@ -16,6 +16,7 @@ import {
   CalendarRange, ChevronLeft, ChevronRight, Loader2, GraduationCap,
 } from "lucide-react";
 import { localToMysql } from "@/utils/timezone";
+import { isValidHex, getContrastText, DEFAULT_NOTE_COLOR } from "@/utils/noteColors";
 
 interface Teacher {
   id: number;
@@ -90,6 +91,7 @@ const AdminCalendarPage = () => {
   const [bookings, setBookings] = useState<CalendarBooking[]>([]);
   const [loadingGrid, setLoadingGrid] = useState(false);
   const [togglingSlot, setTogglingSlot] = useState<string | null>(null);
+  const [notesByKey, setNotesByKey] = useState<Map<string, { note_text: string; note_color: string; note_icon: string | null }>>(new Map());
 
   const [bookableStudents, setBookableStudents] = useState<BookablePackage[]>([]);
 
@@ -131,14 +133,19 @@ const AdminCalendarPage = () => {
     setLoadingGrid(true);
     try {
       const startStr = format(weekStart, "yyyy-MM-dd");
-      const [slotsRes, schedRes] = await Promise.all([
+      const [slotsRes, schedRes, notesRes] = await Promise.all([
         axios.get(`${base}/api/admin/teachers/${teacher.id}/weekly-slots?startDate=${startStr}`, { headers }),
         axios.get(`${base}/api/admin/teachers/${teacher.id}/schedule?startDate=${startStr}`, { headers }),
+        axios.get(`${base}/api/admin/teachers/${teacher.id}/notes?startDate=${startStr}`, { headers }),
       ]);
       setOpenSlots(new Set(
         (slotsRes.data as { slot_date: string; slot_time: string }[]).map(s => `${s.slot_date}|${s.slot_time}`)
       ));
       setBookings(schedRes.data);
+      setNotesByKey(new Map(
+        (notesRes.data as { note_date: string; slot_time: string; note_text: string; note_color: string; note_icon: string | null }[])
+          .map(n => [`${n.note_date}|${n.slot_time}`, { note_text: n.note_text, note_color: n.note_color, note_icon: n.note_icon }])
+      ));
     } catch (err) {
       console.error("Error fetching calendar grid:", err);
     } finally {
@@ -399,6 +406,8 @@ const AdminCalendarPage = () => {
                           const isOpen = openSlots.has(key);
                           const isPast = new Date(`${day}T${time}:00`) < new Date();
                           const isToggling = togglingSlot === key;
+                          const note = notesByKey.get(key);
+                          const noteBg = note && isValidHex(note.note_color) ? note.note_color : note ? DEFAULT_NOTE_COLOR : null;
 
                           if (booking) {
                             const isDone = booking.status === "done";
@@ -430,14 +439,24 @@ const AdminCalendarPage = () => {
                                 if (isOpen) openBookingModal(day, time);
                                 else toggleSlot(day, time, "open");
                               }}
-                              title={isPast ? undefined : isOpen ? "Open — click to book a class" : "Closed — click to open this slot"}
+                              title={
+                                note
+                                  ? `Teacher note: ${note.note_icon ? note.note_icon + " " : ""}${note.note_text}`
+                                  : isPast ? undefined : isOpen ? "Open — click to book a class" : "Closed — click to open this slot"
+                              }
+                              style={noteBg ? { backgroundColor: noteBg, color: getContrastText(noteBg) } : undefined}
                               className={`p-1 text-center border transition-colors ${
                                 isPast ? "bg-gray-50 text-gray-300 cursor-not-allowed"
+                                : noteBg ? "hover:brightness-95 cursor-pointer"
                                 : isOpen ? "bg-green-100 text-green-700 hover:bg-green-200 cursor-pointer"
                                 : "bg-gray-100 text-gray-400 hover:bg-gray-200 cursor-pointer"
                               }`}
                             >
-                              {isToggling ? "..." : isPast ? "" : isOpen ? "✓" : "+"}
+                              {isToggling ? "..." : isPast ? "" : note ? (
+                                <span className="text-[10px] font-semibold truncate block max-w-[80px] mx-auto">
+                                  {note.note_icon ? `${note.note_icon} ` : ""}{note.note_text}
+                                </span>
+                              ) : isOpen ? "✓" : "+"}
                             </td>
                           );
                         })}
@@ -453,6 +472,7 @@ const AdminCalendarPage = () => {
                 <span><span className="inline-block w-3 h-3 bg-yellow-100 border rounded mr-1" />Pending</span>
                 <span><span className="inline-block w-3 h-3 bg-slate-200 border rounded mr-1" />Completed</span>
                 <span><span className="inline-block w-3 h-3 bg-gray-50 border rounded mr-1" />Past</span>
+                <span><span className="inline-block w-3 h-3 bg-amber-100 border rounded mr-1" />Teacher note (shared by teacher)</span>
               </div>
             </CardContent>
           </Card>

@@ -563,6 +563,30 @@ router.get("/teachers/:id/weekly-slots", authenticateToken, requireRole('company
   }
 });
 
+// GET teacher's admin-visible calendar notes (read-only for admin)
+router.get("/teachers/:id/notes", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const { id } = req.params;
+    const startDate = req.query.startDate || new Date().toISOString().split('T')[0];
+    const endDt = new Date(startDate + 'T00:00:00Z');
+    endDt.setUTCDate(endDt.getUTCDate() + 7);
+    const endDate = endDt.toISOString().split('T')[0];
+
+    const [rows] = await pool.query(
+      `SELECT DATE_FORMAT(note_date, '%Y-%m-%d') AS note_date, TIME_FORMAT(slot_time, '%H:%i') AS slot_time,
+              note_text, note_color, note_icon
+       FROM teacher_notes
+       WHERE company_id = ? AND teacher_id = ? AND admin_visibility = 1 AND note_date >= ? AND note_date < ?
+       ORDER BY note_date ASC, slot_time ASC`,
+      [companyId, id, startDate, endDate]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // POST toggle teacher's open slots (admin — mirrors teacher's weekly-slots)
 router.post("/teachers/:id/weekly-slots", authenticateToken, requireRole('company_admin'), async (req, res) => {
   try {

@@ -8,6 +8,9 @@ const { notifyWaitlistForSlot } = require('./waitlistRoutes');
 
 const router = express.Router();
 
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+const DEFAULT_NOTE_COLOR = '#FDE68A';
+
 /** Format a stored PHT datetime string for notification messages without UTC shift. */
 function fmtAppt(dtStr) {
     if (!dtStr) return 'unknown date';
@@ -998,6 +1001,90 @@ router.delete('/weekly-slots/week', authenticateToken, requireRole('teacher'), a
         );
 
         res.json({ message: 'Week cleared' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// GET /api/teacher/notes?startDate=YYYY-MM-DD — teacher's own calendar notes for the week
+router.get('/notes', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const teacherId = req.user.id;
+        const companyId = req.user.company_id;
+        const startDate = req.query.startDate || new Date().toISOString().split('T')[0];
+        const endDt = new Date(startDate);
+        endDt.setDate(endDt.getDate() + 7);
+        const endDate = endDt.toISOString().split('T')[0];
+
+        const [rows] = await pool.query(
+            `SELECT id,
+                    DATE_FORMAT(note_date, '%Y-%m-%d') AS note_date,
+                    TIME_FORMAT(slot_time, '%H:%i')    AS slot_time,
+                    note_text, admin_visibility, note_color, note_icon
+             FROM teacher_notes
+             WHERE company_id = ? AND teacher_id = ? AND note_date >= ? AND note_date < ?
+             ORDER BY note_date ASC, slot_time ASC`,
+            [companyId, teacherId, startDate, endDate]
+        );
+        res.json(rows.map(r => ({ ...r, admin_visibility: !!r.admin_visibility })));
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// POST /api/teacher/notes — add/update a note on a slot.
+// A note can only exist on a closed slot, so this always closes the slot
+// first (removing it from teacher_available_slots) before saving the note.
+router.post('/notes', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const teacherId = req.user.id;
+        const companyId = req.user.company_id;
+        const { note_date, slot_time, note_text, admin_visibility, note_color, note_icon } = req.body;
+
+        if (!note_date || !slot_time || !note_text || !note_text.trim()) {
+            return res.status(400).json({ message: 'note_date, slot_time, and note_text are required' });
+        }
+        const color = typeof note_color === 'string' && HEX_COLOR_RE.test(note_color) ? note_color : DEFAULT_NOTE_COLOR;
+        const icon = typeof note_icon === 'string' ? note_icon.trim().slice(0, 10) || null : null;
+
+        await pool.query(
+            `DELETE FROM teacher_available_slots WHERE company_id = ? AND teacher_id = ? AND slot_date = ? AND slot_time = ?`,
+            [companyId, teacherId, note_date, slot_time]
+        );
+        await pool.query(
+            `INSERT INTO teacher_notes (company_id, teacher_id, note_date, slot_time, note_text, admin_visibility, note_color, note_icon)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE note_text = VALUES(note_text), admin_visibility = VALUES(admin_visibility),
+                                     note_color = VALUES(note_color), note_icon = VALUES(note_icon)`,
+            [companyId, teacherId, note_date, slot_time, note_text.trim(), admin_visibility ? 1 : 0, color, icon]
+        );
+
+        res.json({ message: 'Note saved successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// DELETE /api/teacher/notes — remove a note from a slot (slot stays closed)
+router.delete('/notes', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const teacherId = req.user.id;
+        const companyId = req.user.company_id;
+        const { note_date, slot_time } = req.body;
+
+        if (!note_date || !slot_time) {
+            return res.status(400).json({ message: 'note_date and slot_time are required' });
+        }
+
+        await pool.query(
+            `DELETE FROM teacher_notes WHERE company_id = ? AND teacher_id = ? AND note_date = ? AND slot_time = ?`,
+            [companyId, teacherId, note_date, slot_time]
+        );
+
+        res.json({ message: 'Note removed successfully' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });

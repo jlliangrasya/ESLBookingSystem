@@ -18,6 +18,7 @@ import NotificationBell from "@/components/NotificationBell";
 import InstallAppButton from "@/components/InstallAppButton";
 import ReportModal from "@/components/ReportModal";
 import { fmtDate, fmtDateOnly, TIMEZONES } from "@/utils/timezone";
+import { NOTE_COLOR_PRESETS, NOTE_ICONS, DEFAULT_NOTE_COLOR, isValidHex, getContrastText } from "@/utils/noteColors";
 import AnnouncementPanel from "@/components/AnnouncementPanel";
 import TablePagination from "@/components/TablePagination";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -206,6 +207,16 @@ const TeacherDashboard = () => {
   const [weekSlotsLoading, setWeekSlotsLoading] = useState(false);
   const [togglingSlot, setTogglingSlot] = useState<string | null>(null);
 
+  // Personal calendar notes (e.g. "LUNCH") on closed slots — double-click a slot to add
+  const [slotNotes, setSlotNotes] = useState<Map<string, { note_text: string; admin_visibility: boolean; note_color: string; note_icon: string | null }>>(new Map());
+  const [noteDialogSlot, setNoteDialogSlot] = useState<{ dateStr: string; time: string } | null>(null);
+  const [noteText, setNoteText] = useState("");
+  const [noteAdminVisible, setNoteAdminVisible] = useState(false);
+  const [noteColor, setNoteColor] = useState(DEFAULT_NOTE_COLOR);
+  const [noteIcon, setNoteIcon] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+
   // Recurring availability dialog
   const [showRecurringAvail, setShowRecurringAvail] = useState(false);
   const [recurringAvailDays, setRecurringAvailDays] = useState<string[]>([]);
@@ -345,6 +356,94 @@ const TeacherDashboard = () => {
     }
   };
 
+  const fetchSlotNotes = async (start: Date) => {
+    try {
+      const startStr = start.toLocaleDateString("en-CA");
+      const res = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/teacher/notes?startDate=${startStr}`,
+        { headers }
+      );
+      const noteMap = new Map<string, { note_text: string; admin_visibility: boolean; note_color: string; note_icon: string | null }>();
+      (res.data as { note_date: string; slot_time: string; note_text: string; admin_visibility: boolean; note_color: string; note_icon: string | null }[]).forEach((n) => {
+        noteMap.set(`${n.note_date}|${n.slot_time}`, {
+          note_text: n.note_text, admin_visibility: n.admin_visibility,
+          note_color: n.note_color, note_icon: n.note_icon,
+        });
+      });
+      setSlotNotes(noteMap);
+    } catch {
+      // non-critical
+    }
+  };
+
+  const openNoteDialog = (dateStr: string, time: string) => {
+    const existing = slotNotes.get(`${dateStr}|${time}`);
+    setNoteText(existing?.note_text || "");
+    setNoteAdminVisible(existing?.admin_visibility || false);
+    setNoteColor(existing?.note_color || DEFAULT_NOTE_COLOR);
+    setNoteIcon(existing?.note_icon || "");
+    setNoteError(null);
+    setNoteDialogSlot({ dateStr, time });
+  };
+
+  const saveNote = async () => {
+    if (!noteDialogSlot || !noteText.trim()) return;
+    const { dateStr, time } = noteDialogSlot;
+    const key = `${dateStr}|${time}`;
+    setNoteSaving(true);
+    setNoteError(null);
+    try {
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/teacher/notes`,
+        {
+          note_date: dateStr, slot_time: `${time}:00`, note_text: noteText.trim(),
+          admin_visibility: noteAdminVisible, note_color: noteColor, note_icon: noteIcon || null,
+        },
+        { headers }
+      );
+      // Saving a note always closes the slot — reflect that locally
+      setOpenSlots((prev) => {
+        if (!prev.has(key)) return prev;
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+      setSlotNotes((prev) => {
+        const next = new Map(prev);
+        next.set(key, { note_text: noteText.trim(), admin_visibility: noteAdminVisible, note_color: noteColor, note_icon: noteIcon || null });
+        return next;
+      });
+      setNoteDialogSlot(null);
+    } catch (err: unknown) {
+      setNoteError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to save note");
+    } finally {
+      setNoteSaving(false);
+    }
+  };
+
+  const deleteNote = async () => {
+    if (!noteDialogSlot) return;
+    const { dateStr, time } = noteDialogSlot;
+    const key = `${dateStr}|${time}`;
+    setNoteSaving(true);
+    setNoteError(null);
+    try {
+      await axios.delete(`${import.meta.env.VITE_API_URL}/api/teacher/notes`, {
+        headers, data: { note_date: dateStr, slot_time: `${time}:00` },
+      });
+      setSlotNotes((prev) => {
+        const next = new Map(prev);
+        next.delete(key);
+        return next;
+      });
+      setNoteDialogSlot(null);
+    } catch (err: unknown) {
+      setNoteError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to remove note");
+    } finally {
+      setNoteSaving(false);
+    }
+  };
+
   const handleRecurringAvailability = async () => {
     if (recurringAvailDays.length === 0) return;
     setRecurringAvailLoading(true);
@@ -411,7 +510,10 @@ const TeacherDashboard = () => {
 
   // Fetch open slots whenever weekStart changes (and on mount)
   useEffect(() => {
-    if (token) fetchOpenSlots(weekStart);
+    if (token) {
+      fetchOpenSlots(weekStart);
+      fetchSlotNotes(weekStart);
+    }
   }, [weekStart]);
 
   // Load filtered completed when navigating to classes page
@@ -909,6 +1011,9 @@ const TeacherDashboard = () => {
                   <span className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-sm bg-gray-100 inline-block" /> Unavailable (past)
                   </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-sm bg-amber-100 inline-block" /> Note — pick a color/icon (double-click a slot to add)
+                  </span>
                 </div>
                 {weekSlotsLoading ? (
                   <div className="flex justify-center py-8">
@@ -955,6 +1060,7 @@ const TeacherDashboard = () => {
                               const isBooked = bookedSlotKeys.has(key);
                               const isOpen = openSlots.has(key);
                               const isToggling = togglingSlot === key;
+                              const note = slotNotes.get(key);
 
                               if (isPast) {
                                 return (
@@ -980,19 +1086,35 @@ const TeacherDashboard = () => {
                                 );
                               }
 
+                              const noteBg = note && isValidHex(note.note_color) ? note.note_color : note ? DEFAULT_NOTE_COLOR : null;
+
                               return (
                                 <td
                                   key={i}
+                                  style={noteBg ? { backgroundColor: noteBg, color: getContrastText(noteBg) } : undefined}
                                   className={`border-b border-r p-1 text-center cursor-pointer transition-colors select-none ${
-                                    isOpen
+                                    noteBg
+                                      ? "hover:brightness-95"
+                                      : isOpen
                                       ? "bg-green-100 hover:bg-green-200 text-green-700"
                                       : "bg-white hover:bg-gray-100 text-gray-400"
                                   }`}
                                   onClick={() => !isToggling && toggleSlot(dateStr, time)}
-                                  title={isOpen ? "Click to close slot" : "Click to open slot"}
+                                  onDoubleClick={() => openNoteDialog(dateStr, time)}
+                                  title={
+                                    note
+                                      ? `${note.note_icon ? note.note_icon + " " : ""}${note.note_text}${note.admin_visibility ? " (visible to admin)" : " (private)"} — double-click to edit`
+                                      : isOpen
+                                      ? "Click to close slot · double-click to add a note"
+                                      : "Click to open slot · double-click to add a note"
+                                  }
                                 >
                                   {isToggling ? (
                                     <Loader2 className="h-3 w-3 animate-spin mx-auto" />
+                                  ) : note ? (
+                                    <span className="text-[10px] font-semibold truncate block max-w-[80px] mx-auto">
+                                      {note.note_icon ? `${note.note_icon} ` : ""}{note.note_text}
+                                    </span>
                                   ) : (
                                     <span className="text-[11px]">{isOpen ? "✓" : "+"}</span>
                                   )}
@@ -1705,6 +1827,110 @@ const TeacherDashboard = () => {
             <Button variant="outline" onClick={() => setEditingBooking(null)}>Cancel</Button>
             <Button onClick={handleSaveClassInfo} disabled={classInfoLoading}>
               {classInfoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Slot note dialog — personal calendar note, e.g. "LUNCH" */}
+      <Dialog open={!!noteDialogSlot} onOpenChange={o => { if (!o) setNoteDialogSlot(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {noteDialogSlot && `Note — ${fmt12(noteDialogSlot.time)}`}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-xs text-muted-foreground">
+              This is a personal note, not a booking. Saving a note will close this slot if it's currently open.
+            </p>
+            {noteError && <p className="text-sm text-destructive">{noteError}</p>}
+            <div className="space-y-1.5">
+              <Label>Note</Label>
+              <Input
+                placeholder="e.g. LUNCH"
+                value={noteText}
+                maxLength={100}
+                onChange={e => setNoteText(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Icon</Label>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {NOTE_ICONS.map((icon) => (
+                  <button
+                    key={icon}
+                    type="button"
+                    onClick={() => setNoteIcon(icon === noteIcon ? "" : icon)}
+                    className={`h-8 w-8 flex items-center justify-center rounded border text-base transition-colors ${
+                      icon === noteIcon ? "border-primary bg-primary/10" : "border-transparent hover:bg-gray-100"
+                    }`}
+                    title={icon}
+                  >
+                    {icon}
+                  </button>
+                ))}
+                <Input
+                  value={noteIcon}
+                  onChange={e => setNoteIcon(e.target.value.slice(0, 10))}
+                  placeholder="or type any emoji"
+                  className="w-32 h-8 text-sm"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Color</Label>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {NOTE_COLOR_PRESETS.map((c) => (
+                  <button
+                    key={c.hex}
+                    type="button"
+                    onClick={() => setNoteColor(c.hex)}
+                    title={c.label}
+                    style={{ backgroundColor: c.hex }}
+                    className={`h-7 w-7 rounded-full transition-all ${
+                      noteColor.toLowerCase() === c.hex.toLowerCase() ? "ring-2 ring-offset-2 ring-primary" : "hover:scale-110"
+                    }`}
+                  />
+                ))}
+                <input
+                  type="color"
+                  value={isValidHex(noteColor) ? noteColor : DEFAULT_NOTE_COLOR}
+                  onChange={(e) => setNoteColor(e.target.value)}
+                  title="Custom color"
+                  className="h-7 w-7 rounded cursor-pointer border-0 p-0 bg-transparent"
+                />
+                <Input
+                  value={noteColor}
+                  onChange={(e) => setNoteColor(e.target.value)}
+                  placeholder="#FFBF00"
+                  maxLength={7}
+                  className="w-24 h-8 text-sm font-mono"
+                />
+              </div>
+              {!isValidHex(noteColor) && (
+                <p className="text-xs text-destructive">Enter a valid hex color, e.g. #FFBF00</p>
+              )}
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={noteAdminVisible}
+                onChange={e => setNoteAdminVisible(e.target.checked)}
+                className="accent-primary h-4 w-4"
+              />
+              Show this note to admin
+            </label>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            {noteDialogSlot && slotNotes.has(`${noteDialogSlot.dateStr}|${noteDialogSlot.time}`) && (
+              <Button variant="destructive" onClick={deleteNote} disabled={noteSaving}>
+                {noteSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Remove"}
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setNoteDialogSlot(null)}>Cancel</Button>
+            <Button onClick={saveNote} disabled={noteSaving || !noteText.trim() || !isValidHex(noteColor)}>
+              {noteSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
