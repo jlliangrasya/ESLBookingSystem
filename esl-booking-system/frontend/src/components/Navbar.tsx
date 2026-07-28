@@ -2,7 +2,7 @@ import { useContext, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import BrandLogo from "@/components/BrandLogo";
-import { CalendarDays, CalendarRange, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus, BookOpen, Menu, X, TrendingUp, Compass } from "lucide-react";
+import { CalendarDays, CalendarRange, Users, User, LogOut, LayoutDashboard, GraduationCap, UserCog, Package, ClipboardList, PackagePlus, BookOpen, Menu, X, TrendingUp, Compass, Repeat } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +16,7 @@ import NotificationBell from "@/components/NotificationBell";
 import LanguageToggle from "@/components/LanguageToggle";
 import InstallAppButton from "@/components/InstallAppButton";
 import { useStartTour } from "@/components/AdminTour";
+import { useLinkedAccounts, roleLabel } from "@/hooks/useLinkedAccounts";
 
 const NavBar: React.FC = () => {
   const navigate = useNavigate();
@@ -26,6 +27,8 @@ const NavBar: React.FC = () => {
   const companyId = authContext?.user?.company_id ?? 0;
   const [mobileOpen, setMobileOpen] = useState(false);
   const startTour = useStartTour("A", companyId);
+  // Empty unless this person has linked a second account of their own
+  const { accounts: linkedAccounts, switchTo, switching } = useLinkedAccounts();
 
   const handleLogout = () => {
     authContext?.logout();
@@ -131,7 +134,7 @@ const NavBar: React.FC = () => {
                 <User className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuContent align="end" className="w-52">
               {(role === "company_admin" || role === "teacher") && (
                 <DropdownMenuItem asChild>
                   <Link
@@ -159,6 +162,21 @@ const NavBar: React.FC = () => {
                   </Link>
                 </DropdownMenuItem>
               )}
+              {linkedAccounts.length > 0 && <DropdownMenuSeparator />}
+              {linkedAccounts.map((acct) => (
+                <DropdownMenuItem
+                  key={acct.id}
+                  disabled={switching}
+                  // Keep the menu open while the swap is in flight
+                  onSelect={(e) => { e.preventDefault(); switchTo(acct); }}
+                  className="cursor-pointer flex items-center gap-2"
+                >
+                  <Repeat className="h-4 w-4" />
+                  <span className="truncate">
+                    {switching ? "Switching..." : `Switch to ${roleLabel(acct.role)}`}
+                  </span>
+                </DropdownMenuItem>
+              ))}
               {(role === "company_admin" || role === "teacher") && <DropdownMenuSeparator />}
               <DropdownMenuItem
                 onClick={handleLogout}
@@ -220,6 +238,20 @@ const NavBar: React.FC = () => {
           {role === "company_admin" && isOwner && (
             <MobileNavLink to="/upgrade" icon={TrendingUp} label="Upgrade Plan" />
           )}
+
+          {linkedAccounts.map((acct) => (
+            <button
+              key={acct.id}
+              disabled={switching}
+              onClick={() => { setMobileOpen(false); switchTo(acct); }}
+              className="flex items-center gap-3 px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 transition-colors w-full disabled:opacity-50"
+            >
+              <Repeat className="h-5 w-5" />
+              <span className="text-sm font-medium">
+                {switching ? "Switching..." : `Switch to ${roleLabel(acct.role)}`}
+              </span>
+            </button>
+          ))}
 
           <div className="flex items-center gap-3 px-4 py-2">
             <LanguageToggle variant="white" />

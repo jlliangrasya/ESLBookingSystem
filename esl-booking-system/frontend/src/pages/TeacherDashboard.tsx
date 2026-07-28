@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import {
   CalendarDays, Users, LogOut, Loader2, FileText, CalendarOff,
   Plus, X, Video, LayoutList, UserCircle, Activity, CheckSquare,
-  ChevronLeft, ChevronRight, Menu, UserX, Timer, CheckCircle2, Search,
+  ChevronLeft, ChevronRight, Menu, UserX, Timer, CheckCircle2, Search, Repeat,
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 import NotificationBell from "@/components/NotificationBell";
@@ -25,6 +25,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import MonthCalendar, { MonthCalendarEvent } from "@/components/MonthCalendar";
+import LinkedAccountsCard from "@/components/LinkedAccountsCard";
+import { useLinkedAccounts, roleLabel } from "@/hooks/useLinkedAccounts";
 
 type Page = "dashboard" | "classes" | "profile";
 
@@ -665,6 +667,9 @@ const TeacherDashboard = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const handleLogout = () => { authContext?.logout(); navigate("/"); };
 
+  // Empty unless this teacher has linked another account of their own (e.g. admin)
+  const { accounts: linkedAccounts, switchTo, switching } = useLinkedAccounts();
+
   const handleMarkDone = async (item: PendingItem) => {
     setDoneLoadingId(item.id);
     try {
@@ -875,6 +880,16 @@ const TeacherDashboard = () => {
             <Badge className="bg-white/15 text-white border-0 text-xs">Teacher</Badge>
             <InstallAppButton variant="white" />
             <NotificationBell variant="white" />
+            {linkedAccounts.map(acct => (
+              <Button key={acct.id} variant="ghost" size="sm" disabled={switching}
+                onClick={() => switchTo(acct)}
+                className="h-9 gap-1.5 text-white/80 hover:text-white hover:bg-white/10">
+                <Repeat className="h-4 w-4" />
+                <span className="text-xs font-medium">
+                  {switching ? "Switching..." : `Switch to ${roleLabel(acct.role)}`}
+                </span>
+              </Button>
+            ))}
             <Button variant="ghost" size="icon" onClick={handleLogout}
               className="h-9 w-9 text-white/70 hover:text-white hover:bg-white/10">
               <LogOut className="h-5 w-5" />
@@ -899,6 +914,16 @@ const TeacherDashboard = () => {
             <div className="flex items-center gap-3 px-4 py-2">
               <InstallAppButton variant="white" />
             </div>
+            {linkedAccounts.map(acct => (
+              <button key={acct.id} disabled={switching}
+                onClick={() => { setMobileMenuOpen(false); switchTo(acct); }}
+                className="flex items-center gap-3 px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 w-full disabled:opacity-50">
+                <Repeat className="h-5 w-5" />
+                <span className="text-sm">
+                  {switching ? "Switching..." : `Switch to ${roleLabel(acct.role)}`}
+                </span>
+              </button>
+            ))}
             <button onClick={() => { setMobileMenuOpen(false); handleLogout(); }}
               className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-red-200 hover:bg-white/10 w-full">
               <LogOut className="h-5 w-5" /> <span className="text-sm">Logout</span>
@@ -1659,6 +1684,10 @@ const TeacherDashboard = () => {
                   </div>
                 </CardContent>
               </Card>
+            </div>
+
+            <div className="mt-6">
+              <LinkedAccountsCard />
             </div>
 
             {/* Assigned Students */}

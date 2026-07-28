@@ -21,6 +21,7 @@ interface AuthContextType {
   trialExpired: boolean;
   companyStatus: string;
   login: (token: string, user: User, trialExpired?: boolean, companyStatus?: string) => void;
+  switchAccount: (token: string, user: User, trialExpired?: boolean, companyStatus?: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -57,6 +58,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     } else {
       setUserTimezone(browserTz);
     }
+  };
+
+  // Swap to a linked account (same person, different role) without logging out.
+  // The old account's push subscription is released first and awaited, so it
+  // can't race the re-subscribe the token change triggers below.
+  const switchAccount = async (
+    newToken: string,
+    newUser: User,
+    expired = false,
+    status = "active"
+  ) => {
+    if (token) await unsubscribeFromPush(token);
+    login(newToken, newUser, expired, status);
   };
 
   const logout = () => {
@@ -101,7 +115,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [token]);
 
   return (
-    <AuthContext.Provider value={{ token, user, trialExpired, companyStatus, login, logout }}>
+    <AuthContext.Provider value={{ token, user, trialExpired, companyStatus, login, switchAccount, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import LinkedAccountsCard from "@/components/LinkedAccountsCard";
 import { Pencil, Save, Eye, EyeOff } from "lucide-react";
 
 const AdminProfile: React.FC = () => {
@@ -82,7 +83,7 @@ const AdminProfile: React.FC = () => {
   return (
     <>
       <NavBar />
-      <div className="max-w-lg mx-auto px-4 py-10">
+      <div className="max-w-lg mx-auto px-4 py-10 space-y-6">
         <Card className="glow-card border-0 rounded-2xl">
           <CardHeader>
             <CardTitle className="text-lg">Admin Profile</CardTitle>
@@ -152,6 +153,8 @@ const AdminProfile: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        <LinkedAccountsCard />
       </div>
     </>
   );

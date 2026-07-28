@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import LinkedAccountsCard from "@/components/LinkedAccountsCard";
 import { Pencil, Save, Eye, EyeOff, UserCircle } from "lucide-react";
 import { TIMEZONES, setUserTimezone } from "@/utils/timezone";
 
@@ -74,7 +75,7 @@ const TeacherProfilePage: React.FC = () => {
   return (
     <>
       <NavBar />
-      <div className="max-w-lg mx-auto px-4 py-10 brand-gradient-subtle pattern-dots-light min-h-screen">
+      <div className="max-w-lg mx-auto px-4 py-10 space-y-6 brand-gradient-subtle pattern-dots-light min-h-screen">
         <Card className="glow-card border-0 rounded-2xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -170,6 +171,8 @@ const TeacherProfilePage: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        <LinkedAccountsCard />
       </div>
     </>
   );

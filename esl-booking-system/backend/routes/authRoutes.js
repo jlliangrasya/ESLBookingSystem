@@ -5,15 +5,89 @@ const rateLimit = require('express-rate-limit');
 const pool = require('../db');
 const notify = require('../utils/notify');
 const { sendMail } = require('../utils/mailer');
+const { logAction } = require('../utils/audit');
+const authenticateToken = require('../middleware/authMiddleware');
 require('dotenv').config();
 
 const router = express.Router();
+
+// Roles allowed to link a second account (the "admin who also teaches" case).
+const LINKABLE_ROLES = ['company_admin', 'teacher'];
+
+/**
+ * Resolve a user's company gating state. Throws an error carrying `.status`
+ * when the company blocks sign-in outright.
+ * Shared by /login and /switch-account so the two can't drift apart.
+ */
+async function resolveCompanyState(user) {
+    let trialExpired = false;
+    let companyStatus = 'active';
+    let companyName = null;
+
+    if (user.role !== 'super_admin' && user.company_id) {
+        const [[company]] = await pool.query(
+            'SELECT status, trial_ends_at, company_name FROM companies WHERE id = ?',
+            [user.company_id]
+        );
+        if (company) companyName = company.company_name || null;
+        if (company && company.status === 'locked') {
+            // Allow login but flag — frontend redirects to locked page
+            companyStatus = 'locked';
+        } else if (company && company.status === 'suspended') {
+            // Allow login but flag — frontend redirects to suspended page
+            companyStatus = 'suspended';
+        } else if (!company || company.status !== 'active') {
+            const err = new Error('Your company account is not active');
+            err.status = 403;
+            throw err;
+        } else if (company.trial_ends_at && new Date(company.trial_ends_at) < new Date()) {
+            trialExpired = true;
+        }
+    }
+
+    return { trialExpired, companyStatus, companyName };
+}
+
+/** Sign a JWT and build the session payload the frontend stores in AuthContext. */
+function buildSession(user, { trialExpired, companyStatus, companyName }) {
+    const token = jwt.sign(
+        { id: user.id, role: user.role, company_id: user.company_id },
+        process.env.JWT_SECRET,
+        { expiresIn: '30d' }
+    );
+
+    return {
+        token,
+        user: {
+            id: user.id,
+            name: user.name,
+            role: user.role,
+            company_id: user.company_id,
+            company_name: companyName,
+            timezone: user.timezone || 'UTC',
+            is_owner: user.is_owner ?? false,
+        },
+        trial_expired: trialExpired,
+        company_status: companyStatus,
+    };
+}
 
 // Rate limiters for sensitive auth endpoints (login is intentionally unlimited)
 const registerLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
     max: 20,
     message: { message: 'Too many registration attempts. Please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+// Linking verifies another account's password, so it is a brute-force target.
+// Keyed by the caller's user id (runs after authenticateToken), not by IP.
+const linkAccountLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 10,
+    message: { message: 'Too many link attempts. Please try again in an hour.' },
+    keyGenerator: (req) => String(req.user.id), // always set — runs after authenticateToken
     standardHeaders: true,
     legacyHeaders: false,
 });
@@ -147,53 +221,166 @@ router.post('/login', async (req, res) => {
         }
 
         // For non-super_admin, verify company is active
-        let trialExpired = false;
-        let companyStatus = 'active';
-        let companyName = null;
-        if (user.role !== 'super_admin' && user.company_id) {
-            const [[company]] = await pool.query(
-                'SELECT status, trial_ends_at, company_name FROM companies WHERE id = ?',
-                [user.company_id]
-            );
-            if (company) companyName = company.company_name || null;
-            if (company && company.status === 'locked') {
-                // Allow login but flag — frontend redirects to locked page
-                companyStatus = 'locked';
-            } else if (company && company.status === 'suspended') {
-                // Allow login but flag — frontend redirects to suspended page
-                companyStatus = 'suspended';
-            } else if (!company || company.status !== 'active') {
-                return res.status(403).json({ message: 'Your company account is not active' });
-            } else if (company.trial_ends_at && new Date(company.trial_ends_at) < new Date()) {
-                trialExpired = true;
-            }
-        }
+        const companyState = await resolveCompanyState(user);
 
         if (password !== user.password) {
             return res.status(400).json({ message: 'Invalid email or password' });
         }
 
-        const token = jwt.sign(
-            { id: user.id, role: user.role, company_id: user.company_id },
-            process.env.JWT_SECRET,
-            { expiresIn: '30d' }
+        res.json(buildSession(user, companyState));
+    } catch (err) {
+        if (err.status) return res.status(err.status).json({ message: err.message });
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// ── Linked accounts ────────────────────────────────────────────────────────
+// Lets one person who owns two accounts (e.g. a company_admin who also teaches)
+// switch between them from the profile menu instead of logging out and back in.
+// Ownership is proven once, by password, when the link is created.
+
+// List the accounts linked to the caller
+router.get('/linked-accounts', authenticateToken, async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT u.id, u.name, u.email, u.role
+             FROM account_links al
+             JOIN users u ON u.id = IF(al.user_id_a = ?, al.user_id_b, al.user_id_a)
+             WHERE (al.user_id_a = ? OR al.user_id_b = ?) AND u.is_active = TRUE
+             ORDER BY u.name`,
+            [req.user.id, req.user.id, req.user.id]
+        );
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Link another account the caller owns — requires that account's password
+router.post('/link-account', authenticateToken, linkAccountLimiter, async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        if (!email || !password) {
+            return res.status(400).json({ message: 'Email and password are required' });
+        }
+
+        const [[me]] = await pool.query(
+            'SELECT id, role, company_id FROM users WHERE id = ?',
+            [req.user.id]
+        );
+        if (!me || !LINKABLE_ROLES.includes(me.role)) {
+            return res.status(403).json({ message: 'This account type cannot link another account' });
+        }
+
+        const [[target]] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+
+        // Same generic message for every ownership failure — never reveal
+        // whether the email exists or which specific check failed.
+        const invalid = () => res.status(400).json({ message: 'Invalid email or password' });
+
+        if (!target || password !== target.password) return invalid();
+        if (target.id === me.id) {
+            return res.status(400).json({ message: 'That is the account you are already signed in to' });
+        }
+        if (!target.is_active) return invalid();
+        if (!LINKABLE_ROLES.includes(target.role)) return invalid();
+        // Both accounts must belong to the same company — never link across tenants
+        if (!me.company_id || target.company_id !== me.company_id) return invalid();
+
+        const [a, b] = me.id < target.id ? [me.id, target.id] : [target.id, me.id];
+
+        const [[existing]] = await pool.query(
+            'SELECT id FROM account_links WHERE user_id_a = ? AND user_id_b = ?',
+            [a, b]
+        );
+        if (existing) {
+            return res.status(400).json({ message: 'These accounts are already linked' });
+        }
+
+        await pool.query(
+            'INSERT INTO account_links (company_id, user_id_a, user_id_b, created_by) VALUES (?, ?, ?, ?)',
+            [me.company_id, a, b, me.id]
         );
 
-        res.json({
-            token,
-            user: {
-                id: user.id,
-                name: user.name,
-                role: user.role,
-                company_id: user.company_id,
-                company_name: companyName,
-                timezone: user.timezone || 'UTC',
-                is_owner: user.is_owner ?? false,
-            },
-            trial_expired: trialExpired,
-            company_status: companyStatus,
+        await logAction(me.company_id, me.id, 'account_link_created', 'user', target.id, {
+            linked_email: target.email,
+            linked_role: target.role,
+        });
+
+        res.status(201).json({
+            message: 'Account linked successfully',
+            account: { id: target.id, name: target.name, email: target.email, role: target.role },
         });
     } catch (err) {
+        // Two concurrent link requests for the same pair — the unique key wins
+        if (err.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ message: 'These accounts are already linked' });
+        }
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Remove a link (either side can remove it)
+router.delete('/linked-accounts/:userId', authenticateToken, async (req, res) => {
+    try {
+        const targetId = Number(req.params.userId);
+        if (!targetId) return res.status(400).json({ message: 'Invalid account id' });
+
+        const [a, b] = req.user.id < targetId ? [req.user.id, targetId] : [targetId, req.user.id];
+        const [result] = await pool.query(
+            'DELETE FROM account_links WHERE user_id_a = ? AND user_id_b = ?',
+            [a, b]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Link not found' });
+        }
+
+        await logAction(req.user.company_id, req.user.id, 'account_link_removed', 'user', targetId, null);
+
+        res.json({ message: 'Account unlinked' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Switch to a linked account — issues a fresh token for it, no password needed
+// (ownership was already proven when the link was created)
+router.post('/switch-account', authenticateToken, async (req, res) => {
+    try {
+        const targetId = Number(req.body.user_id);
+        if (!targetId) return res.status(400).json({ message: 'Invalid account id' });
+
+        // The link must connect the *authenticated* caller to the target —
+        // this is the only thing standing between a token and another account.
+        const [a, b] = req.user.id < targetId ? [req.user.id, targetId] : [targetId, req.user.id];
+        const [[link]] = await pool.query(
+            'SELECT id FROM account_links WHERE user_id_a = ? AND user_id_b = ?',
+            [a, b]
+        );
+        if (!link) {
+            return res.status(403).json({ message: 'That account is not linked to yours' });
+        }
+
+        const [[target]] = await pool.query('SELECT * FROM users WHERE id = ?', [targetId]);
+        if (!target) return res.status(404).json({ message: 'Account no longer exists' });
+        if (!target.is_active) {
+            return res.status(403).json({ message: 'That account has been deactivated.' });
+        }
+
+        const companyState = await resolveCompanyState(target);
+
+        await logAction(target.company_id, req.user.id, 'account_switched', 'user', target.id, {
+            from_role: req.user.role,
+            to_role: target.role,
+        });
+
+        res.json(buildSession(target, companyState));
+    } catch (err) {
+        if (err.status) return res.status(err.status).json({ message: err.message });
         console.error(err);
         res.status(500).json({ message: 'Server error' });
     }
