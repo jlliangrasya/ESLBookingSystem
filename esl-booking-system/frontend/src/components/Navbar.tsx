@@ -16,6 +16,7 @@ import NotificationBell from "@/components/NotificationBell";
 import LanguageToggle from "@/components/LanguageToggle";
 import InstallAppButton from "@/components/InstallAppButton";
 import { useStartTour } from "@/components/AdminTour";
+import { OnboardingProgressBar } from "@/components/OnboardingChecklist";
 import { useLinkedAccounts, roleLabel } from "@/hooks/useLinkedAccounts";
 
 const NavBar: React.FC = () => {
@@ -26,7 +27,9 @@ const NavBar: React.FC = () => {
   const isOwner = authContext?.user?.is_owner ?? false;
   const companyId = authContext?.user?.company_id ?? 0;
   const [mobileOpen, setMobileOpen] = useState(false);
-  const startTour = useStartTour("A", companyId);
+  // useStartTour always restarts from the first segment, so it takes only the
+  // company id — the stale "A" argument here was a leftover from an older signature.
+  const startTour = useStartTour(companyId);
   // Empty unless this person has linked a second account of their own
   const { accounts: linkedAccounts, switchTo, switching } = useLinkedAccounts();
 
@@ -203,6 +206,12 @@ const NavBar: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* Persistent onboarding progress. Lives inside the sticky header so it
+          follows the company admin across every page until setup is finished —
+          it renders nothing once all four steps are done, and nothing at all for
+          other roles. */}
+      {role === "company_admin" && <OnboardingProgressBar />}
 
       {/* Mobile menu */}
       {mobileOpen && (

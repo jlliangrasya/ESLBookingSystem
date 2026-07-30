@@ -56,6 +56,17 @@ router.post('/students', authenticateToken, requireRole('company_admin'), upload
         );
         if (!company) return res.status(400).json({ message: 'Company not found' });
 
+        // Same approval gate as POST /api/admin/students. Bulk import is a second
+        // path to the identical outcome — real student rows with real contact
+        // details — so gating only the single-student endpoint would leave the
+        // whole review trivially bypassable by uploading a CSV instead.
+        if (company.status === 'pending') {
+            return res.status(403).json({
+                code: 'APPROVAL_REQUIRED',
+                message: 'To protect student data, we manually review accounts before inviting real students. This usually takes under 24 hours.',
+            });
+        }
+
         const [[{ currentCount }]] = await pool.query(
             "SELECT COUNT(*) AS currentCount FROM users WHERE company_id = ? AND role = 'student' AND is_active = TRUE",
             [companyId]

@@ -72,7 +72,12 @@ const authenticateToken = async (req, res, next) => {
                     company = row || null;
                     if (company) cacheSet(`company:${decoded.company_id}`, company);
                 }
-                if (!company || (company.status !== 'active' && company.status !== 'locked' && company.status !== 'suspended')) {
+                // 'pending' is allowed through: it means "registered and usable, but
+                // not yet cleared to invite real students". That single restriction is
+                // enforced at POST /api/admin/students, not here — gating it globally
+                // is what used to stall new companies before they saw any value.
+                const PASSABLE = ['active', 'pending', 'locked', 'suspended'];
+                if (!company || !PASSABLE.includes(company.status)) {
                     return res.status(403).json({ message: 'Your company account is not active.' });
                 }
                 if (company.status === 'suspended') {

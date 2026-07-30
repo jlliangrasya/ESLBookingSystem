@@ -9,13 +9,14 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, GraduationCap, CalendarDays, CheckCircle, XCircle, Clock, Plus, Pencil, Trash2, AlertCircle, UserCircle, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import AuthContext from "@/context/AuthContext";
 import { AdminTour } from "@/components/AdminTour";
+import { useTourEngine } from "@/context/TourEngine";
 import { fmtDate, fmtDateOnly } from "@/utils/timezone";
 
 interface Teacher {
@@ -75,6 +76,7 @@ function getHealthBadge(attended: number, absent: number) {
 const TeacherManagementPage = () => {
   const authContext = useContext(AuthContext);
   const navigate = useNavigate();
+  const { active: tourActive } = useTourEngine();
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -95,11 +97,25 @@ const TeacherManagementPage = () => {
   const [myPermissions, setMyPermissions] = useState<AdminPermissions>({ is_owner: false, can_add_teacher: false, can_edit_teacher: false, can_delete_teacher: false });
   const [loading, setLoading] = useState(true);
 
-  // Add teacher modal
+  // Add teacher modal. Password is intentionally absent from the form — the
+  // server generates a temporary one and emails an invite, and the credentials
+  // come back in the response for the admin to copy (see inviteResult).
   const [showAddModal, setShowAddModal] = useState(false);
-  const [addForm, setAddForm] = useState({ name: "", email: "", password: "" });
+  const [addForm, setAddForm] = useState({ name: "", email: "" });
   const [addError, setAddError] = useState<string | null>(null);
   const [addLoading, setAddLoading] = useState(false);
+
+  // Credentials returned after creating a teacher, shown so the admin can send
+  // them directly. This is the fallback that keeps the flow working when SMTP
+  // isn't configured and the invite email only reaches the server log.
+  const [inviteResult, setInviteResult] = useState<{
+    name: string;
+    email: string;
+    password: string;
+    login_url: string;
+    is_first_teacher: boolean;
+  } | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   // Edit teacher modal
   const [editTeacher, setEditTeacher] = useState<Teacher | null>(null);
@@ -164,14 +180,50 @@ const TeacherManagementPage = () => {
     setAddLoading(true);
     setAddError(null);
     try {
-      await axios.post(`${import.meta.env.VITE_API_URL}/api/admin/teachers`, addForm, { headers });
+      const res = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/admin/teachers`,
+        addForm,
+        { headers },
+      );
       setShowAddModal(false);
-      setAddForm({ name: "", email: "", password: "" });
+      setAddForm({ name: "", email: "" });
+      const creds = res.data?.credentials;
+      if (creds) {
+        setInviteCopied(false);
+        setInviteResult({
+          name: creds.name,
+          email: creds.email,
+          password: creds.password,
+          login_url: creds.login_url,
+          is_first_teacher: !!res.data?.is_first_teacher,
+        });
+      }
       fetchData();
     } catch (err) {
       if (axios.isAxiosError(err)) setAddError(err.response?.data?.message || "Failed to add teacher");
     } finally {
       setAddLoading(false);
+    }
+  };
+
+  const inviteText = inviteResult
+    ? [
+        `Hi ${inviteResult.name}, you've been invited to Brightfolks.`,
+        ``,
+        `Login: ${inviteResult.login_url}`,
+        `Email: ${inviteResult.email}`,
+        `Temporary password: ${inviteResult.password}`,
+        ``,
+        `You can change your password once you're in.`,
+      ].join("\n")
+    : "";
+
+  const copyInvite = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteText);
+      setInviteCopied(true);
+    } catch {
+      setInviteCopied(false);
     }
   };
 
@@ -271,11 +323,26 @@ const TeacherManagementPage = () => {
             </CardTitle>
             {(myPermissions.is_owner || myPermissions.can_add_teacher) && (
               <Button id="btn-add-teacher" size="sm" onClick={() => setShowAddModal(true)} className="gap-1">
-                <Plus className="h-4 w-4" /> Add Teacher
+                <Plus className="h-4 w-4" />
+                {teachers.length === 0 ? "Add your first teacher" : "Add Teacher"}
               </Button>
             )}
           </CardHeader>
           <CardContent>
+            {/* First-run framing: one teacher, one minute, something to show for it.
+                The old copy ("Add your teachers") read like a bulk data-entry task. */}
+            {teachers.length === 0 && (
+              <Alert className="mb-4 border-primary/20 bg-primary/5">
+                <GraduationCap className="h-4 w-4 text-primary" />
+                <AlertDescription className="text-sm">
+                  <span className="font-medium text-gray-800">
+                    Add your first teacher to see Brightfolks in action.
+                  </span>{" "}
+                  Name and email is all we need — they'll get an invite and can log
+                  in straight away.
+                </AlertDescription>
+              </Alert>
+            )}
             <div className="mb-3 flex flex-wrap items-end gap-3">
               <div className="relative flex-1 min-w-48">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -421,21 +488,69 @@ const TeacherManagementPage = () => {
         </Card>
       </div>
 
-      {/* Add Teacher Modal */}
+      {/* Add Teacher Modal — name + email only. Nothing else is required at this
+          stage: no bio, no photo, no schedule. Those all live on the teacher's
+          profile and can be filled in whenever. */}
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Add Teacher</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Add a teacher</DialogTitle>
+            <DialogDescription>
+              Just a name and an email — we'll send them an invite so they can log in.
+            </DialogDescription>
+          </DialogHeader>
           <div className="space-y-3 py-2">
             {addError && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{addError}</AlertDescription></Alert>}
             <div className="space-y-1.5"><Label>Full Name</Label><Input placeholder="Jane Doe" value={addForm.name} onChange={(e) => setAddForm({ ...addForm, name: e.target.value })} /></div>
             <div className="space-y-1.5"><Label>Email</Label><Input type="email" placeholder="jane@example.com" value={addForm.email} onChange={(e) => setAddForm({ ...addForm, email: e.target.value })} /></div>
-            <div className="space-y-1.5"><Label>Password</Label><Input type="password" placeholder="Minimum 8 characters" value={addForm.password} onChange={(e) => setAddForm({ ...addForm, password: e.target.value })} /></div>
+            <p className="text-xs text-muted-foreground">
+              We'll generate a temporary password and show it to you next, in case
+              you'd rather send it yourself.
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddModal(false)}>Cancel</Button>
-            <Button onClick={handleAddTeacher} disabled={addLoading || !addForm.name || !addForm.email || !addForm.password}>
+            <Button className="add-teacher-submit" onClick={handleAddTeacher} disabled={addLoading || !addForm.name || !addForm.email}>
               {addLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add Teacher"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invite result — credentials to copy, plus the nudge toward the milestone */}
+      <Dialog open={!!inviteResult} onOpenChange={(o) => !o && setInviteResult(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+              {inviteResult?.name} is invited
+            </DialogTitle>
+            <DialogDescription>
+              We emailed their login details. You can also send them yourself —
+              copy the message below.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md bg-muted p-3 font-mono text-xs whitespace-pre-wrap select-all">
+            {inviteText}
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" className="flex-1 teacher-invite-copy-btn" onClick={copyInvite}>
+              {inviteCopied ? "Copied!" : "Copy invite"}
+            </Button>
+            {/* Navigating away mid-tour would strand the tour: the stored segment
+                stays "C", so segment B never auto-starts on the packages page and
+                the guided flow silently dies. While a tour is running we only close
+                the dialog and let it continue — the tour walks them to packages
+                itself, and the progress bar links there regardless. */}
+            {inviteResult?.is_first_teacher && !tourActive ? (
+              <Button className="flex-1" onClick={() => { setInviteResult(null); navigate("/packages?onboarding=1"); }}>
+                Next: pick a package
+              </Button>
+            ) : (
+              <Button className="flex-1" onClick={() => setInviteResult(null)}>
+                {inviteResult?.is_first_teacher ? "Continue" : "Done"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

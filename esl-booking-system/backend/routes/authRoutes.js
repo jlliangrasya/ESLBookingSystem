@@ -36,7 +36,17 @@ async function resolveCompanyState(user) {
         } else if (company && company.status === 'suspended') {
             // Allow login but flag — frontend redirects to suspended page
             companyStatus = 'suspended';
+        } else if (company && company.status === 'pending') {
+            // 'pending' means "registered and fully usable, but not yet cleared to
+            // invite real students" — it is NOT a sign-in block. The only thing it
+            // gates is POST /api/admin/students. Sign in normally and let the
+            // frontend surface the gate at the invite step.
+            companyStatus = 'pending';
+            if (company.trial_ends_at && new Date(company.trial_ends_at) < new Date()) {
+                trialExpired = true;
+            }
         } else if (!company || company.status !== 'active') {
+            // Still a hard stop for 'rejected' and for a missing company row.
             const err = new Error('Your company account is not active');
             err.status = 403;
             throw err;
@@ -227,6 +237,16 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ message: 'Invalid email or password' });
         }
 
+        // First teacher login is what completes the onboarding milestone, so the
+        // timestamp has to be recorded before we can report the milestone as done.
+        // Deliberately not awaited and errors swallowed — this must never be able
+        // to fail a login.
+        const isFirstLogin = !user.last_login_at;
+        pool.query('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]).catch(() => {});
+        if (isFirstLogin && user.role === 'teacher' && user.company_id) {
+            recordMilestoneOnce(user).catch(() => {});
+        }
+
         res.json(buildSession(user, companyState));
     } catch (err) {
         if (err.status) return res.status(err.status).json({ message: err.message });
@@ -234,6 +254,56 @@ router.post('/login', async (req, res) => {
         res.status(500).json({ message: 'Server error' });
     }
 });
+
+/**
+ * Record the onboarding milestone — "the teacher you invited has logged in" — and
+ * tell the company owner, who is the one who needs to see it.
+ *
+ * Fires at most once per company. Two things make that guard necessary:
+ *
+ *   1. The migration adds users.last_login_at as NULL for EVERY existing user, so
+ *      without this check the next login of every long-since-onboarded teacher
+ *      would look like a first login and congratulate their owner on a milestone
+ *      they passed months ago.
+ *   2. Two concurrent first logins would otherwise both see last_login_at as NULL
+ *      and both fire.
+ *
+ * Companies that already have students are past onboarding by definition, so they
+ * are excluded too — that covers existing companies whose teachers happen never to
+ * have logged in before.
+ */
+async function recordMilestoneOnce(teacher) {
+    const [[alreadyRecorded]] = await pool.query(
+        "SELECT id FROM audit_logs WHERE company_id = ? AND action = 'onboarding_milestone_reached' LIMIT 1",
+        [teacher.company_id]
+    );
+    if (alreadyRecorded) return;
+
+    const [[{ studentCount }]] = await pool.query(
+        "SELECT COUNT(*) AS studentCount FROM users WHERE company_id = ? AND role = 'student'",
+        [teacher.company_id]
+    );
+    if (studentCount > 0) return;
+
+    await logAction(teacher.company_id, teacher.id, 'onboarding_milestone_reached', 'user', teacher.id, {
+        teacher_name: teacher.name,
+    });
+
+    const [[owner]] = await pool.query(
+        `SELECT id FROM users WHERE company_id = ? AND role = 'company_admin'
+         ORDER BY is_owner DESC, id ASC LIMIT 1`,
+        [teacher.company_id]
+    );
+    if (!owner) return;
+    notify({
+        userId: owner.id,
+        companyId: teacher.company_id,
+        type: 'onboarding_milestone',
+        title: `${teacher.name} just logged in 🎉`,
+        message: `Nice — ${teacher.name} can now see their class. Want to add the rest of your team?`,
+        link: '/onboarding/milestone',
+    });
+}
 
 // ── Linked accounts ────────────────────────────────────────────────────────
 // Lets one person who owns two accounts (e.g. a company_admin who also teaches)

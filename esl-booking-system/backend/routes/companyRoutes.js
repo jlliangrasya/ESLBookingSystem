@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const authenticateToken = require('../middleware/authMiddleware');
+const { invalidateAuthCache } = authenticateToken;
 const requireRole = require('../middleware/requireRole');
 const notify = require('../utils/notify');
 const { sendMail } = require('../utils/mailer');
@@ -8,6 +9,23 @@ const jwt = require('jsonwebtoken');
 const { logAction } = require('../utils/audit');
 
 const router = express.Router();
+
+// Master switch for where the manual approval gate sits.
+//
+//   default (unset)              → new companies register as 'pending'. They can
+//                                  log in immediately and do everything EXCEPT
+//                                  invite real students. A super admin approves
+//                                  them at that point, which flips them to
+//                                  'active'. This is the intended flow: nothing
+//                                  blocks a company until real student data is
+//                                  about to leave the system.
+//   AUTO_APPROVE_COMPANIES=true  → new companies land straight in 'active' and
+//                                  can invite students with no review at all.
+//
+// NOTE: 'pending' no longer means "cannot use the product". It means "usable,
+// but not yet cleared to invite students". Login and authMiddleware both let
+// pending companies through — see resolveCompanyGate in authRoutes.js.
+const AUTO_APPROVE_COMPANIES = process.env.AUTO_APPROVE_COMPANIES === 'true';
 
 // PUBLIC: List subscription plans (for registration page)
 router.get('/subscription-plans', async (req, res) => {
@@ -19,7 +37,7 @@ router.get('/subscription-plans', async (req, res) => {
     }
 });
 
-// PUBLIC: Register a new company (status: pending)
+// PUBLIC: Register a new company (status: active, or 'pending' when AUTO_APPROVE_COMPANIES is off)
 router.post('/register', async (req, res) => {
     const { company_name, company_email, company_phone, company_address, subscription_plan_id, owner_name, owner_email, owner_password, payment_reference } = req.body;
 
@@ -93,12 +111,21 @@ router.post('/register', async (req, res) => {
             );
         }
 
-        // Free plan accounts are activated immediately inside the transaction for atomicity
-        if (isTrial) {
+        // The billing clock starts at registration, never at approval — a company
+        // that waits two days for student-invite approval must not lose two days
+        // of trial. This runs for pending and active companies alike.
+        await connection.query(
+            isTrial
+                ? `UPDATE companies SET trial_ends_at = DATE_ADD(NOW(), INTERVAL 30 DAY) WHERE id = ?`
+                : `UPDATE companies SET next_due_date = DATE_ADD(NOW(), INTERVAL 1 MONTH) WHERE id = ?`,
+            [companyId]
+        );
+
+        // Only skipping the gate entirely marks the company active here. Otherwise
+        // it stays 'pending' — fully usable, but not cleared to invite students.
+        if (AUTO_APPROVE_COMPANIES) {
             await connection.query(
-                `UPDATE companies
-                 SET status = 'active', approved_at = NOW(), trial_ends_at = DATE_ADD(NOW(), INTERVAL 30 DAY)
-                 WHERE id = ?`,
+                `UPDATE companies SET status = 'active', approved_at = NOW() WHERE id = ?`,
                 [companyId]
             );
         }
@@ -108,81 +135,55 @@ router.post('/register', async (req, res) => {
         // Notify all super_admins for visibility (fire-and-forget, after commit)
         const [superAdmins] = await pool.query('SELECT id FROM users WHERE role = ?', ['super_admin']);
 
-        if (isTrial) {
-            // Free plan: auto-activated, superadmins notified for info only
-            await Promise.all(superAdmins.map(sa => notify({
-                userId: sa.id,
-                companyId: null,
-                type: 'new_company',
-                title: 'New free-plan company registered',
-                message: `"${company_name}" registered on the ${plan.name} plan and was auto-activated.`,
-            })));
-
-            notify({
-                userId: ownerResult.insertId,
-                companyId,
-                type: 'company_approved',
-                title: 'Your account is active!',
-                message: 'Your free trial account is ready. You have 30 days to explore the platform. Start by adding a teacher, then a student, then book your first class.',
-            });
-
-            sendMail({
-                to: owner_email,
-                subject: 'Your ESL Booking Account Is Ready',
-                html: `<h2>Welcome, ${owner_name}!</h2>
-                       <p>Your ESL center <strong>${company_name}</strong> has been registered and your account is <strong>immediately active</strong>.</p>
-                       <p>You can log in right now and start setting up your school:</p>
-                       <ol>
-                         <li>Add a teacher</li>
-                         <li>Add a student (credentials are sent automatically)</li>
-                         <li>Have your student log in and book their first class</li>
-                       </ol>
-                       <p>Your free trial runs for <strong>30 days</strong>.</p>
-                       <p>Thank you for choosing our platform!</p>`,
-            }).catch(() => {});
-
-            await logAction(null, ownerResult.insertId, 'company_auto_activated', 'company', companyId, { company_name, plan: plan.name });
-
-            return res.status(201).json({
-                message: 'Registration successful! Your free trial account is active. You can log in immediately.',
-                company_id: companyId,
-                auto_activated: true,
-            });
-        }
-
-        // Paid plan: pending approval flow (unchanged)
+        // Every registration now produces a usable account. The only thing that
+        // varies is whether the company is already cleared to invite students.
         await Promise.all(superAdmins.map(sa => notify({
             userId: sa.id,
             companyId: null,
             type: 'new_company',
             title: 'New company registered',
-            message: `"${company_name}" applied for a ${plan.name} plan and is awaiting approval.`,
+            message: AUTO_APPROVE_COMPANIES
+                ? `"${company_name}" registered on the ${plan.name} plan and was auto-activated.`
+                : `"${company_name}" registered on the ${plan.name} plan. They can set up now; you'll be asked to review them before they invite students.`,
         })));
 
-        // Issue #14: Notify the company owner about the pending status with estimated timeline.
-        // `notify` is intentionally fire-and-forget, so it should not be awaited or chained with `.catch()`.
+        // `notify` is intentionally fire-and-forget — do not await or .catch() it.
         notify({
             userId: ownerResult.insertId,
             companyId,
-            type: 'onboarding_update',
-            title: 'Registration received',
-            message: 'Your company registration is being reviewed. Applications are typically processed within 24-48 hours. You will be notified once approved.',
+            type: 'company_approved',
+            title: 'Your account is ready',
+            message: 'Add your first teacher to see Brightfolks in action — it takes about a minute.',
+            link: '/teachers?onboarding=1',
         });
 
-        // Send confirmation email
         sendMail({
             to: owner_email,
-            subject: 'Registration Received - ESL Booking Platform',
+            subject: 'Your Brightfolks account is ready',
             html: `<h2>Welcome, ${owner_name}!</h2>
-                   <p>Your company registration for <strong>${company_name}</strong> has been received.</p>
-                   <p>Our team will review your application and typically processes it within <strong>24-48 hours</strong>.</p>
-                   <p>You will receive an email and in-app notification once your account is approved.</p>
-                   <p>Thank you for choosing our platform!</p>`,
+                   <p><strong>${company_name}</strong> is registered and your account is ready to use right now — there's nothing to wait for.</p>
+                   <p>Two quick steps to see Brightfolks working:</p>
+                   <ol>
+                     <li><strong>Add your first teacher</strong> — just a name and an email.</li>
+                     <li><strong>Pick a class package</strong> — choose a ready-made one, customise it later.</li>
+                   </ol>
+                   <p>That's it. Your teacher gets an invite and can log in straight away.</p>
+                   ${isTrial ? '<p>Your free trial runs for <strong>30 days</strong>, starting today.</p>' : ''}
+                   ${AUTO_APPROVE_COMPANIES ? '' : `<p style="color:#555;font-size:14px">When you're ready to invite real students, we'll do a one-time review of your account first — that usually takes under 24 hours, and you can prepare everything while you wait.</p>`}`,
         }).catch(() => {});
 
+        await logAction(companyId, ownerResult.insertId, 'onboarding_company_registered', 'company', companyId, {
+            company_name,
+            plan: plan.name,
+            student_invites_gated: !AUTO_APPROVE_COMPANIES,
+        });
+
         res.status(201).json({
-            message: 'Registration submitted! Your application is pending approval. You will receive an email confirmation shortly. Applications are typically processed within 24-48 hours.',
+            message: 'Registration successful! Your account is ready — you can log in immediately.',
             company_id: companyId,
+            auto_activated: true,
+            // Whether this company still needs review before inviting real students.
+            student_invites_gated: !AUTO_APPROVE_COMPANIES,
         });
     } catch (err) {
         await connection.rollback();
@@ -235,37 +236,58 @@ router.post('/:id/approve', authenticateToken, requireRole('super_admin'), async
         if (company.status === 'active') return res.status(400).json({ message: 'Company is already active' });
 
         const isTrial = company.plan_name === 'Free Trial';
-        if (isTrial) {
-            await pool.query(
-                `UPDATE companies SET status = 'active', approved_by = ?, approved_at = NOW(),
-                 trial_ends_at = DATE_ADD(NOW(), INTERVAL 30 DAY) WHERE id = ?`,
-                [superAdminId, id]
-            );
-        } else {
-            await pool.query(
-                `UPDATE companies SET status = 'active', approved_by = ?, approved_at = NOW(),
-                 next_due_date = DATE_ADD(NOW(), INTERVAL 1 MONTH) WHERE id = ?`,
-                [superAdminId, id]
-            );
-        }
 
-        // Notify company_admin
-        const [[admin]] = await pool.query(
-            'SELECT id FROM users WHERE company_id = ? AND role = ?', [id, 'company_admin']
+        // Approval clears the company to invite real students. It must NOT restart
+        // the billing clock — that started at registration, and resetting it here
+        // would hand out a free extension equal to however long review took.
+        // COALESCE only backfills companies that predate that change.
+        await pool.query(
+            isTrial
+                ? `UPDATE companies SET status = 'active', approved_by = ?, approved_at = NOW(),
+                   trial_ends_at = COALESCE(trial_ends_at, DATE_ADD(NOW(), INTERVAL 30 DAY)) WHERE id = ?`
+                : `UPDATE companies SET status = 'active', approved_by = ?, approved_at = NOW(),
+                   next_due_date = COALESCE(next_due_date, DATE_ADD(NOW(), INTERVAL 1 MONTH)) WHERE id = ?`,
+            [superAdminId, id]
         );
+
+        // The owner is very likely sitting on the waiting screen right now. Without
+        // this they'd keep seeing "pending" for up to the 60s auth cache TTL.
+        invalidateAuthCache(null, Number(id));
+
+        // Notify the owner in-app AND by email, both pointing back at the exact
+        // step they were blocked on rather than at the login page.
+        // Prefer the owner, but fall back to any company_admin. This is the one
+        // notification the company is actively waiting on, so it must not go
+        // nowhere just because is_owner was never set on a legacy row.
+        const [[admin]] = await pool.query(
+            `SELECT id, name, email FROM users WHERE company_id = ? AND role = 'company_admin'
+             ORDER BY is_owner DESC, id ASC LIMIT 1`,
+            [id]
+        );
+        const inviteLink = '/students?invite=1';
         if (admin) {
-            await notify({
+            notify({
                 userId: admin.id,
                 companyId: Number(id),
                 type: 'company_approved',
-                title: 'Company approved!',
-                message: isTrial
-                    ? 'Your company has been approved. Your 30-day free trial starts now.'
-                    : 'Your company has been approved. You can now log in.',
+                title: "You're approved — invite your students",
+                message: 'Your account has been reviewed. You can now invite real students. Any drafts you prepared are ready to submit.',
+                link: inviteLink,
             });
+
+            const frontend = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+            sendMail({
+                to: admin.email,
+                subject: "You're approved — invite your students",
+                html: `<h2>You're approved, ${admin.name}!</h2>
+                       <p>We've finished reviewing <strong>${company.company_name}</strong>. You can now invite real students.</p>
+                       <p>If you prepared a roster while you were waiting, it's saved and ready to submit.</p>
+                       <p><a href="${frontend}${inviteLink}" style="display:inline-block;padding:10px 18px;background:#4f46e5;color:#fff;border-radius:6px;text-decoration:none">Pick up where you left off</a></p>
+                       <p style="color:#777;font-size:13px">This link takes you straight to the student invite step.</p>`,
+            }).catch(() => {});
         }
 
-        await logAction(null, superAdminId, 'company_approved', 'company', Number(id), { company_name: company.company_name, plan: company.plan_name });
+        await logAction(Number(id), superAdminId, 'onboarding_approved', 'company', Number(id), { company_name: company.company_name, plan: company.plan_name });
         res.json({ message: `Company "${company.company_name}" approved successfully` });
     } catch (err) {
         console.error(err);

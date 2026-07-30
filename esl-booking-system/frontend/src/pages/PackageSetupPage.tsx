@@ -3,6 +3,7 @@ import axios from "axios";
 import NavBar from "@/components/Navbar";
 import AuthContext from "@/context/AuthContext";
 import { AdminTour } from "@/components/AdminTour";
+import PackageTemplatePicker from "@/components/PackageTemplatePicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -283,6 +284,18 @@ const PackageSetupPage = () => {
     <>
       <NavBar />
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-8 brand-gradient-subtle pattern-dots-light min-h-screen">
+        {/* Ready-made presets — only while the company has no packages at all.
+            Picking one prefills the normal Add Package dialog so the owner sets
+            their price and saves through the existing path. */}
+        <PackageTemplatePicker
+          hasPackages={packages.length > 0}
+          onPick={(prefill) => {
+            setEditPackage(null);
+            setForm({ ...EMPTY_FORM, ...prefill });
+            setShowModal(true);
+          }}
+        />
+
         {/* Class Packages Card */}
         <Card className="glow-card border-0 rounded-2xl">
           <CardHeader className="flex flex-row items-center justify-between">
@@ -291,7 +304,8 @@ const PackageSetupPage = () => {
               Class Packages
             </CardTitle>
             <Button id="btn-add-package" size="sm" onClick={openAdd} className="gap-1">
-              <Plus className="h-4 w-4" /> Add Package
+              <Plus className="h-4 w-4" />
+              {packages.length === 0 ? "Build a custom package" : "Add Package"}
             </Button>
           </CardHeader>
           <CardContent>

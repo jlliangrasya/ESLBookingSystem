@@ -12,6 +12,7 @@ import {
   CalendarDays, Users, LogOut, Loader2, FileText, CalendarOff,
   Plus, X, Video, LayoutList, UserCircle, Activity, CheckSquare,
   ChevronLeft, ChevronRight, Menu, UserX, Timer, CheckCircle2, Search, Repeat,
+  Sparkles,
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 import NotificationBell from "@/components/NotificationBell";
@@ -950,6 +951,33 @@ const TeacherDashboard = () => {
 
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         <AnnouncementPanel />
+
+        {/* A teacher invited during their school's onboarding lands here before any
+            student exists, so every panel below is legitimately empty. Without this
+            the dashboard reads as broken on the exact login that completes the
+            school's setup milestone. Disappears the moment real data arrives. */}
+        {students.length === 0 && bookings.length === 0 && (
+          <Card className="border border-primary/20 bg-primary/5">
+            <CardContent className="p-4 flex items-start gap-3">
+              <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-800">
+                  You're all set up, {teacher?.name?.split(" ")[0] || "there"} 👋
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Your account is ready and your school can see you. Your students
+                  and classes will show up here as soon as they're enrolled — nothing
+                  is missing.
+                </p>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  In the meantime, the most useful thing you can do is{" "}
+                  <strong>open your weekly availability</strong> — students can only
+                  book times you've marked as open.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* ═══ DASHBOARD PAGE ═══ */}
         {page === "dashboard" && (

@@ -152,7 +152,6 @@ const AdminDashboard = () => {
   }
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [teacherCount, setTeacherCount] = useState<number | null>(null);
-  const [packageCount, setPackageCount] = useState<number>(0);
 
   const [recurringCancelBooking, setRecurringCancelBooking] = useState<Booking | null>(null);
 
@@ -201,7 +200,6 @@ const AdminDashboard = () => {
         paidRes,
         feedbackRes,
         teachersRes,
-        packagesRes,
       ] = await Promise.all([
         axios.get(`${base}/api/student/students`, { headers }),
         axios.get(`${base}/api/student-bookings`, { headers }),
@@ -209,7 +207,6 @@ const AdminDashboard = () => {
         axios.get(`${base}/api/student/student-packages/paid`, { headers }),
         axios.get<Feedback[]>(`${base}/api/admin/feedback`, { headers }),
         axios.get(`${base}/api/admin/teachers`, { headers }),
-        axios.get(`${base}/api/student/packages`, { headers }),
       ]);
 
       const sd = studentsRes.data;
@@ -220,7 +217,6 @@ const AdminDashboard = () => {
       setPaidStudentPackages(paidRes.data);
       setFeedback(feedbackRes.data);
       setTeacherCount(teachersRes.data.length);
-      setPackageCount(Array.isArray(packagesRes.data) ? packagesRes.data.length : 0);
     } catch (err) {
       console.error("Error fetching data", err);
     }
@@ -315,13 +311,9 @@ const AdminDashboard = () => {
         {currentUser?.role === "company_admin" && currentUser.company_id != null && (
           <>
             <AdminTour segment="A" companyId={currentUser.company_id} autoStart />
-            <OnboardingChecklist
-              companyId={currentUser.company_id}
-              packageCount={packageCount}
-              teacherCount={teacherCount}
-              studentCount={students.length}
-              bookingCount={bookings.length}
-            />
+            {/* Progress is read from /api/onboarding/status now rather than passed
+                in from dashboard counts, so every surface agrees on what's done. */}
+            <OnboardingChecklist />
           </>
         )}
 

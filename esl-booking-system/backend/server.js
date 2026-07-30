@@ -47,6 +47,7 @@ const announcementRoutes = require('./routes/announcementRoutes.js');
 const importRoutes = require('./routes/importRoutes.js');
 const assignmentRoutes = require('./routes/assignmentRoutes.js');
 const recurringRoutes = require('./routes/recurringRoutes.js');
+const onboardingRoutes = require('./routes/onboardingRoutes.js');
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -133,6 +134,7 @@ app.use('/api/announcements', announcementRoutes);
 app.use('/api/import', importRoutes);
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/recurring', recurringRoutes);
+app.use('/api/onboarding', onboardingRoutes);
 
 // ── Auto-migrate: ensure all tables & columns exist (idempotent) ────────────
 async function runAutoMigrations() {

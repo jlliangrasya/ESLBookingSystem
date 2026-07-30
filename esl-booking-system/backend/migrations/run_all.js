@@ -76,6 +76,36 @@ const MIGRATIONS = [
     check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'recurring_schedules'",
     file: '007_recurring_schedules.sql',
   },
+  // ── 014: Onboarding redesign ──────────────────────────────────────────────
+  // Split into three entries rather than running 014_onboarding_redesign.sql as
+  // one file, so a partially-applied state (e.g. the ALTERs ran but the CREATE
+  // failed) still converges on re-run instead of aborting on "duplicate column".
+  {
+    name: 'notifications.link column',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'link'",
+    up: 'ALTER TABLE notifications ADD COLUMN link VARCHAR(255) NULL',
+  },
+  {
+    name: 'users.last_login_at column',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'last_login_at'",
+    up: 'ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP NULL',
+  },
+  {
+    name: 'onboarding_drafts table',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'onboarding_drafts'",
+    up: `CREATE TABLE onboarding_drafts (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      company_id INT NOT NULL,
+      kind ENUM('teacher','student','schedule') NOT NULL,
+      payload TEXT NOT NULL,
+      created_by INT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_company_kind (company_id, kind),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    )`,
+  },
 ];
 
 async function main() {

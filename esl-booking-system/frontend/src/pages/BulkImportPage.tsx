@@ -1,4 +1,5 @@
 import { useState, useContext, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Upload, Download, Users, GraduationCap, Loader2, CheckCircle, AlertCircle, FileSpreadsheet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +27,7 @@ type TabType = "students" | "teachers";
 
 const BulkImportPage: React.FC = () => {
   const authContext = useContext(AuthContext);
+  const navigate = useNavigate();
   const token = authContext?.token ?? null;
   const API = import.meta.env.VITE_API_URL;
   const headers = { Authorization: `Bearer ${token}` };
@@ -63,8 +65,16 @@ const BulkImportPage: React.FC = () => {
         headers: { ...headers, "Content-Type": "multipart/form-data" },
       });
       setResult(res.data);
-    } catch (err: any) {
-      alert(err.response?.data?.message || "Import failed");
+    } catch (err: unknown) {
+      const response = axios.isAxiosError(err) ? err.response : undefined;
+      // Student import hits the same approval gate as the single-student form.
+      // Send them to the screen that explains it and lets them prepare drafts,
+      // rather than an alert() they can't act on.
+      if (response?.status === 403 && response.data?.code === "APPROVAL_REQUIRED") {
+        navigate("/onboarding/approval");
+        return;
+      }
+      alert(response?.data?.message || "Import failed");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

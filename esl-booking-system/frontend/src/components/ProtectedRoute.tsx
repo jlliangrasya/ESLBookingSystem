@@ -16,6 +16,12 @@ const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) => {
 
   if (!token || !user) return <Navigate to="/" />;
 
+  // NOTE: 'pending' is deliberately absent from the checks below. It means
+  // "registered and fully usable, but not yet cleared to invite real students" —
+  // the single restriction is enforced by POST /api/admin/students and surfaced on
+  // /onboarding/approval. Redirecting pending companies away from the app is the
+  // behaviour this onboarding redesign specifically removed; don't reintroduce it.
+
   // Suspended (non-payment) → admin pays, others see generic
   if (companyStatus === 'suspended') {
     if (user.role === 'company_admin') return <Navigate to="/company-suspended" />;

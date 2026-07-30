@@ -11,18 +11,21 @@ const { sendPushToUser } = require('./pushService');
  * @param {string}  opts.type      - e.g. 'new_company', 'new_student', 'booking_created'
  * @param {string}  opts.title     - short title shown in the bell
  * @param {string}  [opts.message] - optional longer description
+ * @param {string}  [opts.link]    - in-app path to open when the bell item is
+ *                                   clicked, e.g. '/students?invite=1'. Must be
+ *                                   a same-origin path, not an absolute URL.
  */
 /**
  * Fire-and-forget: caller does NOT need to await this function.
  * DB insert and socket emit happen in the background; failures are logged but never block the caller.
  */
-function notify({ userId, companyId = null, type, title, message = '' }) {
+function notify({ userId, companyId = null, type, title, message = '', link = null }) {
     // Intentionally not returning the promise — callers should not await
     (async () => {
         try {
             const [result] = await pool.query(
-                'INSERT INTO notifications (user_id, company_id, type, title, message) VALUES (?, ?, ?, ?, ?)',
-                [userId, companyId, type, title, message]
+                'INSERT INTO notifications (user_id, company_id, type, title, message, link) VALUES (?, ?, ?, ?, ?, ?)',
+                [userId, companyId, type, title, message, link]
             );
             const [[row]] = await pool.query('SELECT * FROM notifications WHERE id = ?', [result.insertId]);
 

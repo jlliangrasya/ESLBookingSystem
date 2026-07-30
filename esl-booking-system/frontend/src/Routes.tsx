@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { TourEngineProvider } from "./context/TourEngine";
+import { OnboardingProvider } from "./context/OnboardingContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 // Eager-load only the landing page (needed before auth resolves)
@@ -64,10 +65,17 @@ const RecurringSchedulesPage = lazy(
   () => import("./pages/RecurringSchedulesPage.tsx"),
 );
 const AdminCalendarPage = lazy(() => import("./pages/AdminCalendarPage.tsx"));
+const OnboardingMilestonePage = lazy(
+  () => import("./pages/OnboardingMilestonePage.tsx"),
+);
+const OnboardingApprovalPage = lazy(
+  () => import("./pages/OnboardingApprovalPage.tsx"),
+);
 
 const AppRoutes = () => {
   return (
     <AuthProvider>
+      <OnboardingProvider>
       <TourEngineProvider>
       <Suspense
         fallback={
@@ -178,6 +186,24 @@ const AppRoutes = () => {
             element={
               <ProtectedRoute allowedRoles={["company_admin"]}>
                 <AdminManagementPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Onboarding — Company Admin */}
+          <Route
+            path="/onboarding/milestone"
+            element={
+              <ProtectedRoute allowedRoles={["company_admin"]}>
+                <OnboardingMilestonePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/onboarding/approval"
+            element={
+              <ProtectedRoute allowedRoles={["company_admin"]}>
+                <OnboardingApprovalPage />
               </ProtectedRoute>
             }
           />
@@ -311,6 +337,7 @@ const AppRoutes = () => {
         </Routes>
       </Suspense>
       </TourEngineProvider>
+      </OnboardingProvider>
     </AuthProvider>
   );
 };

@@ -4,6 +4,7 @@ import axios from "axios";
 import NavBar from "../components/Navbar";
 import AuthContext from "@/context/AuthContext";
 import { AdminTour } from "@/components/AdminTour";
+import { useOnboarding } from "@/context/OnboardingContext";
 import {
   Table,
   TableBody,
@@ -41,6 +42,7 @@ import {
   ChevronRight,
   Copy,
   Check,
+  ShieldCheck,
 } from "lucide-react";
 import {
   Tooltip,
@@ -81,6 +83,7 @@ const StudentListPage: React.FC = () => {
   const navigate = useNavigate();
   const authContext = useContext(AuthContext);
   const currentUser = authContext?.user ?? null;
+  const { status: onboarding } = useOnboarding();
   const [students, setStudents] = useState<Student[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -155,6 +158,9 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
     setAddLoading(true);
     setAddError(null);
     try {
+      // Note: a 403 with code APPROVAL_REQUIRED is handled in the catch below —
+      // that's the approval gate, and it deserves the explanation screen rather
+      // than an inline error the owner can't act on.
       const token = localStorage.getItem("token");
       await axios.post(
         `${import.meta.env.VITE_API_URL}/api/admin/students`,
@@ -181,6 +187,13 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
       fetchStudents();
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response) {
+        // The approval gate. Send them to the screen that explains why and gives
+        // them something useful to do while they wait, instead of a dead-end error.
+        if (err.response.status === 403 && err.response.data?.code === "APPROVAL_REQUIRED") {
+          setShowAddModal(false);
+          navigate("/onboarding/approval");
+          return;
+        }
         setAddError(err.response.data.message || "Failed to add student");
       } else {
         setAddError("An unexpected error occurred");
@@ -207,6 +220,27 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
             <UserPlus className="h-4 w-4 mr-2" /> Add Student
           </Button>
         </div>
+
+        {/* Explain the gate up front rather than letting them fill in a whole form
+            and hit a 403. Submitting anyway still routes to the same screen. */}
+        {onboarding?.student_invites_gated && (
+          <Alert className="mb-4 border-amber-200 bg-amber-50">
+            <ShieldCheck className="h-4 w-4 text-amber-600" />
+            <AlertDescription className="text-sm">
+              <span className="font-medium text-gray-800">
+                To protect student data, we manually review accounts before
+                inviting real students.
+              </span>{" "}
+              This usually takes under 24 hours.{" "}
+              <button
+                onClick={() => navigate("/onboarding/approval")}
+                className="font-medium text-primary hover:underline"
+              >
+                Prepare your roster while you wait →
+              </button>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Search & Filter */}
         <div className="flex flex-col sm:flex-row gap-3 mb-4">

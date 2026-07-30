@@ -2,8 +2,14 @@ const express = require("express");
 const pool = require("../db");
 const authenticateToken = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
+const { logAction } = require("../utils/audit");
 
 const router = express.Router();
+
+// NOTE: package "templates" are client-side form presets, not a server concept —
+// see frontend/src/components/PackageTemplatePicker.tsx. Picking one prefills the
+// Add Package dialog and saves through POST /packages below, so there is exactly
+// one server path for creating a package.
 
 // Get tutorial packages for this company
 // Students: active only; company_admin: all
@@ -45,6 +51,22 @@ router.post("/packages", authenticateToken, requireRole('company_admin'), async 
             [companyId, package_name, session_limit, price,
              subject || null, duration_minutes || 60, description || null, currency || 'PHP']
         );
+
+        // Same funnel event as the template path — a company that builds its first
+        // package by hand has still completed onboarding step 3.
+        const [[{ pkgTotal }]] = await pool.query(
+            // is_active filtered to match /api/onboarding/status — packages are
+            // soft-deleted, so counting inactive rows would report "not the first
+            // package" for a company the status endpoint still shows as having none.
+            "SELECT COUNT(*) AS pkgTotal FROM tutorial_packages WHERE company_id = ? AND is_active = TRUE",
+            [companyId]
+        );
+        if (pkgTotal === 1) {
+            await logAction(companyId, req.user.id, 'onboarding_class_created', 'tutorial_package', result.insertId, {
+                template: null,
+                package_name,
+            });
+        }
 
         res.json({ message: "Package created", id: result.insertId });
     } catch (err) {

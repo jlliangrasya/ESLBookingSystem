@@ -668,7 +668,7 @@ const AdminTeacherProfilePage = () => {
                               </TableCell>
                               <TableCell>
                                 {b.has_report
-                                  ? <Button size="sm" variant="outline" className="text-xs h-7 border-green-400 text-green-700 hover:bg-green-50" onClick={() => setReportModal({ open: true, bookingId: b.id, studentName: b.student_name })}>✓ View Report</Button>
+                                  ? <Button size="sm" variant="outline" className="text-xs h-7 border-green-400 text-green-700 hover:bg-green-50" onClick={() => setReportModal({ open: true, bookingId: b.id, studentName: b.student_name, classDate: b.appointment_date })}>✓ View Report</Button>
                                   : <span className="text-xs text-muted-foreground">No report</span>}
                               </TableCell>
                             </TableRow>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useContext } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { io } from "socket.io-client";
 import axios from "axios";
@@ -21,10 +22,15 @@ interface Notification {
   message: string;
   is_read: boolean;
   created_at: string;
+  // Same-origin path to open on click, set by the server for notifications that
+  // should take the user somewhere — e.g. approval lands them on the student
+  // invite step rather than the login page. Null for informational ones.
+  link?: string | null;
 }
 
 const NotificationBell: React.FC<{ variant?: "default" | "white" }> = ({ variant = "default" }) => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const authContext = useContext(AuthContext);
   const token = authContext?.token ?? null;
@@ -77,6 +83,21 @@ const NotificationBell: React.FC<{ variant?: "default" | "white" }> = ({ variant
       );
     } catch {
       // silent
+    }
+  };
+
+  /**
+   * Mark read, then follow the notification's link if it has one.
+   *
+   * Only relative same-origin paths are followed — `link` comes from the server,
+   * but treating it as an open redirect target would be careless, so anything that
+   * isn't a plain "/path" is ignored.
+   */
+  const handleClick = (n: Notification) => {
+    markRead(n.id);
+    const link = n.link;
+    if (link && link.startsWith("/") && !link.startsWith("//")) {
+      navigate(link);
     }
   };
 
@@ -142,7 +163,7 @@ const NotificationBell: React.FC<{ variant?: "default" | "white" }> = ({ variant
           notifications.map((n) => (
             <DropdownMenuItem
               key={n.id}
-              onClick={() => markRead(n.id)}
+              onClick={() => handleClick(n)}
               className={`flex flex-col items-start gap-0.5 px-3 py-2.5 cursor-pointer ${
                 !n.is_read ? "bg-primary/5" : ""
               }`}

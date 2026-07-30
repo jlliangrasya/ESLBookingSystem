@@ -28,10 +28,22 @@ export interface TourSegmentDef {
   steps: TourStep[];
 }
 
+/**
+ * Segment IDs are bound to pages by the <AdminTour segment="…"> mounted on each
+ * one, so they can't be renamed without touching those pages:
+ *
+ *   A → AdminDashboard      B → PackageSetupPage
+ *   C → TeacherManagement   D → StudentList
+ *
+ * The ORDER of the tour is defined here, not by the letters. Onboarding is now
+ * teacher-first — a company should meet one teacher and one package before
+ * anything else — so the chain runs A → C (teachers) → B (packages) → D
+ * (students), which is why C precedes B below.
+ */
 export const NEXT_SEGMENT: Record<string, string | "done"> = {
-  A: "B",
-  B: "C",
-  C: "D",
+  A: "C",
+  C: "B",
+  B: "D",
   D: "done",
 };
 
@@ -44,55 +56,57 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
         type: "explain",
         id: "A-welcome",
         title: "Welcome to Brightfolks! 🎉",
-        content: `This quick interactive tour will walk you through everything you need to get your school up and running:<br/><br/>
-          📦 <strong>Packages</strong> — Create your class packages &amp; configure school settings<br/>
-          👩‍🏫 <strong>Teachers</strong> — Add teachers and set their availability<br/>
-          🎓 <strong>Students</strong> — Register students, assign packages, and book classes<br/><br/>
-          At each step, you'll be asked to <strong>actually click the button</strong> — just follow the arrows!`,
-      },
-      {
-        type: "explain",
-        id: "A-packages",
-        targetSelector: "#nav-packages",
-        title: "Step 1 — Class Packages",
-        content: `Before you can enroll a student, you need at least one <strong>class package</strong>.<br/><br/>
-          A package defines the subject, number of sessions, duration per class, and price.<br/><br/>
-          You'll also set up your <strong>company settings</strong> and <strong>payment method</strong> here.`,
-        placement: "bottom",
+        content: `Let's get one class on the board — that's it for now.<br/><br/>
+          👩‍🏫 <strong>Add one teacher</strong> — just a name and an email<br/>
+          📦 <strong>Pick a package</strong> — choose a ready-made one<br/>
+          ✨ <strong>Your teacher logs in</strong> — and sees their class<br/><br/>
+          Two minutes, two steps. Everything else — the rest of your team, your
+          students, custom pricing — can wait until after.`,
       },
       {
         type: "explain",
         id: "A-teachers",
         targetSelector: "#nav-teachers",
-        title: "Step 2 — Teachers",
-        content: `Add your teachers here. Each teacher gets their own login account to manage their schedule and view classes.<br/><br/>
-          ⚠️ <strong>Critical:</strong> After adding a teacher, open their <strong>weekly availability slots</strong> on their profile page. Students can only book into open (green) slots.`,
+        title: "Step 1 — Add your first teacher",
+        content: `Start here. Add <strong>one</strong> teacher to see Brightfolks in action.<br/><br/>
+          All we need is their <strong>name and email</strong> — no bio, no photo, no
+          schedule. They'll get an invite and can log in straight away.`,
+        placement: "bottom",
+      },
+      {
+        type: "explain",
+        id: "A-packages",
+        targetSelector: "#nav-packages",
+        title: "Step 2 — Pick a package",
+        content: `A package is what a student buys — a subject, a number of
+          sessions, and a price.<br/><br/>
+          You don't have to design one. <strong>Pick a ready-made package</strong> and
+          you're done; you can rename it and set your own pricing anytime.`,
         placement: "bottom",
       },
       {
         type: "explain",
         id: "A-students",
         targetSelector: "#nav-students",
-        title: "Step 3 — Students",
-        content: `Register your students here. You set their login credentials and share them.<br/><br/>
-          <strong>Student booking flow:</strong><br/>
-          1️⃣ Student browses packages and selects one<br/>
-          2️⃣ They submit payment<br/>
-          3️⃣ You confirm their payment on the dashboard<br/>
-          4️⃣ They can then pick an available slot and book a class`,
+        title: "Later — Your students",
+        content: `Once your teacher is in, come back here to invite students.<br/><br/>
+          🔒 Inviting <em>real</em> students needs a one-time account review — that's
+          how we protect student data. It usually takes under 24 hours, and you can
+          prepare your roster while you wait.<br/><br/>
+          Nothing before this step waits on us.`,
         placement: "bottom",
       },
       {
         type: "explain",
         id: "A-dashboard",
         targetSelector: "#nav-admin-dashboard",
-        title: "Step 4 — Dashboard",
-        content: `Your command center. It shows:<br/>
+        title: "Your dashboard",
+        content: `Your command center, and where your setup progress lives.<br/><br/>
           • Today's scheduled classes<br/>
           • Students waiting for payment confirmation<br/>
           • Teacher workload overview<br/>
           • Analytics and growth charts<br/><br/>
-          You can also book classes on behalf of students directly from their profile.`,
+          The progress bar at the top of every page tracks the steps above.`,
         placement: "bottom",
       },
     ],
@@ -103,34 +117,44 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
     id: "B",
     steps: [
       {
-        type: "action",
-        id: "B-add-package",
-        targetSelector: "#btn-add-package",
-        title: "Create Your First Package",
-        content: `Every student enrollment needs a <strong>class package</strong>. Let's create your first one now.`,
-        actionHint: "Click the Add Package button to continue",
+        // Deliberately an "explain", not an "action". The template picker only
+        // renders while the company has zero packages, and action steps have no
+        // Next button (see TourBubble) — so a company that already created a
+        // package would hit an unadvanceable step with no way out but quitting
+        // the tour. "explain" keeps Next available whether or not the picker is
+        // on screen.
+        type: "explain",
+        id: "B-pick-template",
+        targetSelector: ".template-pick-btn",
+        title: "Pick a package to get started",
+        content: `A package is what a student buys. You don't need to design one from
+          scratch — pick whichever of these is closest to how you teach, then hit
+          <strong>Use this</strong>.<br/><br/>
+          <strong>You can customise it anytime</strong>: rename it, change the
+          session count, set your own price. Nothing here is permanent.<br/><br/>
+          Already have a package? You're done with this step — hit Next.`,
         placement: "bottom",
-        waitForElement: "[role=dialog]",
-        waitTimeout: 10000,
       },
       {
         type: "explain",
-        id: "B-fill-package",
-        title: "Fill In Package Details",
-        content: `Fill in the following fields:<br/><br/>
-          • <strong>Package Name</strong> — e.g. "Basic English 10"<br/>
-          • <strong>Subject</strong> — e.g. English Conversation, Math<br/>
-          • <strong>Number of Sessions</strong> — how many classes the student gets<br/>
-          • <strong>Duration</strong> — 25, 50, 75, or 100 minutes per session<br/>
-          • <strong>Price &amp; Currency</strong><br/><br/>
-          You can create as many packages as you need. Click <strong>Save</strong> in the dialog when done.`,
+        id: "B-customise-later",
+        title: "That's the required setup done 🎉",
+        content: `You have a teacher and a package — that's everything Brightfolks
+          needs to work.<br/><br/>
+          Want something more specific? <strong>Build a custom package</strong> lets
+          you set the subject, session count, duration, price, and currency exactly
+          how you want. Do that whenever it suits you — it isn't a first-day job.<br/><br/>
+          The rest of this tour covers your school's settings. Useful, but entirely
+          optional — exit any time.`,
       },
       {
         type: "explain",
         id: "B-settings-overview",
         targetSelector: "#company-settings-card",
-        title: "Company Settings",
-        content: `This section controls how your school operates. Let's walk through each setting so you know exactly what they do.`,
+        title: "Company Settings (optional)",
+        content: `These control how your school operates. Sensible defaults are
+          already set, so you can skip this and come back later.<br/><br/>
+          Here's what each one does, in case you want to change them now.`,
         placement: "top",
       },
       {
@@ -205,8 +229,9 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
         type: "action",
         id: "C-add-teacher",
         targetSelector: "#btn-add-teacher",
-        title: "Add Your First Teacher",
-        content: `Let's add a teacher account. You'll set their name, email, and a temporary password, then share those credentials with them so they can log in.`,
+        title: "Add your first teacher to see Brightfolks in action",
+        content: `One teacher is all it takes. We'll send them an invite so they can
+          log in — no password for you to invent.`,
         actionHint: "Click the Add Teacher button to continue",
         placement: "bottom",
         waitForElement: "[role=dialog]",
@@ -215,12 +240,14 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
       {
         type: "explain",
         id: "C-fill-teacher",
-        title: "Fill In Teacher Details",
-        content: `Fill in the teacher's information:<br/><br/>
+        title: "Two fields, that's it",
+        content: `Fill in the teacher's:<br/><br/>
           • <strong>Full Name</strong><br/>
-          • <strong>Email Address</strong> — this is their login username<br/>
-          • <strong>Password</strong> — set a temporary password they can change later<br/><br/>
-          Click <strong>Add Teacher</strong> in the dialog when you're done.`,
+          • <strong>Email Address</strong> — this is their login username<br/><br/>
+          That's everything we need. We'll generate a temporary password, email
+          them an invite, and show you the details in case you'd rather send them
+          yourself.<br/><br/>
+          Bio, photo, and schedule all live on their profile — add those whenever.`,
       },
       {
         type: "action",
@@ -230,15 +257,28 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
         content: `When you're happy with the details, click the <strong>Add Teacher</strong> button inside the dialog to save.`,
         actionHint: "Click Add Teacher in the dialog to save",
         placement: "top",
-        waitForElement: ".teacher-profile-btn",
+        waitForElement: ".teacher-invite-copy-btn, .teacher-profile-btn",
         waitTimeout: 10000,
+      },
+      {
+        type: "explain",
+        id: "C-invite-sent",
+        title: "Invite sent ✉️",
+        content: `Your teacher has been emailed their login details.<br/><br/>
+          The message is also shown on screen — hit <strong>Copy invite</strong> if
+          you'd rather send it over WeChat, Zalo, or any chat app. That's often
+          faster than waiting on email.<br/><br/>
+          The moment they log in, your setup milestone is complete.<br/><br/>
+          <em>Close the dialog when you're done copying, then hit Next.</em>`,
       },
       {
         type: "action",
         id: "C-open-profile",
         targetSelector: ".teacher-profile-btn",
-        title: "Open the Teacher's Profile",
-        content: `Great, the teacher has been added! Now let's open their profile to explore what you can manage from there.`,
+        title: "Optional — look around their profile",
+        content: `Your teacher is set up, so the required part is done.<br/><br/>
+          If you'd like a quick look at what you can manage for them, open their
+          profile. Otherwise feel free to exit the tour here.`,
         actionHint: "Click Profile to open this teacher's profile",
         placement: "left",
       },
@@ -314,13 +354,12 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
       {
         type: "explain",
         id: "C-credentials",
-        title: "Send Teacher Login Credentials",
-        content: `✉️ <strong>Don't forget!</strong><br/><br/>
-          Send the teacher their login credentials via WeChat, Zalo, email, or any messaging app:<br/><br/>
-          • <strong>Login URL:</strong> your school's link<br/>
-          • <strong>Email:</strong> what you just entered<br/>
-          • <strong>Password:</strong> the temporary password you set<br/><br/>
-          The teacher can log in and start managing their availability right away.`,
+        title: "Next: pick a package",
+        content: `Your teacher is invited and can log in.<br/><br/>
+          One more step and you're done: <strong>pick a class package</strong> so
+          there's something for students to enroll in. We'll head there next.<br/><br/>
+          If a teacher ever loses their password, use <strong>Reset Password</strong>
+          on their profile and send them the new one.`,
       },
     ],
   },
@@ -329,6 +368,19 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
   {
     id: "D",
     steps: [
+      {
+        type: "explain",
+        id: "D-approval-note",
+        title: "One thing before you invite students",
+        content: `🔒 To protect student data, we manually review accounts before
+          inviting <em>real</em> students. This usually takes <strong>under 24
+          hours</strong>.<br/><br/>
+          It's the only step that waits on us — registering, adding teachers, and
+          setting up packages all worked immediately.<br/><br/>
+          If you're not approved yet you'll be shown a checklist so you can prepare
+          your roster now and submit it the moment you're cleared. We'll email you
+          <em>and</em> send an in-app notification with a link straight back here.`,
+      },
       {
         type: "action",
         id: "D-add-student",
@@ -523,12 +575,13 @@ export const TOUR_SEGMENTS: TourSegmentDef[] = [
         type: "explain",
         id: "D-tour-complete",
         title: "🎉 Tour Complete!",
-        content: `You've completed the Brightfolks setup tour!<br/><br/>
-          Here's a quick recap of what's next:<br/><br/>
-          1. <strong>Open teacher availability</strong> — go to each teacher's profile and turn on their time slots<br/>
-          2. <strong>Share student logins</strong> — send credentials so students can log in and select packages<br/>
-          3. <strong>Confirm payments</strong> — once a student submits payment, confirm it on your dashboard<br/>
-          4. <strong>Book classes!</strong> — schedule recurring sessions for consistent learning<br/><br/>
+        content: `You've seen the whole thing.<br/><br/>
+          Your required setup was just two steps — <strong>one teacher</strong> and
+          <strong>one package</strong>. Everything else is at your own pace:<br/><br/>
+          1. <strong>Open teacher availability</strong> — students can only book slots you've opened<br/>
+          2. <strong>Add the rest of your team</strong> — same two fields each time<br/>
+          3. <strong>Invite your students</strong> — and confirm their payments on the dashboard<br/>
+          4. <strong>Customise your packages</strong> — your own pricing, subjects, and session counts<br/><br/>
           Good luck with your school! 🚀`,
       },
     ],

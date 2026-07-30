@@ -6,6 +6,8 @@ const { invalidateAuthCache } = authenticateToken;
 const requireRole = require("../middleware/requireRole");
 const notify = require("../utils/notify");
 const { logAction } = require("../utils/audit");
+const { sendMail } = require("../utils/mailer");
+const { generateTempPassword } = require("../utils/tempPassword");
 
 /** Format a stored PHT datetime string for notification messages without UTC shift. */
 function fmtAppt(dtStr) {
@@ -179,8 +181,14 @@ router.post("/teachers", authenticateToken, requireRole('company_admin'), async 
     if (!await canDo(adminId, 'can_add_teacher')) {
       return res.status(403).json({ message: 'You do not have permission to add teachers' });
     }
-    const { name, email, password } = req.body;
-    if (!name || !email || !password) return res.status(400).json({ message: 'name, email, and password are required' });
+    // Password is optional: onboarding asks for nothing but a name and an email,
+    // so when it's omitted we generate a temporary one and send an invite. An
+    // explicitly supplied password still works exactly as before.
+    const { name, email } = req.body;
+    if (!name || !email) return res.status(400).json({ message: 'name and email are required' });
+    const suppliedPassword = req.body.password;
+    const password = suppliedPassword || generateTempPassword();
+    const wasGenerated = !suppliedPassword;
 
     // Enforce plan teacher limit (active only)
     const [[planLimit]] = await pool.query(
@@ -206,7 +214,51 @@ router.post("/teachers", authenticateToken, requireRole('company_admin'), async 
       [companyId, name, email, password]
     );
     await logAction(companyId, adminId, 'teacher_added', 'user', result.insertId, { name, email });
-    res.status(201).json({ message: 'Teacher added successfully', teacher_id: result.insertId });
+
+    // Funnel event, separate from 'teacher_added' so the onboarding milestone can
+    // be measured against the very first teacher rather than every teacher ever.
+    // is_active must be filtered here to match /api/onboarding/status — teacher
+    // deletion is a soft-delete, so counting inactive rows would report
+    // is_first_teacher: false for a company the status endpoint still shows as
+    // having no teachers, skipping both the funnel event and the "next step" nudge.
+    const [[{ teacherTotal }]] = await pool.query(
+      "SELECT COUNT(*) AS teacherTotal FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE",
+      [companyId]
+    );
+    if (teacherTotal === 1) {
+      await logAction(companyId, adminId, 'onboarding_teacher_added', 'user', result.insertId, { name, email });
+    }
+
+    // Send the invite. Best-effort: with SMTP unconfigured sendMail just logs, so
+    // the credentials are ALSO returned below for the admin to copy on screen.
+    // That fallback is what makes the milestone reachable without SMTP.
+    const frontend = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+    const [[company]] = await pool.query('SELECT company_name FROM companies WHERE id = ?', [companyId]);
+    sendMail({
+      to: email,
+      subject: `You've been invited to teach at ${company?.company_name || 'your school'}`,
+      html: `<h2>Hi ${name},</h2>
+             <p><strong>${company?.company_name || 'Your school'}</strong> has set up a Brightfolks account for you.</p>
+             <p><strong>Email:</strong> ${email}<br/>
+                <strong>Temporary password:</strong> ${password}</p>
+             <p><a href="${frontend}/login" style="display:inline-block;padding:10px 18px;background:#4f46e5;color:#fff;border-radius:6px;text-decoration:none">Log in to Brightfolks</a></p>
+             <p style="color:#777;font-size:13px">You can change this password once you're in.</p>`,
+    }).catch(() => {});
+
+    res.status(201).json({
+      message: 'Teacher added successfully',
+      teacher_id: result.insertId,
+      is_first_teacher: teacherTotal === 1,
+      // Returned so the admin can copy/send the credentials themselves. Only ever
+      // sent back to the company_admin who just created the account.
+      credentials: {
+        name,
+        email,
+        password,
+        password_was_generated: wasGenerated,
+        login_url: `${frontend}/login`,
+      },
+    });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -1660,6 +1712,20 @@ router.post('/students', authenticateToken, requireRole('company_admin'), async 
        JOIN subscription_plans sp ON c.subscription_plan_id = sp.id
        WHERE c.id = ?`, [companyId]
     );
+
+    // ── The approval gate ──────────────────────────────────────────────────
+    // This is the only place approval is enforced. Registration, adding a
+    // teacher and creating a class package all work with zero waiting; review
+    // happens here because this is the point where a real person's contact
+    // details enter the system and an email goes out to them.
+    // Read straight from the row above rather than the 60s-cached status in
+    // authMiddleware, so a just-granted approval is honoured immediately.
+    if (company.status === 'pending') {
+      return res.status(403).json({
+        code: 'APPROVAL_REQUIRED',
+        message: 'To protect student data, we manually review accounts before inviting real students. This usually takes under 24 hours.',
+      });
+    }
     const [[{ cnt }]] = await pool.query(
       "SELECT COUNT(*) AS cnt FROM users WHERE company_id = ? AND role = 'student' AND is_active = TRUE", [companyId]
     );
@@ -1677,6 +1743,12 @@ router.post('/students', authenticateToken, requireRole('company_admin'), async 
     );
     const [[newStudent]] = await pool.query('SELECT id FROM users WHERE email = ?', [email]);
     await logAction(companyId, req.user.id, 'student_created', 'user', newStudent.id, { name, email });
+
+    // Funnel event for the first real student only — this is the step the whole
+    // approval gate exists to protect, so it's the one worth measuring.
+    if (cnt === 0) {
+      await logAction(companyId, req.user.id, 'onboarding_student_invited', 'user', newStudent.id, { name, email });
+    }
     res.status(201).json({ message: 'Student created successfully' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });

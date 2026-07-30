@@ -42,6 +42,10 @@ const CompanyRegisterPage = () => {
   const [agreed, setAgreed] = useState(false);
   const [paymentReference, setPaymentReference] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  // Whether this company still needs a review before it can invite real students.
+  // Registration itself never waits for review any more, so there's no longer an
+  // "activated or not" distinction to track here.
+  const [invitesGated, setInvitesGated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,11 +100,12 @@ const CompanyRegisterPage = () => {
     setIsLoading(true);
     setError(null);
     try {
-      await axios.post(`${import.meta.env.VITE_API_URL}/api/companies/register`, {
+      const res = await axios.post(`${import.meta.env.VITE_API_URL}/api/companies/register`, {
         ...form,
         subscription_plan_id: selectedPlan,
         payment_reference: isFreePlan ? undefined : paymentReference || undefined,
       });
+      setInvitesGated(!!res.data?.student_invites_gated);
       setSubmitted(true);
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response) {
@@ -121,32 +126,39 @@ const CompanyRegisterPage = () => {
         <Card className="max-w-md w-full text-center shadow-lg">
           <CardContent className="pt-8 pb-8 space-y-4">
             <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto" />
-            {isFreePlan ? (
-              <>
-                <h2 className="text-2xl font-bold text-gray-800">You're All Set!</h2>
-                <p className="text-muted-foreground">
-                  Your account for <span className="font-medium">{form.company_name}</span> is{" "}
-                  <strong>immediately active</strong>. Check your email at{" "}
-                  <span className="font-medium">{form.owner_email}</span> for your login details.
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Your 30-day free trial starts now. Log in and start adding teachers and students.
-                </p>
-              </>
-            ) : (
-              <>
-                <h2 className="text-2xl font-bold text-gray-800">Application Submitted!</h2>
-                <p className="text-muted-foreground">
-                  Your ESL center registration is pending review. Our team will contact you at{" "}
-                  <span className="font-medium">{form.owner_email}</span> once approved.
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Our team will verify your payment and activate your account within 1–2 business days.
-                </p>
-              </>
+            {/* There is no longer a waiting state here — registration always
+                produces a usable account. The only thing that varies is whether
+                inviting real students still needs a review, and that's mentioned
+                as a footnote rather than presented as a blocker. */}
+            <h2 className="text-2xl font-bold text-gray-800">You're in!</h2>
+            <p className="text-muted-foreground">
+              <span className="font-medium">{form.company_name}</span> is ready to
+              use right now — nothing to wait for. We sent your login details to{" "}
+              <span className="font-medium">{form.owner_email}</span>.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Next: add your first teacher to see Brightfolks in action. It takes
+              about a minute.
+            </p>
+            {isFreePlan && (
+              <p className="text-xs text-muted-foreground">
+                Your 30-day free trial starts today.
+              </p>
             )}
-            <Button onClick={() => navigate(isFreePlan ? "/login" : "/")} className="w-full mt-4">
-              {isFreePlan ? "Go to Login" : "Back to Home"}
+            {!isFreePlan && (
+              <p className="text-xs text-muted-foreground">
+                We'll verify your payment separately — it won't hold you up.
+              </p>
+            )}
+            {invitesGated && (
+              <p className="text-xs text-muted-foreground border-t pt-3">
+                When you're ready to invite real students, we'll review your
+                account once first — usually under 24 hours, and you can prepare
+                everything while you wait.
+              </p>
+            )}
+            <Button onClick={() => navigate("/login")} className="w-full mt-4">
+              Log in and add your first teacher
             </Button>
           </CardContent>
         </Card>
