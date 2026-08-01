@@ -1,0 +1,50 @@
+name: Wake Render service
+
+# The backend's internal keep-alive (backend/scheduler.js) only runs during
+# operating hours, so the free-tier instance idle-sleeps overnight to stay under
+# Render's 750 instance-hour quota. A suspended process runs no timers, so it
+# cannot wake itself — this workflow makes the first inbound request of the day.
+# Once awake, the in-process keep-alive sustains the service until the window
+# closes at 23:00 PHT.
+#
+# Setup: add a repository variable named RENDER_URL (Settings → Secrets and
+# variables → Actions → Variables), e.g. https://esl-booking-api.onrender.com
+#
+# Note: GitHub disables scheduled workflows in repos with no commits for 60
+# days. If the service stops waking, check that this workflow is still enabled.
+
+on:
+  schedule:
+    # Times are UTC; PHT is UTC+8 year-round (no DST).
+    - cron: '45 21 * * *' # 05:45 PHT — before the 06:00 keep-alive window opens
+    - cron: '15 22 * * *' # 06:15 PHT — backup, GitHub often delays scheduled runs
+  workflow_dispatch: # allows a manual wake from the Actions tab
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health until the instance is up
+        env:
+          RENDER_URL: ${{ vars.RENDER_URL }}
+        run: |
+          if [ -z "$RENDER_URL" ]; then
+            echo "::error::RENDER_URL repository variable is not set."
+            exit 1
+          fi
+
+          # A cold start takes ~50s, so the first request usually times out.
+          # Retry for up to ~5 minutes before treating it as a real failure.
+          for attempt in $(seq 1 10); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 \
+                     "$RENDER_URL/health" || echo "000")
+            if [ "$code" = "200" ]; then
+              echo "Service is awake (HTTP 200) after attempt $attempt."
+              exit 0
+            fi
+            echo "Attempt $attempt: HTTP $code — still waking, retrying in 30s."
+            sleep 30
+          done
+
+          echo "::error::Service did not return HTTP 200 within ~5 minutes."
+          exit 1

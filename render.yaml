@@ -17,6 +17,12 @@ services:
         value: esl_booking
       - key: DB_SSL
         value: "true"
+      # Hours (PHT) the in-process keep-alive may self-ping. Outside this window
+      # the free instance is allowed to idle-sleep, which is what keeps monthly
+      # usage under Render's 750 instance-hour quota. "0-23" restores always-on;
+      # "off" disables self-pinging entirely. See backend/scheduler.js.
+      - key: KEEPALIVE_HOURS
+        value: "6-22"
       - key: DB_HOST
         sync: false
       - key: DB_USER

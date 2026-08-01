@@ -9,7 +9,8 @@ const { phtNowSql, phtTodaySql, formatPHT } = require('./utils/phtTime');
 // The free tier idle-sleeps the process after ~15 min without inbound HTTP
 // traffic, killing all in-memory cron timers. Three defenses:
 //   1. keepAlive self-pings the public /health URL (inbound HTTP resets the
-//      idle timer — a DB query does NOT).
+//      idle timer — a DB query does NOT). Windowed to KEEPALIVE_HOURS; see the
+//      instance-hours note on keepAlive below.
 //   2. startScheduler() runs every check once on boot, so waking up from a
 //      sleep/deploy immediately catches anything still inside its window.
 //   3. Daily jobs are claimed through the scheduler_runs table instead of a
@@ -17,6 +18,12 @@ const { phtNowSql, phtTodaySql, formatPHT } = require('./utils/phtTime');
 //      14:00, or whenever the process is next awake that day.
 // Reminder sends are claim-first (UPDATE ... WHERE reminded = FALSE), so the
 // boot catch-up overlapping a cron tick can never double-send.
+//
+// IMPORTANT: keepAlive can only keep an *awake* process awake — it cannot wake
+// a sleeping one, because a suspended process runs no timers. Something outside
+// Render must make the first request of the day at the start of the window; see
+// .github/workflows/wake-render.yml. Without that waker, the service stays down
+// after its overnight sleep until the first real user request.
 
 // ── Schema the scheduler needs (safe to run every boot) ───────────────────────
 async function ensureSchedulerSchema() {
@@ -433,10 +440,21 @@ async function runDailyJobsSweep() {
     }
 }
 
-// ── Keep-alive (every 10 minutes — prevents Render free tier idle sleep) ──────
+// ── Keep-alive (every 10 min, operating hours only) ──────────────────────────
 // Render's idle detector counts INBOUND HTTP traffic, so we must ping our own
 // public URL (RENDER_EXTERNAL_URL is set automatically by Render). A plain DB
 // query does not count and does NOT keep the service awake.
+//
+// The ping is restricted to the hours lessons can run. Pinging around the clock
+// costs ~730 instance hours/month against Render's 750-hour free quota, leaving
+// no headroom; the default 06:00–22:59 PHT window costs ~500. The slot grid runs
+// 07:00–23:00 PHT, and the window opens 30 min early so the 06:30 tick can send
+// 30-minute reminders for the first lessons of the day.
+//
+// Override with KEEPALIVE_HOURS (a cron hour field, e.g. '5-23' or '0-23' for
+// the old always-on behaviour); set it to 'off' to disable self-pinging.
+const KEEPALIVE_HOURS = (process.env.KEEPALIVE_HOURS || '6-22').trim();
+
 async function keepAlive() {
     const baseUrl = process.env.RENDER_EXTERNAL_URL;
     if (baseUrl && typeof fetch === 'function') {
@@ -469,8 +487,18 @@ async function startScheduler() {
     cron.schedule('*/10 * * * *', run30MinReminders, opts);
     cron.schedule('*/15 * * * *', run5HourReminders, opts);
     cron.schedule('*/15 * * * *', runDailyJobsSweep, opts);
-    cron.schedule('*/10 * * * *', keepAlive, opts);
-    logger.info('[Scheduler] Cron jobs registered (30-min reminders q10m, 5-hour reminders q15m, daily sweep q15m, keep-alive q10m)');
+
+    // Keep-alive is the one job whose *wall-clock hour* matters, so it is pinned
+    // to PHT (business timezone) rather than the UTC used above, where only the
+    // interval matters.
+    let keepAliveDesc;
+    if (KEEPALIVE_HOURS === 'off') {
+        keepAliveDesc = 'keep-alive disabled';
+    } else {
+        cron.schedule(`*/10 ${KEEPALIVE_HOURS} * * *`, keepAlive, { timezone: 'Asia/Manila', noOverlap: true });
+        keepAliveDesc = `keep-alive q10m during hours ${KEEPALIVE_HOURS} PHT`;
+    }
+    logger.info(`[Scheduler] Cron jobs registered (30-min reminders q10m, 5-hour reminders q15m, daily sweep q15m, ${keepAliveDesc})`);
 
     // Boot catch-up: the server may have just woken from an idle sleep or a
     // deploy — check immediately instead of waiting for the next tick.
