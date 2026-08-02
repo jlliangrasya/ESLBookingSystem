@@ -19,7 +19,7 @@ import {
 import {
   ArrowLeft, UserCircle, CalendarDays, Loader2, Pencil, Save, Eye, EyeOff,
   BookOpen, KeyRound, ChevronLeft, ChevronRight, Timer, CheckCircle2,
-  UserX, Users, FileText, Heart, Search,
+  UserX, Users, FileText, Heart, Search, Calculator,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly } from "@/utils/timezone";
 import ReportModal from "@/components/ReportModal";
@@ -115,6 +115,37 @@ const leaveStatusColors: Record<string, string> = {
 
 const UPCOMING_PAGE_SIZE = 10;
 
+/* ---------- Salary calculator ---------- */
+interface SalaryRates {
+  fifty: string;
+  twentyFive: string;
+  absentFifty: string;
+  absentTwentyFive: string;
+}
+
+const EMPTY_RATES: SalaryRates = { fifty: "", twentyFive: "", absentFifty: "", absentTwentyFive: "" };
+
+const ratesStorageKey = (teacherId: string) => `teacherSalaryRates_${teacherId}`;
+
+const loadRates = (teacherId: string | undefined): SalaryRates => {
+  if (!teacherId) return EMPTY_RATES;
+  try {
+    const saved = localStorage.getItem(ratesStorageKey(teacherId));
+    return saved ? { ...EMPTY_RATES, ...JSON.parse(saved) } : EMPTY_RATES;
+  } catch {
+    return EMPTY_RATES;
+  }
+};
+
+// "" / garbage -> 0 so the total is always a number
+const rateValue = (v: string) => {
+  const n = parseFloat(v);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
+const peso = (n: number) =>
+  `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 const AdminTeacherProfilePage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -162,6 +193,17 @@ const AdminTeacherProfilePage = () => {
   const [rangeTo, setRangeTo] = useState("");
   const [appliedRange, setAppliedRange] = useState<{ from: string; to: string } | null>(null);
   const [rangeDrillKey, setRangeDrillKey] = useState<"fifty" | "twentyFive" | "absences" | null>(null);
+
+  // Salary calculator rates — remembered per teacher on this browser
+  const [salaryRates, setSalaryRates] = useState<SalaryRates>(() => loadRates(id));
+  useEffect(() => {
+    if (!id) return;
+    try {
+      localStorage.setItem(ratesStorageKey(id), JSON.stringify(salaryRates));
+    } catch {
+      /* storage unavailable — rates just won't persist */
+    }
+  }, [id, salaryRates]);
 
   // Report view modal
   const [reportModal, setReportModal] = useState<{ open: boolean; bookingId: number; studentName: string; classDate: string }>({
@@ -578,6 +620,18 @@ const AdminTeacherProfilePage = () => {
           const twentyFiveList = inRange.filter(b => !b.student_absent && b.duration_minutes === 25);
           const absencesList = inRange.filter(b => b.student_absent);
           const label = `${format(from, "MMM dd, yyyy")} – ${format(to, "MMM dd, yyyy")}`;
+
+          // Salary breakdown — absences are paid at their own rate per duration
+          const absentFiftyCount = absencesList.filter(b => b.duration_minutes === 50).length;
+          const absentTwentyFiveCount = absencesList.filter(b => b.duration_minutes === 25).length;
+          const salaryRows = [
+            { key: "fifty" as const, label: "50-min class", count: fiftyList.length, rate: rateValue(salaryRates.fifty) },
+            { key: "twentyFive" as const, label: "25-min class", count: twentyFiveList.length, rate: rateValue(salaryRates.twentyFive) },
+            { key: "absentFifty" as const, label: "50-min absence", count: absentFiftyCount, rate: rateValue(salaryRates.absentFifty) },
+            { key: "absentTwentyFive" as const, label: "25-min absence", count: absentTwentyFiveCount, rate: rateValue(salaryRates.absentTwentyFive) },
+          ];
+          const salaryTotal = salaryRows.reduce((sum, r) => sum + r.count * r.rate, 0);
+          const uncountedAbsences = absencesList.length - absentFiftyCount - absentTwentyFiveCount;
           const rangeDrillTitles = {
             fifty: "50-min Completed Classes",
             twentyFive: "25-min Completed Classes",
@@ -624,6 +678,70 @@ const AdminTeacherProfilePage = () => {
                         <UserX className="h-3.5 w-3.5" /> Absences
                       </p>
                     </button>
+                  </div>
+
+                  {/* Salary calculator */}
+                  <div className="border rounded-xl p-3 bg-gray-50 mt-3 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                        <Calculator className="h-3.5 w-3.5" /> Salary Calculator
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs text-muted-foreground"
+                        onClick={() => setSalaryRates(EMPTY_RATES)}
+                      >
+                        Clear rates
+                      </Button>
+                    </div>
+
+                    {/* Rate inputs */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {salaryRows.map(row => (
+                        <div key={row.key} className="space-y-1">
+                          <Label className="text-xs" htmlFor={`rate-${row.key}`}>
+                            Rate per {row.label}
+                          </Label>
+                          <div className="relative">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">₱</span>
+                            <Input
+                              id={`rate-${row.key}`}
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              value={salaryRates[row.key]}
+                              onChange={(e) => setSalaryRates(prev => ({ ...prev, [row.key]: e.target.value }))}
+                              className="h-8 text-xs pl-5 bg-white"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Breakdown */}
+                    <div className="border rounded-lg bg-white divide-y">
+                      {salaryRows.map(row => (
+                        <div key={row.key} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                          <span className="text-muted-foreground">
+                            {row.count} × {row.label} @ {peso(row.rate)}
+                          </span>
+                          <span className="font-medium tabular-nums">{peso(row.count * row.rate)}</span>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between px-3 py-2 bg-primary/5">
+                        <span className="text-sm font-semibold">Total Salary</span>
+                        <span className="text-base font-bold text-primary tabular-nums">{peso(salaryTotal)}</span>
+                      </div>
+                    </div>
+
+                    {uncountedAbsences > 0 && (
+                      <p className="text-[10px] text-muted-foreground">
+                        Note: {uncountedAbsences} absence{uncountedAbsences !== 1 ? "s" : ""} in this range {uncountedAbsences !== 1 ? "are" : "is"} neither 50 nor 25 minutes, so {uncountedAbsences !== 1 ? "they are" : "it is"} not included in the total.
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
