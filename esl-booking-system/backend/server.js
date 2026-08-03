@@ -221,6 +221,15 @@ async function runAutoMigrations() {
         FOREIGN KEY (created_by) REFERENCES users(id),
         INDEX idx_rs_company (company_id, status),
         INDEX idx_rs_teacher (teacher_id, status), INDEX idx_rs_student (student_id))` },
+    // onboarding_drafts (migration 014)
+    { name: 'onboarding_drafts', sql: `CREATE TABLE IF NOT EXISTS onboarding_drafts (
+        id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL,
+        kind ENUM('teacher','student','schedule') NOT NULL, payload TEXT NOT NULL,
+        created_by INT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_company_kind (company_id, kind),
+        FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL)` },
   ];
 
   for (const m of migrations) {
@@ -244,6 +253,20 @@ async function runAutoMigrations() {
   // Add recurring_schedule_id to bookings
   try { await pool.query('ALTER TABLE bookings ADD COLUMN recurring_schedule_id INT DEFAULT NULL'); }
   catch (err) { if (!err.message.includes('Duplicate column')) logger.error('Add recurring_schedule_id failed', { error: err.message }); }
+
+  // Migration 014 columns. These MUST be applied at boot, not only by the manual
+  // migrations/run_all.js — notify() INSERTs `link` on every single notification,
+  // so a missing column takes down the whole pipeline at once: the INSERT throws,
+  // which means no stored row (empty bell list), no socket emit (no real-time),
+  // and no push (the send call sits after the INSERT and is never reached).
+  const addTableCols = [
+    ['notifications', 'link', 'VARCHAR(255) NULL'],
+    ['users', 'last_login_at', 'TIMESTAMP NULL'],
+  ];
+  for (const [table, col, def] of addTableCols) {
+    try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); }
+    catch (err) { if (!err.message.includes('Duplicate column')) logger.error(`Add column ${table}.${col} failed`, { error: err.message }); }
+  }
 
   // Backfill: copy old name/email into company_name/company_email if old columns exist
   try {
