@@ -5,13 +5,38 @@ import AuthContext from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  CalendarDays, Users, LogOut, Loader2, FileText, CalendarOff,
-  Plus, X, Video, LayoutList, UserCircle, Activity, CheckSquare,
-  ChevronLeft, ChevronRight, Menu, UserX, Timer, CheckCircle2, Search, Repeat,
+  CalendarDays,
+  Users,
+  LogOut,
+  Loader2,
+  FileText,
+  CalendarOff,
+  Plus,
+  X,
+  Video,
+  LayoutList,
+  UserCircle,
+  Activity,
+  CheckSquare,
+  ChevronLeft,
+  ChevronRight,
+  Menu,
+  UserX,
+  Timer,
+  CheckCircle2,
+  Search,
+  Repeat,
   Sparkles,
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
@@ -19,53 +44,138 @@ import NotificationBell from "@/components/NotificationBell";
 import InstallAppButton from "@/components/InstallAppButton";
 import ReportModal from "@/components/ReportModal";
 import { fmtDate, fmtDateOnly, TIMEZONES } from "@/utils/timezone";
-import { NOTE_COLOR_PRESETS, NOTE_ICONS, DEFAULT_NOTE_COLOR, isValidHex, getContrastText } from "@/utils/noteColors";
+import {
+  NOTE_COLOR_PRESETS,
+  NOTE_ICONS,
+  DEFAULT_NOTE_COLOR,
+  isValidHex,
+  getContrastText,
+} from "@/utils/noteColors";
 import AnnouncementPanel from "@/components/AnnouncementPanel";
 import TablePagination from "@/components/TablePagination";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import MonthCalendar, { MonthCalendarEvent } from "@/components/MonthCalendar";
 import LinkedAccountsCard from "@/components/LinkedAccountsCard";
 import { useLinkedAccounts, roleLabel } from "@/hooks/useLinkedAccounts";
 
 type Page = "dashboard" | "classes" | "profile";
 
-interface Teacher { id: number; name: string; email: string; }
+interface Teacher {
+  id: number;
+  name: string;
+  email: string;
+}
 interface AssignedStudent {
-  id: number; name: string; nationality: string; age: number;
-  duration_minutes: number; sessions_remaining: number; unused_sessions: number; subject: string; payment_status: string;
+  id: number;
+  name: string;
+  nationality: string;
+  age: number;
+  duration_minutes: number;
+  sessions_remaining: number;
+  unused_sessions: number;
+  subject: string;
+  payment_status: string;
 }
 interface Booking {
-  id: number; appointment_date: string; status: string; student_name: string;
-  duration_minutes: number; subject: string; class_mode: string | null; meeting_link: string | null;
-  student_absent: boolean; slot_count?: number; recurring_schedule_id: number | null;
+  id: number;
+  appointment_date: string;
+  status: string;
+  student_name: string;
+  duration_minutes: number;
+  subject: string;
+  class_mode: string | null;
+  meeting_link: string | null;
+  student_absent: boolean;
+  slot_count?: number;
+  recurring_schedule_id: number | null;
 }
 interface CompletedBooking {
-  id: number; appointment_date: string; status: string; student_name: string;
-  student_id: number; duration_minutes: number; subject: string; has_report: boolean;
-  student_absent: boolean; teacher_absent: boolean; slot_count?: number;
+  id: number;
+  appointment_date: string;
+  status: string;
+  student_name: string;
+  student_id: number;
+  duration_minutes: number;
+  subject: string;
+  has_report: boolean;
+  student_absent: boolean;
+  teacher_absent: boolean;
+  slot_count?: number;
 }
 interface PendingItem {
-  id: number; appointment_date: string; status: string; student_name: string;
-  student_id: number; duration_minutes: number; subject: string;
-  student_package_id: number; student_absent: boolean; slot_count?: number;
+  id: number;
+  appointment_date: string;
+  status: string;
+  student_name: string;
+  student_id: number;
+  duration_minutes: number;
+  subject: string;
+  student_package_id: number;
+  student_absent: boolean;
+  slot_count?: number;
 }
 interface WeekBooking {
-  id: number; appointment_date: string; status: string; student_name: string;
-  subject: string; student_absent: boolean; teacher_absent: boolean; slot_count?: number;
+  id: number;
+  appointment_date: string;
+  status: string;
+  student_name: string;
+  subject: string;
+  student_absent: boolean;
+  teacher_absent: boolean;
+  slot_count?: number;
 }
 interface TeacherLeave {
-  id: number; leave_date: string; reason_type: string; notes: string | null;
-  status: string; created_at: string;
+  id: number;
+  leave_date: string;
+  reason_type: string;
+  notes: string | null;
+  status: string;
+  created_at: string;
 }
-interface Health { total_done: number; total_absent: number; attended: number; }
+interface Health {
+  total_done: number;
+  total_absent: number;
+  attended: number;
+}
 
-const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 
 const SLOT_TIMES: string[] = Array.from({ length: 32 }, (_, i) => {
   const totalMins = 7 * 60 + i * 30;
-  const h = Math.floor(totalMins / 60).toString().padStart(2, "0");
+  const h = Math.floor(totalMins / 60)
+    .toString()
+    .padStart(2, "0");
   const m = (totalMins % 60).toString().padStart(2, "0");
   return `${h}:${m}`;
 });
@@ -105,7 +215,11 @@ const slotKeysFor = (appointmentDate: string, slotCount = 1): string[] => {
 // off-by-one that plain `new Date("yyyy-MM-dd")` parsing can introduce.
 const fmtDayKey = (key: string): string => {
   const [y, m, d] = key.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 };
 
 const statusColors: Record<string, string> = {
@@ -122,19 +236,28 @@ const leaveStatusColors: Record<string, string> = {
 
 function HealthBadge({ health }: { health: Health }) {
   const total = health.attended + health.total_absent;
-  if (total === 0) return <span className="text-xs text-muted-foreground">No data yet</span>;
+  if (total === 0)
+    return <span className="text-xs text-muted-foreground">No data yet</span>;
   const rate = Math.round((health.attended / total) * 100);
-  const { label, cls } = rate >= 90
-    ? { label: "Excellent", cls: "bg-green-100 text-green-700" }
-    : rate >= 75
-    ? { label: "Good", cls: "bg-blue-100 text-blue-700" }
-    : rate >= 50
-    ? { label: "Fair", cls: "bg-yellow-100 text-yellow-700" }
-    : { label: "At Risk", cls: "bg-red-100 text-red-700" };
+  const { label, cls } =
+    rate >= 90
+      ? { label: "Excellent", cls: "bg-green-100 text-green-700" }
+      : rate >= 75
+        ? { label: "Good", cls: "bg-blue-100 text-blue-700" }
+        : rate >= 50
+          ? { label: "Fair", cls: "bg-yellow-100 text-yellow-700" }
+          : { label: "At Risk", cls: "bg-red-100 text-red-700" };
   return (
     <div className="flex flex-col gap-1">
-      <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${cls}`}>{label} — {rate}% attendance</span>
-      <span className="text-xs text-muted-foreground">{health.attended} attended · {health.total_absent} absent · {total} total</span>
+      <span
+        className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${cls}`}
+      >
+        {label} — {rate}% attendance
+      </span>
+      <span className="text-xs text-muted-foreground">
+        {health.attended} attended · {health.total_absent} absent · {total}{" "}
+        total
+      </span>
     </div>
   );
 }
@@ -152,44 +275,64 @@ const TeacherDashboard = () => {
   const [teacher, setTeacher] = useState<Teacher | null>(null);
   const [students, setStudents] = useState<AssignedStudent[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [completedBookings, setCompletedBookings] = useState<CompletedBooking[]>([]);
-  const [pendingConfirmation, setPendingConfirmation] = useState<PendingItem[]>([]);
+  const [completedBookings, setCompletedBookings] = useState<
+    CompletedBooking[]
+  >([]);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingItem[]>(
+    [],
+  );
   const [upcomingPage, setUpcomingPage] = useState(1);
   const [upcomingPageSize, setUpcomingPageSize] = useState(10);
   // Upcoming classes filters & sort
   const [upcomingSearch, setUpcomingSearch] = useState("");
   const [upcomingFilterStudent, setUpcomingFilterStudent] = useState("all");
-  const [upcomingFilterNoClassInfo, setUpcomingFilterNoClassInfo] = useState(false);
+  const [upcomingFilterNoClassInfo, setUpcomingFilterNoClassInfo] =
+    useState(false);
   const [upcomingFilterDate, setUpcomingFilterDate] = useState("");
   const [upcomingSort, setUpcomingSort] = useState("date-asc");
   const [completedPage, setCompletedPage] = useState(1);
   const [completedPageSize, setCompletedPageSize] = useState(20);
   const [classesThisWeek, setClassesThisWeek] = useState(0);
   const [classesThisMonth, setClassesThisMonth] = useState(0);
-  const [completedWithReportThisWeek, setCompletedWithReportThisWeek] = useState(0);
+  const [completedWithReportThisWeek, setCompletedWithReportThisWeek] =
+    useState(0);
   const [absentStudentsThisWeek, setAbsentStudentsThisWeek] = useState(0);
   const [fiftyMinThisWeek, setFiftyMinThisWeek] = useState(0);
   const [twentyFiveMinThisWeek, setTwentyFiveMinThisWeek] = useState(0);
-  const [health, setHealth] = useState<Health>({ total_done: 0, total_absent: 0, attended: 0 });
+  const [health, setHealth] = useState<Health>({
+    total_done: 0,
+    total_absent: 0,
+    attended: 0,
+  });
   const [leaves, setLeaves] = useState<TeacherLeave[]>([]);
-  const [feedback, setFeedback] = useState<{ id: number; student_name: string; message: string; created_at: string }[]>([]);
+  const [feedback, setFeedback] = useState<
+    { id: number; student_name: string; message: string; created_at: string }[]
+  >([]);
   const [cancellationHours, setCancellationHours] = useState(1);
 
   // Calendar
-  const [calendarBookings, setCalendarBookings] = useState<Record<string, { student: string; time: string; sortTime: string }[]>>({});
+  const [calendarBookings, setCalendarBookings] = useState<
+    Record<string, { student: string; time: string; sortTime: string }[]>
+  >({});
   // Admin-visible notes shown as chips on the main month calendar, keyed by yyyy-MM-dd
-  const [calendarNotes, setCalendarNotes] = useState<Record<string, MonthCalendarEvent[]>>({});
+  const [calendarNotes, setCalendarNotes] = useState<
+    Record<string, MonthCalendarEvent[]>
+  >({});
   const monthNotesReqIdRef = useRef(0);
   const monthCalendarEvents = useMemo(() => {
     const merged: Record<string, MonthCalendarEvent[]> = {};
-    Object.entries(calendarBookings).forEach(([key, list]) => { merged[key] = [...list]; });
+    Object.entries(calendarBookings).forEach(([key, list]) => {
+      merged[key] = [...list];
+    });
     Object.entries(calendarNotes).forEach(([key, list]) => {
       merged[key] = [...(merged[key] || []), ...list];
     });
     return merged;
   }, [calendarBookings, calendarNotes]);
   const [selectedDayBookings, setSelectedDayBookings] = useState<Booking[]>([]);
-  const [selectedDayNotes, setSelectedDayNotes] = useState<MonthCalendarEvent[]>([]);
+  const [selectedDayNotes, setSelectedDayNotes] = useState<
+    MonthCalendarEvent[]
+  >([]);
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
   // Bookings + notes merged into one chronological list for the day-schedule modal
   const dayScheduleItems = useMemo(() => {
@@ -198,18 +341,27 @@ const TeacherDashboard = () => {
       | { kind: "note"; sortTime: string; note: MonthCalendarEvent };
     const items: DayItem[] = [
       ...selectedDayBookings.map((b) => ({
-        kind: "booking" as const, sortTime: fmtDate(b.appointment_date, "HH:mm"), booking: b,
+        kind: "booking" as const,
+        sortTime: fmtDate(b.appointment_date, "HH:mm"),
+        booking: b,
       })),
       ...selectedDayNotes.map((n) => ({
-        kind: "note" as const, sortTime: n.sortTime || "", note: n,
+        kind: "note" as const,
+        sortTime: n.sortTime || "",
+        note: n,
       })),
     ];
     return items.sort((a, b) => a.sortTime.localeCompare(b.sortTime));
   }, [selectedDayBookings, selectedDayNotes]);
   const [showDayModal, setShowDayModal] = useState(false);
   // Inline class-info editing inside the day modal
-  const [dayModalEditingId, setDayModalEditingId] = useState<number | null>(null);
-  const [dayModalForm, setDayModalForm] = useState({ class_mode: "", meeting_link: "" });
+  const [dayModalEditingId, setDayModalEditingId] = useState<number | null>(
+    null,
+  );
+  const [dayModalForm, setDayModalForm] = useState({
+    class_mode: "",
+    meeting_link: "",
+  });
   const [dayModalOtherMode, setDayModalOtherMode] = useState(false);
   const [dayModalSaving, setDayModalSaving] = useState(false);
   const [dayModalError, setDayModalError] = useState<string | null>(null);
@@ -218,47 +370,81 @@ const TeacherDashboard = () => {
   // Confirm classes
   const [doneLoadingId, setDoneLoadingId] = useState<number | null>(null);
   const [absentLoadingId, setAbsentLoadingId] = useState<number | null>(null);
-  const [postDoneReport, setPostDoneReport] = useState<{ bookingId: number; studentId: number; studentName: string; classDate: string } | null>(null);
+  const [postDoneReport, setPostDoneReport] = useState<{
+    bookingId: number;
+    studentId: number;
+    studentName: string;
+    classDate: string;
+  } | null>(null);
 
   // Classes page — completed filter
   const [classesMonth, setClassesMonth] = useState(new Date().getMonth() + 1);
   const [classesYear, setClassesYear] = useState(new Date().getFullYear());
-  const [filteredCompleted, setFilteredCompleted] = useState<CompletedBooking[]>([]);
+  const [filteredCompleted, setFilteredCompleted] = useState<
+    CompletedBooking[]
+  >([]);
   const [filteredLoading, setFilteredLoading] = useState(false);
 
   // Class info modal (upcoming)
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
-  const [classForm, setClassForm] = useState({ class_mode: "", meeting_link: "" });
+  const [classForm, setClassForm] = useState({
+    class_mode: "",
+    meeting_link: "",
+  });
   const [classInfoLoading, setClassInfoLoading] = useState(false);
   const [classInfoError, setClassInfoError] = useState<string | null>(null);
-  const classModeOptions = ["Voov/Tencent","Classin","Google Meet","Zoom","Others"];
-  const knownModes = ["Voov/Tencent","Classin","Google Meet","Zoom"];
+  const classModeOptions = [
+    "Voov/Tencent",
+    "Classin",
+    "Google Meet",
+    "Zoom",
+    "Others",
+  ];
+  const knownModes = ["Voov/Tencent", "Classin", "Google Meet", "Zoom"];
   const [otherModeActive, setOtherModeActive] = useState(false);
-  const selectValue = otherModeActive || (classForm.class_mode !== "" && !knownModes.includes(classForm.class_mode)) ? "Others" : classForm.class_mode;
+  const selectValue =
+    otherModeActive ||
+    (classForm.class_mode !== "" && !knownModes.includes(classForm.class_mode))
+      ? "Others"
+      : classForm.class_mode;
 
   // Bulk selection for class info
-  const [selectedBookingIds, setSelectedBookingIds] = useState<Set<number>>(new Set());
+  const [selectedBookingIds, setSelectedBookingIds] = useState<Set<number>>(
+    new Set(),
+  );
   const [bulkClassInfoOpen, setBulkClassInfoOpen] = useState(false);
 
   // Cancel booking
   const [cancelConfirm, setCancelConfirm] = useState<Booking | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelBlocked, setCancelBlocked] = useState(false);
-  const [recurringCancelBooking, setRecurringCancelBooking] = useState<Booking | null>(null);
+  const [recurringCancelBooking, setRecurringCancelBooking] =
+    useState<Booking | null>(null);
 
   // Leave modal
   const [showLeaveModal, setShowLeaveModal] = useState(false);
-  const [leaveForm, setLeaveForm] = useState({ leave_date: "", reason_type: "personal", notes: "" });
+  const [leaveForm, setLeaveForm] = useState({
+    leave_date: "",
+    reason_type: "personal",
+    notes: "",
+  });
   const [leaveLoading, setLeaveLoading] = useState(false);
 
   // Profile edit
-  const [profileForm, setProfileForm] = useState({ name: "", email: "", password: "", timezone: "UTC" });
+  const [profileForm, setProfileForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    timezone: "UTC",
+  });
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSuccess, setProfileSuccess] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
 
   // Weekly availability
-  const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(new Date()));
+  const [weekStart, setWeekStart] = useState<Date>(() =>
+    getWeekStart(new Date()),
+  );
   const [openSlots, setOpenSlots] = useState<Set<string>>(new Set());
   const [weekSlotsLoading, setWeekSlotsLoading] = useState(false);
   const [togglingSlot, setTogglingSlot] = useState<string | null>(null);
@@ -267,8 +453,21 @@ const TeacherDashboard = () => {
   const [weekBookings, setWeekBookings] = useState<WeekBooking[]>([]);
 
   // Personal calendar notes (e.g. "LUNCH") on closed slots — double-click a slot to add
-  const [slotNotes, setSlotNotes] = useState<Map<string, { note_text: string; admin_visibility: boolean; note_color: string; note_icon: string | null }>>(new Map());
-  const [noteDialogSlot, setNoteDialogSlot] = useState<{ dateStr: string; time: string } | null>(null);
+  const [slotNotes, setSlotNotes] = useState<
+    Map<
+      string,
+      {
+        note_text: string;
+        admin_visibility: boolean;
+        note_color: string;
+        note_icon: string | null;
+      }
+    >
+  >(new Map());
+  const [noteDialogSlot, setNoteDialogSlot] = useState<{
+    dateStr: string;
+    time: string;
+  } | null>(null);
   const [noteText, setNoteText] = useState("");
   const [noteAdminVisible, setNoteAdminVisible] = useState(false);
   const [noteColor, setNoteColor] = useState(DEFAULT_NOTE_COLOR);
@@ -284,20 +483,39 @@ const TeacherDashboard = () => {
   const [recurringAvailEnd, setRecurringAvailEnd] = useState("17:00");
   const [recurringAvailWeeks, setRecurringAvailWeeks] = useState(4);
   const [recurringAvailLoading, setRecurringAvailLoading] = useState(false);
-  const [recurringAvailMsg, setRecurringAvailMsg] = useState<string | null>(null);
+  const [recurringAvailMsg, setRecurringAvailMsg] = useState<string | null>(
+    null,
+  );
   const [clearingWeek, setClearingWeek] = useState(false);
 
   // Report modal
-  const [reportModal, setReportModal] = useState<{ open: boolean; bookingId: number; studentId: number; studentName: string; classDate: string }>({
-    open: false, bookingId: 0, studentId: 0, studentName: "", classDate: "",
+  const [reportModal, setReportModal] = useState<{
+    open: boolean;
+    bookingId: number;
+    studentId: number;
+    studentName: string;
+    classDate: string;
+  }>({
+    open: false,
+    bookingId: 0,
+    studentId: 0,
+    studentName: "",
+    classDate: "",
   });
 
   const fetchData = async () => {
     try {
       const [dashRes, settingsRes, feedbackRes] = await Promise.all([
-        axios.get(`${import.meta.env.VITE_API_URL}/api/teacher/dashboard`, { headers }),
-        axios.get(`${import.meta.env.VITE_API_URL}/api/admin/company-settings`, { headers }),
-        axios.get(`${import.meta.env.VITE_API_URL}/api/teacher/feedback`, { headers }),
+        axios.get(`${import.meta.env.VITE_API_URL}/api/teacher/dashboard`, {
+          headers,
+        }),
+        axios.get(
+          `${import.meta.env.VITE_API_URL}/api/admin/company-settings`,
+          { headers },
+        ),
+        axios.get(`${import.meta.env.VITE_API_URL}/api/teacher/feedback`, {
+          headers,
+        }),
       ]);
       const dash = dashRes.data;
       setTeacher(dash.teacher);
@@ -316,21 +534,33 @@ const TeacherDashboard = () => {
       setFeedback(feedbackRes.data || []);
 
       // Build calendar map
-      const calMap: Record<string, { student: string; time: string; sortTime: string }[]> = {};
+      const calMap: Record<
+        string,
+        { student: string; time: string; sortTime: string }[]
+      > = {};
       [...(dash.bookings as Booking[])]
-        .sort((a, b) => new Date(a.appointment_date).getTime() - new Date(b.appointment_date).getTime())
+        .sort(
+          (a, b) =>
+            new Date(a.appointment_date).getTime() -
+            new Date(b.appointment_date).getTime(),
+        )
         .forEach((b) => {
-        const key = fmtDate(b.appointment_date, "yyyy-MM-dd");
-        if (!calMap[key]) calMap[key] = [];
-        calMap[key].push({
-          student: b.student_name, time: fmtDate(b.appointment_date, "h:mm a"),
-          sortTime: fmtDate(b.appointment_date, "HH:mm"),
+          const key = fmtDate(b.appointment_date, "yyyy-MM-dd");
+          if (!calMap[key]) calMap[key] = [];
+          calMap[key].push({
+            student: b.student_name,
+            time: fmtDate(b.appointment_date, "h:mm a"),
+            sortTime: fmtDate(b.appointment_date, "HH:mm"),
+          });
         });
-      });
       setCalendarBookings(calMap);
 
       // Profile form seed
-      setProfileForm((prev) => ({ ...prev, name: dash.teacher?.name || "", email: dash.teacher?.email || "" }));
+      setProfileForm((prev) => ({
+        ...prev,
+        name: dash.teacher?.name || "",
+        email: dash.teacher?.email || "",
+      }));
     } catch (err) {
       console.error("Error fetching teacher dashboard:", err);
     } finally {
@@ -340,7 +570,10 @@ const TeacherDashboard = () => {
 
   const fetchPending = async () => {
     try {
-      const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/teacher/pending-confirmation`, { headers });
+      const res = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/teacher/pending-confirmation`,
+        { headers },
+      );
       setPendingConfirmation(res.data || []);
     } catch {
       // non-critical
@@ -349,19 +582,25 @@ const TeacherDashboard = () => {
 
   const fetchLeaves = async () => {
     try {
-      const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/teacher/leaves`, { headers });
+      const res = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/teacher/leaves`,
+        { headers },
+      );
       setLeaves(res.data);
     } catch (err) {
       console.error(err);
     }
   };
 
-  const fetchFilteredCompleted = async (month = classesMonth, year = classesYear) => {
+  const fetchFilteredCompleted = async (
+    month = classesMonth,
+    year = classesYear,
+  ) => {
     setFilteredLoading(true);
     try {
       const res = await axios.get(
         `${import.meta.env.VITE_API_URL}/api/teacher/completed-classes?month=${month}&year=${year}`,
-        { headers }
+        { headers },
       );
       setFilteredCompleted(res.data);
     } catch (err) {
@@ -377,12 +616,12 @@ const TeacherDashboard = () => {
       const startStr = start.toLocaleDateString("en-CA");
       const res = await axios.get(
         `${import.meta.env.VITE_API_URL}/api/teacher/weekly-slots?startDate=${startStr}`,
-        { headers }
+        { headers },
       );
       const slotSet = new Set<string>(
         (res.data as { slot_date: string; slot_time: string }[]).map(
-          (s) => `${s.slot_date}|${s.slot_time}`
-        )
+          (s) => `${s.slot_date}|${s.slot_time}`,
+        ),
       );
       setOpenSlots(slotSet);
     } catch {
@@ -397,7 +636,7 @@ const TeacherDashboard = () => {
       const startStr = start.toLocaleDateString("en-CA");
       const res = await axios.get(
         `${import.meta.env.VITE_API_URL}/api/teacher/week-bookings?startDate=${startStr}`,
-        { headers }
+        { headers },
       );
       setWeekBookings(res.data || []);
     } catch {
@@ -414,7 +653,7 @@ const TeacherDashboard = () => {
       await axios.post(
         `${import.meta.env.VITE_API_URL}/api/teacher/weekly-slots`,
         { slot_date: dateStr, slot_time: `${time}:00`, action },
-        { headers }
+        { headers },
       );
       setOpenSlots((prev) => {
         const next = new Set(prev);
@@ -424,8 +663,8 @@ const TeacherDashboard = () => {
       });
     } catch (err: unknown) {
       alert(
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-          "Failed to update slot"
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to update slot",
       );
     } finally {
       setTogglingSlot(null);
@@ -458,13 +697,32 @@ const TeacherDashboard = () => {
       const startStr = start.toLocaleDateString("en-CA");
       const res = await axios.get(
         `${import.meta.env.VITE_API_URL}/api/teacher/notes?startDate=${startStr}`,
-        { headers }
+        { headers },
       );
-      const noteMap = new Map<string, { note_text: string; admin_visibility: boolean; note_color: string; note_icon: string | null }>();
-      (res.data as { note_date: string; slot_time: string; note_text: string; admin_visibility: boolean; note_color: string; note_icon: string | null }[]).forEach((n) => {
+      const noteMap = new Map<
+        string,
+        {
+          note_text: string;
+          admin_visibility: boolean;
+          note_color: string;
+          note_icon: string | null;
+        }
+      >();
+      (
+        res.data as {
+          note_date: string;
+          slot_time: string;
+          note_text: string;
+          admin_visibility: boolean;
+          note_color: string;
+          note_icon: string | null;
+        }[]
+      ).forEach((n) => {
         noteMap.set(`${n.note_date}|${n.slot_time}`, {
-          note_text: n.note_text, admin_visibility: n.admin_visibility,
-          note_color: n.note_color, note_icon: n.note_icon,
+          note_text: n.note_text,
+          admin_visibility: n.admin_visibility,
+          note_color: n.note_color,
+          note_icon: n.note_icon,
         });
       });
       setSlotNotes(noteMap);
@@ -481,20 +739,33 @@ const TeacherDashboard = () => {
       const end = new Date(year, month + 1, 1).toLocaleDateString("en-CA");
       const res = await axios.get(
         `${import.meta.env.VITE_API_URL}/api/teacher/notes?startDate=${start}&endDate=${end}`,
-        { headers }
+        { headers },
       );
       if (reqId !== monthNotesReqIdRef.current) return; // a newer month was requested since
       // Drop notes on days already past, matching how the backend only returns
       // upcoming bookings (DATE(appointment_date) >= today) — past cells stay empty.
       const today = new Date().toLocaleDateString("en-CA");
       const noteMap: Record<string, MonthCalendarEvent[]> = {};
-      (res.data as { note_date: string; slot_time: string; note_text: string; admin_visibility: boolean; note_color: string; note_icon: string | null }[])
+      (
+        res.data as {
+          note_date: string;
+          slot_time: string;
+          note_text: string;
+          admin_visibility: boolean;
+          note_color: string;
+          note_icon: string | null;
+        }[]
+      )
         .filter((n) => n.admin_visibility && n.note_date >= today)
         .forEach((n) => {
           if (!noteMap[n.note_date]) noteMap[n.note_date] = [];
           noteMap[n.note_date].push({
-            kind: "note", time: fmt12(n.slot_time), sortTime: n.slot_time,
-            noteText: n.note_text, noteColor: n.note_color, noteIcon: n.note_icon,
+            kind: "note",
+            time: fmt12(n.slot_time),
+            sortTime: n.slot_time,
+            noteText: n.note_text,
+            noteColor: n.note_color,
+            noteIcon: n.note_icon,
           });
         });
       setCalendarNotes(noteMap);
@@ -523,10 +794,14 @@ const TeacherDashboard = () => {
       await axios.post(
         `${import.meta.env.VITE_API_URL}/api/teacher/notes`,
         {
-          note_date: dateStr, slot_time: `${time}:00`, note_text: noteText.trim(),
-          admin_visibility: noteAdminVisible, note_color: noteColor, note_icon: noteIcon || null,
+          note_date: dateStr,
+          slot_time: `${time}:00`,
+          note_text: noteText.trim(),
+          admin_visibility: noteAdminVisible,
+          note_color: noteColor,
+          note_icon: noteIcon || null,
         },
-        { headers }
+        { headers },
       );
       // Saving a note always closes the slot — reflect that locally
       setOpenSlots((prev) => {
@@ -537,12 +812,20 @@ const TeacherDashboard = () => {
       });
       setSlotNotes((prev) => {
         const next = new Map(prev);
-        next.set(key, { note_text: noteText.trim(), admin_visibility: noteAdminVisible, note_color: noteColor, note_icon: noteIcon || null });
+        next.set(key, {
+          note_text: noteText.trim(),
+          admin_visibility: noteAdminVisible,
+          note_color: noteColor,
+          note_icon: noteIcon || null,
+        });
         return next;
       });
       setNoteDialogSlot(null);
     } catch (err: unknown) {
-      setNoteError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to save note");
+      setNoteError(
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to save note",
+      );
     } finally {
       setNoteSaving(false);
     }
@@ -556,7 +839,8 @@ const TeacherDashboard = () => {
     setNoteError(null);
     try {
       await axios.delete(`${import.meta.env.VITE_API_URL}/api/teacher/notes`, {
-        headers, data: { note_date: dateStr, slot_time: `${time}:00` },
+        headers,
+        data: { note_date: dateStr, slot_time: `${time}:00` },
       });
       setSlotNotes((prev) => {
         const next = new Map(prev);
@@ -565,7 +849,10 @@ const TeacherDashboard = () => {
       });
       setNoteDialogSlot(null);
     } catch (err: unknown) {
-      setNoteError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to remove note");
+      setNoteError(
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to remove note",
+      );
     } finally {
       setNoteSaving(false);
     }
@@ -578,14 +865,20 @@ const TeacherDashboard = () => {
     try {
       const res = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/teacher/weekly-slots/recurring`,
-        { days: recurringAvailDays, start_time: recurringAvailStart, end_time: recurringAvailEnd, weeks: recurringAvailWeeks },
-        { headers }
+        {
+          days: recurringAvailDays,
+          start_time: recurringAvailStart,
+          end_time: recurringAvailEnd,
+          weeks: recurringAvailWeeks,
+        },
+        { headers },
       );
       setRecurringAvailMsg(`Done! ${res.data.slotsCreated} slots opened.`);
       fetchOpenSlots(weekStart);
     } catch (err: unknown) {
       setRecurringAvailMsg(
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to set recurring schedule."
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to set recurring schedule.",
       );
     } finally {
       setRecurringAvailLoading(false);
@@ -599,7 +892,7 @@ const TeacherDashboard = () => {
       const startStr = weekStart.toLocaleDateString("en-CA");
       await axios.delete(
         `${import.meta.env.VITE_API_URL}/api/teacher/weekly-slots/week?startDate=${startStr}`,
-        { headers }
+        { headers },
       );
       fetchOpenSlots(weekStart);
     } catch {
@@ -622,7 +915,10 @@ const TeacherDashboard = () => {
   };
 
   useEffect(() => {
-    if (!token) { navigate("/login"); return; }
+    if (!token) {
+      navigate("/login");
+      return;
+    }
     fetchData();
     fetchPending();
     fetchLeaves();
@@ -630,8 +926,14 @@ const TeacherDashboard = () => {
 
   // Fetch profile timezone separately
   useEffect(() => {
-    axios.get(`${import.meta.env.VITE_API_URL}/api/teacher/profile`, { headers })
-      .then(res => setProfileForm(prev => ({ ...prev, timezone: res.data.timezone || "UTC" })))
+    axios
+      .get(`${import.meta.env.VITE_API_URL}/api/teacher/profile`, { headers })
+      .then((res) =>
+        setProfileForm((prev) => ({
+          ...prev,
+          timezone: res.data.timezone || "UTC",
+        })),
+      )
       .catch(() => {});
   }, []);
 
@@ -651,31 +953,59 @@ const TeacherDashboard = () => {
 
   // Computed — use fmtDate for consistent date handling (appointment_date is stored as display time)
   const todayKey = fmtDate(new Date().toISOString(), "yyyy-MM-dd");
-  const todayUpcoming = bookings.filter(b => fmtDate(b.appointment_date, "yyyy-MM-dd") === todayKey).length;
-  const todayCompleted = completedBookings.filter(b => fmtDate(b.appointment_date, "yyyy-MM-dd") === todayKey && b.status === "done").length;
+  const todayUpcoming = bookings.filter(
+    (b) => fmtDate(b.appointment_date, "yyyy-MM-dd") === todayKey,
+  ).length;
+  const todayCompleted = completedBookings.filter(
+    (b) =>
+      fmtDate(b.appointment_date, "yyyy-MM-dd") === todayKey &&
+      b.status === "done",
+  ).length;
 
   // Filtered + sorted upcoming classes (derived, no state needed)
   const filteredUpcoming = bookings
-    .filter(b => {
+    .filter((b) => {
       if (upcomingSearch) {
         const q = upcomingSearch.toLowerCase();
-        if (!b.student_name.toLowerCase().includes(q) && !(b.subject ?? "").toLowerCase().includes(q)) return false;
+        if (
+          !b.student_name.toLowerCase().includes(q) &&
+          !(b.subject ?? "").toLowerCase().includes(q)
+        )
+          return false;
       }
-      if (upcomingFilterStudent !== "all" && b.student_name !== upcomingFilterStudent) return false;
-      if (upcomingFilterNoClassInfo && (b.class_mode || b.meeting_link)) return false;
-      if (upcomingFilterDate && fmtDate(b.appointment_date, "yyyy-MM-dd") !== upcomingFilterDate) return false;
+      if (
+        upcomingFilterStudent !== "all" &&
+        b.student_name !== upcomingFilterStudent
+      )
+        return false;
+      if (upcomingFilterNoClassInfo && (b.class_mode || b.meeting_link))
+        return false;
+      if (
+        upcomingFilterDate &&
+        fmtDate(b.appointment_date, "yyyy-MM-dd") !== upcomingFilterDate
+      )
+        return false;
       return true;
     })
     .sort((a, b) => {
-      if (upcomingSort === "date-desc") return b.appointment_date.localeCompare(a.appointment_date);
-      if (upcomingSort === "student-asc") return a.student_name.localeCompare(b.student_name);
-      if (upcomingSort === "student-desc") return b.student_name.localeCompare(a.student_name);
+      if (upcomingSort === "date-desc")
+        return b.appointment_date.localeCompare(a.appointment_date);
+      if (upcomingSort === "student-asc")
+        return a.student_name.localeCompare(b.student_name);
+      if (upcomingSort === "student-desc")
+        return b.student_name.localeCompare(a.student_name);
       return a.appointment_date.localeCompare(b.appointment_date); // date-asc default
     });
 
   // Unique student names for the student filter dropdown
-  const upcomingStudentNames = [...new Set(bookings.map(b => b.student_name))].sort();
-  const hasUpcomingFilters = upcomingSearch || upcomingFilterStudent !== "all" || upcomingFilterDate || upcomingFilterNoClassInfo;
+  const upcomingStudentNames = [
+    ...new Set(bookings.map((b) => b.student_name)),
+  ].sort();
+  const hasUpcomingFilters =
+    upcomingSearch ||
+    upcomingFilterStudent !== "all" ||
+    upcomingFilterDate ||
+    upcomingFilterNoClassInfo;
 
   const weekDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
@@ -687,19 +1017,24 @@ const TeacherDashboard = () => {
   // Multi-slot bookings (slot_count > 1) are expanded into every 30-min slot they occupy
   // so the availability grid marks ALL covered slots as booked, not just the first.
   const bookedSlotKeys = new Set<string>(
-    bookings.flatMap(b => slotKeysFor(b.appointment_date, b.slot_count))
+    bookings.flatMap((b) => slotKeysFor(b.appointment_date, b.slot_count)),
   );
 
   // Same expansion for the whole displayed week, but keyed to the booking itself so past
   // cells can render who the class was with instead of going blank.
   const weekBookingBySlot = new Map<string, WeekBooking>();
-  weekBookings.forEach(b => {
-    slotKeysFor(b.appointment_date, b.slot_count).forEach(k => weekBookingBySlot.set(k, b));
+  weekBookings.forEach((b) => {
+    slotKeysFor(b.appointment_date, b.slot_count).forEach((k) =>
+      weekBookingBySlot.set(k, b),
+    );
   });
 
   // Handlers
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const handleLogout = () => { authContext?.logout(); navigate("/"); };
+  const handleLogout = () => {
+    authContext?.logout();
+    navigate("/");
+  };
 
   // Empty unless this teacher has linked another account of their own (e.g. admin)
   const { accounts: linkedAccounts, switchTo, switching } = useLinkedAccounts();
@@ -707,14 +1042,26 @@ const TeacherDashboard = () => {
   const handleMarkDone = async (item: PendingItem) => {
     setDoneLoadingId(item.id);
     try {
-      await axios.post(`${import.meta.env.VITE_API_URL}/api/teacher/bookings/${item.id}/done`, {}, { headers });
-      setPendingConfirmation(prev => prev.filter(p => p.id !== item.id));
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/teacher/bookings/${item.id}/done`,
+        {},
+        { headers },
+      );
+      setPendingConfirmation((prev) => prev.filter((p) => p.id !== item.id));
       fetchData();
       fetchWeekBookings(weekStart); // the grid shows this past class — refresh its status
       // Open report modal right after marking done
-      setPostDoneReport({ bookingId: item.id, studentId: item.student_id, studentName: item.student_name, classDate: item.appointment_date });
+      setPostDoneReport({
+        bookingId: item.id,
+        studentId: item.student_id,
+        studentName: item.student_name,
+        classDate: item.appointment_date,
+      });
     } catch (err: unknown) {
-      alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to confirm class");
+      alert(
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to confirm class",
+      );
     } finally {
       setDoneLoadingId(null);
     }
@@ -723,10 +1070,21 @@ const TeacherDashboard = () => {
   const handleMarkStudentAbsent = async (bookingId: number) => {
     setAbsentLoadingId(bookingId);
     try {
-      await axios.post(`${import.meta.env.VITE_API_URL}/api/teacher/bookings/${bookingId}/mark-student-absent`, {}, { headers });
-      setPendingConfirmation(prev => prev.map(p => p.id === bookingId ? { ...p, student_absent: true } : p));
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/teacher/bookings/${bookingId}/mark-student-absent`,
+        {},
+        { headers },
+      );
+      setPendingConfirmation((prev) =>
+        prev.map((p) =>
+          p.id === bookingId ? { ...p, student_absent: true } : p,
+        ),
+      );
     } catch (err: unknown) {
-      alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to mark absent");
+      alert(
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to mark absent",
+      );
     } finally {
       setAbsentLoadingId(null);
     }
@@ -737,11 +1095,18 @@ const TeacherDashboard = () => {
     setClassInfoLoading(true);
     setClassInfoError(null);
     try {
-      await axios.put(`${import.meta.env.VITE_API_URL}/api/teacher/bookings/${editingBooking.id}/class-info`, classForm, { headers });
+      await axios.put(
+        `${import.meta.env.VITE_API_URL}/api/teacher/bookings/${editingBooking.id}/class-info`,
+        classForm,
+        { headers },
+      );
       setEditingBooking(null);
       fetchData();
     } catch (err: unknown) {
-      setClassInfoError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to update");
+      setClassInfoError(
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to update",
+      );
     } finally {
       setClassInfoLoading(false);
     }
@@ -755,26 +1120,34 @@ const TeacherDashboard = () => {
       await axios.put(
         `${import.meta.env.VITE_API_URL}/api/teacher/bookings/${dayModalEditingId}/class-info`,
         dayModalForm,
-        { headers }
+        { headers },
       );
       // Update the booking in selectedDayBookings and the main bookings list
-      setSelectedDayBookings(prev =>
-        prev.map(b => b.id === dayModalEditingId
-          ? { ...b, class_mode: dayModalForm.class_mode || null, meeting_link: dayModalForm.meeting_link || null }
-          : b
-        )
+      setSelectedDayBookings((prev) =>
+        prev.map((b) =>
+          b.id === dayModalEditingId
+            ? {
+                ...b,
+                class_mode: dayModalForm.class_mode || null,
+                meeting_link: dayModalForm.meeting_link || null,
+              }
+            : b,
+        ),
       );
       setDayModalEditingId(null);
       fetchData();
     } catch (err: unknown) {
-      setDayModalError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to update");
+      setDayModalError(
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to update",
+      );
     } finally {
       setDayModalSaving(false);
     }
   };
 
   const toggleBookingSelection = (id: number) => {
-    setSelectedBookingIds(prev => {
+    setSelectedBookingIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -783,8 +1156,8 @@ const TeacherDashboard = () => {
   };
 
   const toggleSelectAll = () => {
-    const visibleIds = filteredUpcoming.map(b => b.id);
-    if (visibleIds.every(id => selectedBookingIds.has(id))) {
+    const visibleIds = filteredUpcoming.map((b) => b.id);
+    if (visibleIds.every((id) => selectedBookingIds.has(id))) {
       setSelectedBookingIds(new Set());
     } else {
       setSelectedBookingIds(new Set(visibleIds));
@@ -799,13 +1172,16 @@ const TeacherDashboard = () => {
       await axios.put(
         `${import.meta.env.VITE_API_URL}/api/teacher/bookings/bulk-class-info`,
         { booking_ids: Array.from(selectedBookingIds), ...classForm },
-        { headers }
+        { headers },
       );
       setBulkClassInfoOpen(false);
       setSelectedBookingIds(new Set());
       fetchData();
     } catch (err: unknown) {
-      setClassInfoError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to update");
+      setClassInfoError(
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to update",
+      );
     } finally {
       setClassInfoLoading(false);
     }
@@ -825,7 +1201,10 @@ const TeacherDashboard = () => {
       fetchData();
       fetchWeekBookings(weekStart);
     } catch (err: unknown) {
-      alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to cancel");
+      alert(
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to cancel",
+      );
     } finally {
       setCancelLoading(false);
     }
@@ -842,7 +1221,11 @@ const TeacherDashboard = () => {
   const handleSubmitLeave = async () => {
     setLeaveLoading(true);
     try {
-      await axios.post(`${import.meta.env.VITE_API_URL}/api/teacher/leaves`, leaveForm, { headers });
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/teacher/leaves`,
+        leaveForm,
+        { headers },
+      );
       setShowLeaveModal(false);
       setLeaveForm({ leave_date: "", reason_type: "personal", notes: "" });
       fetchLeaves();
@@ -855,7 +1238,10 @@ const TeacherDashboard = () => {
 
   const handleCancelLeave = async (id: number) => {
     try {
-      await axios.delete(`${import.meta.env.VITE_API_URL}/api/teacher/leaves/${id}`, { headers });
+      await axios.delete(
+        `${import.meta.env.VITE_API_URL}/api/teacher/leaves/${id}`,
+        { headers },
+      );
       fetchLeaves();
     } catch (err) {
       console.error(err);
@@ -867,21 +1253,38 @@ const TeacherDashboard = () => {
     setProfileError(null);
     setProfileSuccess(false);
     try {
-      const payload: Record<string, string> = { name: profileForm.name, email: profileForm.email, timezone: profileForm.timezone };
+      const payload: Record<string, string> = {
+        name: profileForm.name,
+        email: profileForm.email,
+        timezone: profileForm.timezone,
+      };
       if (profileForm.password) payload.password = profileForm.password;
-      await axios.put(`${import.meta.env.VITE_API_URL}/api/teacher/profile`, payload, { headers });
+      await axios.put(
+        `${import.meta.env.VITE_API_URL}/api/teacher/profile`,
+        payload,
+        { headers },
+      );
       setProfileSuccess(true);
-      setProfileForm(prev => ({ ...prev, password: "" }));
+      setProfileForm((prev) => ({ ...prev, password: "" }));
       fetchData();
     } catch (err: unknown) {
-      setProfileError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to update profile");
+      setProfileError(
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to update profile",
+      );
     } finally {
       setProfileLoading(false);
     }
   };
 
   const openReport = (b: CompletedBooking) =>
-    setReportModal({ open: true, bookingId: b.id, studentId: b.student_id, studentName: b.student_name, classDate: b.appointment_date });
+    setReportModal({
+      open: true,
+      bookingId: b.id,
+      studentId: b.student_id,
+      studentName: b.student_name,
+      classDate: b.appointment_date,
+    });
 
   if (loading) {
     return (
@@ -893,9 +1296,21 @@ const TeacherDashboard = () => {
 
   // --- NAV ---
   const navItems: { key: Page; label: string; icon: React.ReactNode }[] = [
-    { key: "dashboard", label: "Dashboard", icon: <CalendarDays className="h-4 w-4" /> },
-    { key: "classes", label: "My Classes", icon: <LayoutList className="h-4 w-4" /> },
-    { key: "profile", label: "Profile", icon: <UserCircle className="h-4 w-4" /> },
+    {
+      key: "dashboard",
+      label: "Dashboard",
+      icon: <CalendarDays className="h-4 w-4" />,
+    },
+    {
+      key: "classes",
+      label: "My Classes",
+      icon: <LayoutList className="h-4 w-4" />,
+    },
+    {
+      key: "profile",
+      label: "Profile",
+      icon: <UserCircle className="h-4 w-4" />,
+    },
   ];
 
   return (
@@ -906,28 +1321,45 @@ const TeacherDashboard = () => {
           <div className="flex items-center gap-3">
             <BrandLogo variant="white" />
             <div className="hidden min-[620px]:block">
-              <p className="text-xs text-white/60 leading-none">Welcome back,</p>
-              <p className="font-semibold text-sm leading-tight text-white">{teacher?.name || "Teacher"}</p>
+              <p className="text-xs text-white/60 leading-none">
+                Welcome back,
+              </p>
+              <p className="font-semibold text-sm leading-tight text-white">
+                {teacher?.name || "Teacher"}
+              </p>
             </div>
           </div>
 
           {/* Desktop (>= 620px) */}
           <div className="hidden min-[620px]:flex items-center gap-2">
-            <Badge className="bg-white/15 text-white border-0 text-xs">Teacher</Badge>
+            <Badge className="bg-white/15 text-white border-0 text-xs">
+              Teacher
+            </Badge>
             <InstallAppButton variant="white" />
             <NotificationBell variant="white" />
-            {linkedAccounts.map(acct => (
-              <Button key={acct.id} variant="ghost" size="sm" disabled={switching}
+            {linkedAccounts.map((acct) => (
+              <Button
+                key={acct.id}
+                variant="ghost"
+                size="sm"
+                disabled={switching}
                 onClick={() => switchTo(acct)}
-                className="h-9 gap-1.5 text-white/80 hover:text-white hover:bg-white/10">
+                className="h-9 gap-1.5 text-white/80 hover:text-white hover:bg-white/10"
+              >
                 <Repeat className="h-4 w-4" />
                 <span className="text-xs font-medium">
-                  {switching ? "Switching..." : `Switch to ${roleLabel(acct.role)}`}
+                  {switching
+                    ? "Switching..."
+                    : `Switch to ${roleLabel(acct.role)}`}
                 </span>
               </Button>
             ))}
-            <Button variant="ghost" size="icon" onClick={handleLogout}
-              className="h-9 w-9 text-white/70 hover:text-white hover:bg-white/10">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleLogout}
+              className="h-9 w-9 text-white/70 hover:text-white hover:bg-white/10"
+            >
               <LogOut className="h-5 w-5" />
             </Button>
           </div>
@@ -935,10 +1367,17 @@ const TeacherDashboard = () => {
           {/* Mobile (< 620px) */}
           <div className="flex min-[620px]:hidden items-center gap-1">
             <NotificationBell variant="white" />
-            <Button variant="ghost" size="icon"
+            <Button
+              variant="ghost"
+              size="icon"
               className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/10"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
+              {mobileMenuOpen ? (
+                <X className="h-5 w-5" />
+              ) : (
+                <Menu className="h-5 w-5" />
+              )}
             </Button>
           </div>
         </div>
@@ -946,29 +1385,45 @@ const TeacherDashboard = () => {
         {/* Mobile dropdown (< 620px) */}
         {mobileMenuOpen && (
           <div className="min-[620px]:hidden border-t border-white/10 pb-2">
-            <div className="px-4 py-2 text-sm text-white/80">{teacher?.name || "Teacher"}</div>
+            <div className="px-4 py-2 text-sm text-white/80">
+              {teacher?.name || "Teacher"}
+            </div>
             <div className="flex items-center gap-3 px-4 py-2">
               <InstallAppButton variant="white" />
             </div>
-            {linkedAccounts.map(acct => (
-              <button key={acct.id} disabled={switching}
-                onClick={() => { setMobileMenuOpen(false); switchTo(acct); }}
-                className="flex items-center gap-3 px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 w-full disabled:opacity-50">
+            {linkedAccounts.map((acct) => (
+              <button
+                key={acct.id}
+                disabled={switching}
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  switchTo(acct);
+                }}
+                className="flex items-center gap-3 px-4 py-3 text-white/80 hover:text-white hover:bg-white/10 w-full disabled:opacity-50"
+              >
                 <Repeat className="h-5 w-5" />
                 <span className="text-sm">
-                  {switching ? "Switching..." : `Switch to ${roleLabel(acct.role)}`}
+                  {switching
+                    ? "Switching..."
+                    : `Switch to ${roleLabel(acct.role)}`}
                 </span>
               </button>
             ))}
-            <button onClick={() => { setMobileMenuOpen(false); handleLogout(); }}
-              className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-red-200 hover:bg-white/10 w-full">
-              <LogOut className="h-5 w-5" /> <span className="text-sm">Logout</span>
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                handleLogout();
+              }}
+              className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-red-200 hover:bg-white/10 w-full"
+            >
+              <LogOut className="h-5 w-5" />{" "}
+              <span className="text-sm">Logout</span>
             </button>
           </div>
         )}
         {/* Nav tabs */}
         <div className="max-w-7xl mx-auto px-4 flex gap-0">
-          {navItems.map(item => (
+          {navItems.map((item) => (
             <button
               key={item.key}
               onClick={() => setPage(item.key)}
@@ -997,17 +1452,18 @@ const TeacherDashboard = () => {
               <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-gray-800">
-                  You're all set up, {teacher?.name?.split(" ")[0] || "there"} 👋
+                  You're all set up, {teacher?.name?.split(" ")[0] || "there"}{" "}
+                  👋
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Your account is ready and your school can see you. Your students
-                  and classes will show up here as soon as they're enrolled — nothing
-                  is missing.
+                  Your account is ready and your school can see you. Your
+                  students and classes will show up here as soon as they're
+                  enrolled — nothing is missing.
                 </p>
                 <p className="text-xs text-muted-foreground mt-1.5">
                   In the meantime, the most useful thing you can do is{" "}
-                  <strong>open your weekly availability</strong> — students can only
-                  book times you've marked as open.
+                  <strong>open your weekly availability</strong> — students can
+                  only book times you've marked as open.
                 </p>
               </div>
             </CardContent>
@@ -1021,7 +1477,9 @@ const TeacherDashboard = () => {
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
               {/* Left: KPI grid — 2/5 width */}
               <div className="space-y-4 lg:col-span-2">
-                <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Overview</h2>
+                <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+                  Overview
+                </h2>
                 <div className="grid grid-cols-2 gap-3">
                   <Card>
                     <CardContent className="p-3">
@@ -1033,7 +1491,9 @@ const TeacherDashboard = () => {
                   </Card>
                   <Card>
                     <CardContent className="p-3">
-                      <p className="text-xl font-bold text-orange-600">{todayUpcoming}</p>
+                      <p className="text-xl font-bold text-orange-600">
+                        {todayUpcoming}
+                      </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                         <CalendarDays className="h-3.5 w-3.5" /> Upcoming Today
                       </p>
@@ -1041,7 +1501,9 @@ const TeacherDashboard = () => {
                   </Card>
                   <Card>
                     <CardContent className="p-3">
-                      <p className="text-xl font-bold text-green-600">{todayCompleted}</p>
+                      <p className="text-xl font-bold text-green-600">
+                        {todayCompleted}
+                      </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                         <FileText className="h-3.5 w-3.5" /> Completed Today
                       </p>
@@ -1049,7 +1511,9 @@ const TeacherDashboard = () => {
                   </Card>
                   <Card>
                     <CardContent className="p-3">
-                      <p className="text-xl font-bold text-primary">{classesThisMonth}</p>
+                      <p className="text-xl font-bold text-primary">
+                        {classesThisMonth}
+                      </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                         <CalendarDays className="h-3.5 w-3.5" /> This Month
                       </p>
@@ -1058,40 +1522,56 @@ const TeacherDashboard = () => {
                 </div>
                 {/* This week stat */}
                 <div className="border rounded-lg p-3 bg-white flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Classes this week</span>
-                  <span className="font-bold text-blue-600 text-lg">{classesThisWeek}</span>
+                  <span className="text-sm text-muted-foreground">
+                    Classes this week
+                  </span>
+                  <span className="font-bold text-blue-600 text-lg">
+                    {classesThisWeek}
+                  </span>
                 </div>
                 {/* Weekly detail KPIs */}
                 <div className="grid grid-cols-2 gap-3">
                   <Card>
                     <CardContent className="p-3">
-                      <p className="text-xl font-bold text-emerald-600">{completedWithReportThisWeek}</p>
+                      <p className="text-xl font-bold text-emerald-600">
+                        {completedWithReportThisWeek}
+                      </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Completed This Week
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Completed This
+                        Week
                       </p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="p-3">
-                      <p className="text-xl font-bold text-red-500">{absentStudentsThisWeek}</p>
+                      <p className="text-xl font-bold text-red-500">
+                        {absentStudentsThisWeek}
+                      </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                        <UserX className="h-3.5 w-3.5" /> Absent Students This Week
+                        <UserX className="h-3.5 w-3.5" /> Absent Students This
+                        Week
                       </p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="p-3">
-                      <p className="text-xl font-bold text-indigo-600">{fiftyMinThisWeek}</p>
+                      <p className="text-xl font-bold text-indigo-600">
+                        {fiftyMinThisWeek}
+                      </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                        <Timer className="h-3.5 w-3.5" /> 50-min Completed This Week
+                        <Timer className="h-3.5 w-3.5" /> 50-min Completed This
+                        Week
                       </p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="p-3">
-                      <p className="text-xl font-bold text-violet-600">{twentyFiveMinThisWeek}</p>
+                      <p className="text-xl font-bold text-violet-600">
+                        {twentyFiveMinThisWeek}
+                      </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                        <Timer className="h-3.5 w-3.5" /> 25-min Completed This Week
+                        <Timer className="h-3.5 w-3.5" /> 25-min Completed This
+                        Week
                       </p>
                     </CardContent>
                   </Card>
@@ -1100,7 +1580,9 @@ const TeacherDashboard = () => {
                 {pendingConfirmation.length > 0 && (
                   <div className="border border-orange-200 rounded-lg p-3 bg-orange-50 flex items-center justify-between">
                     <span className="text-sm text-orange-700 font-medium">
-                      {pendingConfirmation.length} class{pendingConfirmation.length > 1 ? "es" : ""} pending confirmation
+                      {pendingConfirmation.length} class
+                      {pendingConfirmation.length > 1 ? "es" : ""} pending
+                      confirmation
                     </span>
                     <span className="text-xs text-orange-500">↓ see below</span>
                   </div>
@@ -1110,15 +1592,20 @@ const TeacherDashboard = () => {
                   <Card>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-primary" /> Recent Feedback ({feedback.length})
+                        <FileText className="h-4 w-4 text-primary" /> Recent
+                        Feedback ({feedback.length})
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2 max-h-40 overflow-y-auto">
-                      {feedback.slice(0, 3).map(f => (
+                      {feedback.slice(0, 3).map((f) => (
                         <div key={f.id} className="border rounded p-2 text-xs">
                           <div className="flex justify-between mb-0.5">
-                            <span className="font-medium">{f.student_name}</span>
-                            <span className="text-muted-foreground">{fmtDateOnly(f.created_at)}</span>
+                            <span className="font-medium">
+                              {f.student_name}
+                            </span>
+                            <span className="text-muted-foreground">
+                              {fmtDateOnly(f.created_at)}
+                            </span>
                           </div>
                           <p className="text-muted-foreground">{f.message}</p>
                         </div>
@@ -1130,11 +1617,15 @@ const TeacherDashboard = () => {
 
               {/* Right: Calendar — 3/5 width */}
               <div className="lg:col-span-3">
-                <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-4">My Schedule</h2>
+                <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-4">
+                  My Schedule
+                </h2>
                 <MonthCalendar
                   events={monthCalendarEvents}
                   onDayClick={(key) => {
-                    const dayBkgs = bookings.filter(b => fmtDate(b.appointment_date, "yyyy-MM-dd") === key);
+                    const dayBkgs = bookings.filter(
+                      (b) => fmtDate(b.appointment_date, "yyyy-MM-dd") === key,
+                    );
                     const dayNotes = calendarNotes[key] || [];
                     if (dayBkgs.length > 0 || dayNotes.length > 0) {
                       setSelectedDayBookings(dayBkgs);
@@ -1143,7 +1634,9 @@ const TeacherDashboard = () => {
                       setShowDayModal(true);
                     }
                   }}
-                  onMonthChange={(year, month) => { if (token) fetchMonthNotes(year, month); }}
+                  onMonthChange={(year, month) => {
+                    if (token) fetchMonthNotes(year, month);
+                  }}
                 />
               </div>
             </div>
@@ -1160,21 +1653,56 @@ const TeacherDashboard = () => {
                     </span>
                   </CardTitle>
                   <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { setRecurringAvailMsg(null); setShowRecurringAvail(true); }}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => {
+                        setRecurringAvailMsg(null);
+                        setShowRecurringAvail(true);
+                      }}
+                    >
                       Set Recurring
                     </Button>
-                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50" disabled={clearingWeek} onClick={handleClearWeek}>
-                      {clearingWeek ? <Loader2 className="h-3 w-3 animate-spin" /> : "Clear Week"}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                      disabled={clearingWeek}
+                      onClick={handleClearWeek}
+                    >
+                      {clearingWeek ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        "Clear Week"
+                      )}
                     </Button>
-                    <Button size="sm" variant="outline" className="h-7 px-2" onClick={prevWeek}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2"
+                      onClick={prevWeek}
+                    >
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
                     <span className="text-xs font-medium">
-                      {weekDays[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      {weekDays[0].toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}
                       {" – "}
-                      {weekDays[6].toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      {weekDays[6].toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
                     </span>
-                    <Button size="sm" variant="outline" className="h-7 px-2" onClick={nextWeek}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2"
+                      onClick={nextWeek}
+                    >
                       <ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>
@@ -1183,19 +1711,24 @@ const TeacherDashboard = () => {
               <CardContent>
                 <div className="flex items-center gap-4 mb-3 text-xs flex-wrap">
                   <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-sm bg-green-500 inline-block" /> Booked
+                    <span className="w-3 h-3 rounded-sm bg-green-500 inline-block" />{" "}
+                    Booked
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-sm bg-green-200 inline-block" /> Open (Available)
+                    <span className="w-3 h-3 rounded-sm bg-green-200 inline-block" />{" "}
+                    Open (Available)
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-sm bg-gray-200 inline-block" /> Closed
+                    <span className="w-3 h-3 rounded-sm bg-gray-200 inline-block" />{" "}
+                    Closed
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-sm bg-gray-100 inline-block" /> Past (gray = history, read-only)
+                    <span className="w-3 h-3 rounded-sm bg-gray-100 inline-block" />{" "}
+                    Past (gray = history, read-only)
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-sm bg-amber-100 inline-block" /> Note — pick a color/icon (double-click a slot to add)
+                    <span className="w-3 h-3 rounded-sm bg-amber-100 inline-block" />{" "}
+                    Note — pick a color/icon (double-click a slot to add)
                   </span>
                 </div>
                 {weekSlotsLoading ? (
@@ -1211,7 +1744,8 @@ const TeacherDashboard = () => {
                             Time
                           </th>
                           {weekDays.map((day, i) => {
-                            const isToday = day.toDateString() === new Date().toDateString();
+                            const isToday =
+                              day.toDateString() === new Date().toDateString();
                             return (
                               <th
                                 key={i}
@@ -1220,10 +1754,23 @@ const TeacherDashboard = () => {
                                 }`}
                               >
                                 <div className="font-semibold">
-                                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][i]}
+                                  {
+                                    [
+                                      "Mon",
+                                      "Tue",
+                                      "Wed",
+                                      "Thu",
+                                      "Fri",
+                                      "Sat",
+                                      "Sun",
+                                    ][i]
+                                  }
                                 </div>
                                 <div className="text-muted-foreground font-normal">
-                                  {day.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                  {day.toLocaleDateString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                  })}
                                 </div>
                               </th>
                             );
@@ -1239,7 +1786,8 @@ const TeacherDashboard = () => {
                             {weekDays.map((day, i) => {
                               const dateStr = day.toLocaleDateString("en-CA");
                               const key = `${dateStr}|${time}`;
-                              const isPast = new Date(`${dateStr}T${time}:00`) < new Date();
+                              const isPast =
+                                new Date(`${dateStr}T${time}:00`) < new Date();
                               const isBooked = bookedSlotKeys.has(key);
                               const isOpen = openSlots.has(key);
                               const isToggling = togglingSlot === key;
@@ -1258,11 +1806,12 @@ const TeacherDashboard = () => {
                                   const outcome = pastBooking.student_absent
                                     ? "student absent"
                                     : pastBooking.teacher_absent
-                                    ? "you were absent"
-                                    : pastBooking.status === "done"
-                                    ? "completed"
-                                    : "not yet confirmed";
-                                  pastText = pastBooking.student_name.split(" ")[0];
+                                      ? "you were absent"
+                                      : pastBooking.status === "done"
+                                        ? "completed"
+                                        : "not yet confirmed";
+                                  pastText =
+                                    pastBooking.student_name.split(" ")[0];
                                   pastTitle = `${when} — ${pastBooking.student_name}${pastBooking.subject ? ` (${pastBooking.subject})` : ""} · ${outcome}`;
                                 } else if (note) {
                                   pastText = `${note.note_icon ? `${note.note_icon} ` : ""}${note.note_text}`;
@@ -1298,47 +1847,70 @@ const TeacherDashboard = () => {
                                         : "Class booked at this slot"
                                     }
                                   >
-                                    <span className="text-[10px] font-semibold text-white select-none truncate block max-w-[80px] mx-auto">
-                                      {booking ? booking.student_name.split(" ")[0] : "BOOKED"}
+                                    <span className="text-[11px] font-semibold text-white select-none truncate block max-w-[80px] mx-auto">
+                                      {booking
+                                        ? booking.student_name.split(" ")[0]
+                                        : "BOOKED"}
                                     </span>
                                   </td>
                                 );
                               }
 
-                              const noteBg = note && isValidHex(note.note_color) ? note.note_color : note ? DEFAULT_NOTE_COLOR : null;
+                              const noteBg =
+                                note && isValidHex(note.note_color)
+                                  ? note.note_color
+                                  : note
+                                    ? DEFAULT_NOTE_COLOR
+                                    : null;
 
                               return (
                                 <td
                                   key={i}
-                                  style={noteBg ? { backgroundColor: noteBg, color: getContrastText(noteBg) } : undefined}
+                                  style={
+                                    noteBg
+                                      ? {
+                                          backgroundColor: noteBg,
+                                          color: getContrastText(noteBg),
+                                        }
+                                      : undefined
+                                  }
                                   className={`border-b border-r p-1 text-center cursor-pointer transition-colors select-none ${
                                     noteBg
                                       ? "hover:brightness-95"
                                       : isOpen
-                                      ? "bg-green-100 hover:bg-green-200 text-green-700"
-                                      : "bg-white hover:bg-gray-100 text-gray-400"
+                                        ? "bg-green-100 hover:bg-green-200 text-green-700"
+                                        : "bg-white hover:bg-gray-100 text-gray-400"
                                   }`}
                                   onClick={() => {
                                     if (note) openNoteDialog(dateStr, time);
-                                    else if (!isToggling) handleSlotClick(dateStr, time);
+                                    else if (!isToggling)
+                                      handleSlotClick(dateStr, time);
                                   }}
-                                  onDoubleClick={() => !isOpen && handleSlotDoubleClick(dateStr, time)}
+                                  onDoubleClick={() =>
+                                    !isOpen &&
+                                    handleSlotDoubleClick(dateStr, time)
+                                  }
                                   title={
                                     note
                                       ? `${note.note_icon ? note.note_icon + " " : ""}${note.note_text}${note.admin_visibility ? " (visible to admin)" : " (private)"} — click to edit`
                                       : isOpen
-                                      ? "Click to close slot · close it first to add a note"
-                                      : "Click to open slot · double-click to add a note"
+                                        ? "Click to close slot · close it first to add a note"
+                                        : "Click to open slot · double-click to add a note"
                                   }
                                 >
                                   {isToggling ? (
                                     <Loader2 className="h-3 w-3 animate-spin mx-auto" />
                                   ) : note ? (
-                                    <span className="text-[10px] font-semibold truncate block max-w-[80px] mx-auto">
-                                      {note.note_icon ? `${note.note_icon} ` : ""}{note.note_text}
+                                    <span className="text-[11px] font-semibold truncate block max-w-[80px] mx-auto">
+                                      {note.note_icon
+                                        ? `${note.note_icon} `
+                                        : ""}
+                                      {note.note_text}
                                     </span>
                                   ) : (
-                                    <span className="text-[11px]">{isOpen ? "✓" : "+"}</span>
+                                    <span className="text-[11px]">
+                                      {isOpen ? "✓" : "+"}
+                                    </span>
                                   )}
                                 </td>
                               );
@@ -1380,7 +1952,10 @@ const TeacherDashboard = () => {
                   <TableBody>
                     {pendingConfirmation.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground text-sm py-8">
+                        <TableCell
+                          colSpan={6}
+                          className="text-center text-muted-foreground text-sm py-8"
+                        >
                           No classes pending confirmation
                         </TableCell>
                       </TableRow>
@@ -1389,29 +1964,52 @@ const TeacherDashboard = () => {
                         <TableRow key={b.id}>
                           <TableCell className="text-sm">
                             {fmtDate(b.appointment_date, "MMM d, h:mm a")}
-                            {(b.slot_count ?? 1) > 1 && <span className="ml-1 text-xs text-muted-foreground">({(b.slot_count ?? 1) * 30}min)</span>}
+                            {(b.slot_count ?? 1) > 1 && (
+                              <span className="ml-1 text-xs text-muted-foreground">
+                                ({(b.slot_count ?? 1) * 30}min)
+                              </span>
+                            )}
                           </TableCell>
-                          <TableCell className="font-medium">{b.student_name}</TableCell>
-                          <TableCell className="text-xs">{b.duration_minutes} min</TableCell>
+                          <TableCell className="font-medium">
+                            {b.student_name}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {b.duration_minutes} min
+                          </TableCell>
                           <TableCell className="text-xs">{b.subject}</TableCell>
                           <TableCell>
                             {b.student_absent ? (
-                              <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium">Absent</span>
+                              <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium">
+                                Absent
+                              </span>
                             ) : (
-                              <Button size="sm" variant="outline"
+                              <Button
+                                size="sm"
+                                variant="outline"
                                 className="text-xs h-7 border-orange-400 text-orange-600 hover:bg-orange-50"
                                 disabled={absentLoadingId === b.id}
-                                onClick={() => handleMarkStudentAbsent(b.id)}>
-                                {absentLoadingId === b.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Mark Absent"}
+                                onClick={() => handleMarkStudentAbsent(b.id)}
+                              >
+                                {absentLoadingId === b.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  "Mark Absent"
+                                )}
                               </Button>
                             )}
                           </TableCell>
                           <TableCell>
-                            <Button size="sm"
+                            <Button
+                              size="sm"
                               className="h-7 text-xs bg-green-600 hover:bg-green-700"
                               disabled={doneLoadingId === b.id}
-                              onClick={() => handleMarkDone(b)}>
-                              {doneLoadingId === b.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Mark as Done"}
+                              onClick={() => handleMarkDone(b)}
+                            >
+                              {doneLoadingId === b.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                "Mark as Done"
+                              )}
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -1431,7 +2029,8 @@ const TeacherDashboard = () => {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <CalendarDays className="h-4 w-4 text-primary" /> Upcoming Classes
+                  <CalendarDays className="h-4 w-4 text-primary" /> Upcoming
+                  Classes
                   {filteredUpcoming.length !== bookings.length && (
                     <span className="text-xs font-normal text-muted-foreground">
                       ({filteredUpcoming.length} of {bookings.length})
@@ -1439,8 +2038,18 @@ const TeacherDashboard = () => {
                   )}
                 </CardTitle>
                 {selectedBookingIds.size > 0 && (
-                  <Button size="sm" className="gap-1" onClick={() => { setClassForm({ class_mode: "", meeting_link: "" }); setOtherModeActive(false); setClassInfoError(null); setBulkClassInfoOpen(true); }}>
-                    <Video className="h-3 w-3" /> Set Info for {selectedBookingIds.size} Selected
+                  <Button
+                    size="sm"
+                    className="gap-1"
+                    onClick={() => {
+                      setClassForm({ class_mode: "", meeting_link: "" });
+                      setOtherModeActive(false);
+                      setClassInfoError(null);
+                      setBulkClassInfoOpen(true);
+                    }}
+                  >
+                    <Video className="h-3 w-3" /> Set Info for{" "}
+                    {selectedBookingIds.size} Selected
                   </Button>
                 )}
               </CardHeader>
@@ -1453,20 +2062,31 @@ const TeacherDashboard = () => {
                     <Input
                       placeholder="Search student or subject..."
                       value={upcomingSearch}
-                      onChange={e => { setUpcomingSearch(e.target.value); setUpcomingPage(1); }}
+                      onChange={(e) => {
+                        setUpcomingSearch(e.target.value);
+                        setUpcomingPage(1);
+                      }}
                       className="h-8 pl-8 text-xs"
                     />
                   </div>
 
                   {/* Filter by student name */}
-                  <Select value={upcomingFilterStudent} onValueChange={v => { setUpcomingFilterStudent(v); setUpcomingPage(1); }}>
+                  <Select
+                    value={upcomingFilterStudent}
+                    onValueChange={(v) => {
+                      setUpcomingFilterStudent(v);
+                      setUpcomingPage(1);
+                    }}
+                  >
                     <SelectTrigger className="h-8 text-xs w-40">
                       <SelectValue placeholder="All Students" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Students</SelectItem>
-                      {upcomingStudentNames.map(name => (
-                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                      {upcomingStudentNames.map((name) => (
+                        <SelectItem key={name} value={name}>
+                          {name}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1475,7 +2095,10 @@ const TeacherDashboard = () => {
                   <Input
                     type="date"
                     value={upcomingFilterDate}
-                    onChange={e => { setUpcomingFilterDate(e.target.value); setUpcomingPage(1); }}
+                    onChange={(e) => {
+                      setUpcomingFilterDate(e.target.value);
+                      setUpcomingPage(1);
+                    }}
                     className="h-8 text-xs w-36"
                   />
 
@@ -1484,22 +2107,39 @@ const TeacherDashboard = () => {
                     size="sm"
                     variant={upcomingFilterNoClassInfo ? "default" : "outline"}
                     className={`h-8 text-xs gap-1.5 ${upcomingFilterNoClassInfo ? "" : "text-muted-foreground"}`}
-                    onClick={() => { setUpcomingFilterNoClassInfo(v => !v); setUpcomingPage(1); }}
+                    onClick={() => {
+                      setUpcomingFilterNoClassInfo((v) => !v);
+                      setUpcomingPage(1);
+                    }}
                   >
                     <Video className="h-3 w-3" />
                     No Class Info
                   </Button>
 
                   {/* Sort */}
-                  <Select value={upcomingSort} onValueChange={v => { setUpcomingSort(v); setUpcomingPage(1); }}>
+                  <Select
+                    value={upcomingSort}
+                    onValueChange={(v) => {
+                      setUpcomingSort(v);
+                      setUpcomingPage(1);
+                    }}
+                  >
                     <SelectTrigger className="h-8 text-xs w-44">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="date-asc">Date: Earliest First</SelectItem>
-                      <SelectItem value="date-desc">Date: Latest First</SelectItem>
-                      <SelectItem value="student-asc">Student: A → Z</SelectItem>
-                      <SelectItem value="student-desc">Student: Z → A</SelectItem>
+                      <SelectItem value="date-asc">
+                        Date: Earliest First
+                      </SelectItem>
+                      <SelectItem value="date-desc">
+                        Date: Latest First
+                      </SelectItem>
+                      <SelectItem value="student-asc">
+                        Student: A → Z
+                      </SelectItem>
+                      <SelectItem value="student-desc">
+                        Student: Z → A
+                      </SelectItem>
                     </SelectContent>
                   </Select>
 
@@ -1509,7 +2149,13 @@ const TeacherDashboard = () => {
                       size="sm"
                       variant="ghost"
                       className="h-8 text-xs text-muted-foreground"
-                      onClick={() => { setUpcomingSearch(""); setUpcomingFilterStudent("all"); setUpcomingFilterDate(""); setUpcomingFilterNoClassInfo(false); setUpcomingPage(1); }}
+                      onClick={() => {
+                        setUpcomingSearch("");
+                        setUpcomingFilterStudent("all");
+                        setUpcomingFilterDate("");
+                        setUpcomingFilterNoClassInfo(false);
+                        setUpcomingPage(1);
+                      }}
                     >
                       <X className="h-3 w-3 mr-1" /> Clear
                     </Button>
@@ -1522,7 +2168,12 @@ const TeacherDashboard = () => {
                       <TableHead className="w-10">
                         <input
                           type="checkbox"
-                          checked={filteredUpcoming.length > 0 && filteredUpcoming.every(b => selectedBookingIds.has(b.id))}
+                          checked={
+                            filteredUpcoming.length > 0 &&
+                            filteredUpcoming.every((b) =>
+                              selectedBookingIds.has(b.id),
+                            )
+                          }
                           onChange={toggleSelectAll}
                           className="accent-primary h-4 w-4 cursor-pointer"
                         />
@@ -1540,72 +2191,148 @@ const TeacherDashboard = () => {
                   <TableBody>
                     {filteredUpcoming.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center text-muted-foreground text-sm py-8">
-                          {bookings.length === 0 ? "No upcoming classes" : "No classes match the current filters"}
+                        <TableCell
+                          colSpan={8}
+                          className="text-center text-muted-foreground text-sm py-8"
+                        >
+                          {bookings.length === 0
+                            ? "No upcoming classes"
+                            : "No classes match the current filters"}
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredUpcoming.slice((upcomingPage - 1) * upcomingPageSize, upcomingPage * upcomingPageSize).map((b) => {
-                        const classTime = new Date(String(b.appointment_date).replace(' ', 'T') + '+08:00').getTime();
-                        const canMarkAbsent = Date.now() >= classTime + 15 * 60 * 1000;
-                        return (
-                          <TableRow key={b.id} className={selectedBookingIds.has(b.id) ? "bg-primary/10 border-l-2 border-l-primary" : ""}>
-                            <TableCell>
-                              <input type="checkbox" checked={selectedBookingIds.has(b.id)} onChange={() => toggleBookingSelection(b.id)} className="accent-primary h-4 w-4 cursor-pointer" />
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {fmtDate(b.appointment_date, "MMM d, h:mm a")}
-                              {(b.slot_count ?? 1) > 1 && <span className="ml-1 text-xs text-muted-foreground">({(b.slot_count ?? 1) * 30}min)</span>}
-                            </TableCell>
-                            <TableCell className="font-medium">{b.student_name}</TableCell>
-                            <TableCell className="text-xs">{b.duration_minutes} min</TableCell>
-                            <TableCell className="text-xs">{b.subject}</TableCell>
-                            <TableCell>
-                              <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColors[b.status] || "bg-gray-100"}`}>
-                                {b.status}
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              <Button size="sm" variant="outline" className="text-xs h-7 gap-1"
-                                onClick={() => { setEditingBooking(b); setClassForm({ class_mode: b.class_mode || "", meeting_link: b.meeting_link || "" }); setOtherModeActive(!!b.class_mode && !knownModes.includes(b.class_mode)); setClassInfoError(null); }}>
-                                <Video className="h-3 w-3" /> {b.class_mode ? "Edit Info" : "Set Info"}
-                              </Button>
-                            </TableCell>
-                            <TableCell>
-                              {b.student_absent ? (
-                                <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">Absent</span>
-                              ) : canMarkAbsent ? (
-                                <Button size="sm" variant="outline"
-                                  className="text-xs h-7 border-orange-400 text-orange-600 hover:bg-orange-50"
-                                  disabled={absentLoadingId === b.id}
-                                  onClick={() => handleMarkStudentAbsent(b.id)}>
-                                  {absentLoadingId === b.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Mark Absent"}
+                      filteredUpcoming
+                        .slice(
+                          (upcomingPage - 1) * upcomingPageSize,
+                          upcomingPage * upcomingPageSize,
+                        )
+                        .map((b) => {
+                          const classTime = new Date(
+                            String(b.appointment_date).replace(" ", "T") +
+                              "+08:00",
+                          ).getTime();
+                          const canMarkAbsent =
+                            Date.now() >= classTime + 15 * 60 * 1000;
+                          return (
+                            <TableRow
+                              key={b.id}
+                              className={
+                                selectedBookingIds.has(b.id)
+                                  ? "bg-primary/10 border-l-2 border-l-primary"
+                                  : ""
+                              }
+                            >
+                              <TableCell>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedBookingIds.has(b.id)}
+                                  onChange={() => toggleBookingSelection(b.id)}
+                                  className="accent-primary h-4 w-4 cursor-pointer"
+                                />
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                {fmtDate(b.appointment_date, "MMM d, h:mm a")}
+                                {(b.slot_count ?? 1) > 1 && (
+                                  <span className="ml-1 text-xs text-muted-foreground">
+                                    ({(b.slot_count ?? 1) * 30}min)
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {b.student_name}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {b.duration_minutes} min
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {b.subject}
+                              </TableCell>
+                              <TableCell>
+                                <span
+                                  className={`text-xs px-2 py-1 rounded-full font-medium ${statusColors[b.status] || "bg-gray-100"}`}
+                                >
+                                  {b.status}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs h-7 gap-1"
+                                  onClick={() => {
+                                    setEditingBooking(b);
+                                    setClassForm({
+                                      class_mode: b.class_mode || "",
+                                      meeting_link: b.meeting_link || "",
+                                    });
+                                    setOtherModeActive(
+                                      !!b.class_mode &&
+                                        !knownModes.includes(b.class_mode),
+                                    );
+                                    setClassInfoError(null);
+                                  }}
+                                >
+                                  <Video className="h-3 w-3" />{" "}
+                                  {b.class_mode ? "Edit Info" : "Set Info"}
                                 </Button>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Button size="sm" variant="ghost"
-                                className="text-xs h-7 text-destructive hover:text-destructive hover:bg-red-50"
-                                onClick={() => handleInitiateCancel(b)}>
-                                Cancel
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
+                              </TableCell>
+                              <TableCell>
+                                {b.student_absent ? (
+                                  <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">
+                                    Absent
+                                  </span>
+                                ) : canMarkAbsent ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-xs h-7 border-orange-400 text-orange-600 hover:bg-orange-50"
+                                    disabled={absentLoadingId === b.id}
+                                    onClick={() =>
+                                      handleMarkStudentAbsent(b.id)
+                                    }
+                                  >
+                                    {absentLoadingId === b.id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      "Mark Absent"
+                                    )}
+                                  </Button>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">
+                                    —
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-xs h-7 text-destructive hover:text-destructive hover:bg-red-50"
+                                  onClick={() => handleInitiateCancel(b)}
+                                >
+                                  Cancel
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
                     )}
                   </TableBody>
                 </Table>
                 {filteredUpcoming.length > 0 && (
                   <TablePagination
                     page={upcomingPage}
-                    totalPages={Math.max(1, Math.ceil(filteredUpcoming.length / upcomingPageSize))}
+                    totalPages={Math.max(
+                      1,
+                      Math.ceil(filteredUpcoming.length / upcomingPageSize),
+                    )}
                     pageSize={upcomingPageSize}
                     totalItems={filteredUpcoming.length}
                     onPageChange={setUpcomingPage}
-                    onPageSizeChange={(s) => { setUpcomingPageSize(s); setUpcomingPage(1); }}
+                    onPageSizeChange={(s) => {
+                      setUpcomingPageSize(s);
+                      setUpcomingPage(1);
+                    }}
                     pageSizeOptions={[10, 15, 20, 30]}
                   />
                 )}
@@ -1616,24 +2343,48 @@ const TeacherDashboard = () => {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-primary" /> Completed Classes
+                  <FileText className="h-4 w-4 text-primary" /> Completed
+                  Classes
                 </CardTitle>
                 <div className="flex items-center gap-2">
-                  <Select value={String(classesMonth)} onValueChange={(v) => {
-                    const m = parseInt(v); setClassesMonth(m); fetchFilteredCompleted(m, classesYear);
-                  }}>
-                    <SelectTrigger className="h-8 text-sm w-36"><SelectValue /></SelectTrigger>
+                  <Select
+                    value={String(classesMonth)}
+                    onValueChange={(v) => {
+                      const m = parseInt(v);
+                      setClassesMonth(m);
+                      fetchFilteredCompleted(m, classesYear);
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-sm w-36">
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
-                      {MONTHS.map((name, i) => <SelectItem key={i+1} value={String(i+1)}>{name}</SelectItem>)}
+                      {MONTHS.map((name, i) => (
+                        <SelectItem key={i + 1} value={String(i + 1)}>
+                          {name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                  <Select value={String(classesYear)} onValueChange={(v) => {
-                    const y = parseInt(v); setClassesYear(y); fetchFilteredCompleted(classesMonth, y);
-                  }}>
-                    <SelectTrigger className="h-8 text-sm w-28"><SelectValue /></SelectTrigger>
+                  <Select
+                    value={String(classesYear)}
+                    onValueChange={(v) => {
+                      const y = parseInt(v);
+                      setClassesYear(y);
+                      fetchFilteredCompleted(classesMonth, y);
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-sm w-28">
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
-                      {Array.from({ length: 4 }, (_, i) => new Date().getFullYear() - i).map(y => (
-                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                      {Array.from(
+                        { length: 4 },
+                        (_, i) => new Date().getFullYear() - i,
+                      ).map((y) => (
+                        <SelectItem key={y} value={String(y)}>
+                          {y}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1641,7 +2392,9 @@ const TeacherDashboard = () => {
               </CardHeader>
               <CardContent>
                 {filteredLoading ? (
-                  <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  </div>
                 ) : (
                   <Table>
                     <TableHeader>
@@ -1655,50 +2408,110 @@ const TeacherDashboard = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(() => { const doneList = filteredCompleted.filter(b => b.status === "done"); const paged = doneList.slice((completedPage - 1) * completedPageSize, completedPage * completedPageSize); return doneList.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={6} className="text-center text-muted-foreground text-sm py-8">
-                            No completed classes in {MONTHS[classesMonth - 1]} {classesYear}
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        paged.map(b => (
-                          <TableRow key={b.id}>
-                            <TableCell className="text-sm">
-                              {fmtDate(b.appointment_date, "MMM d, h:mm a")}
-                              {(b.slot_count ?? 1) > 1 && <span className="ml-1 text-xs text-muted-foreground">({(b.slot_count ?? 1) * 30}min)</span>}
-                            </TableCell>
-                            <TableCell className="font-medium">{b.student_name}</TableCell>
-                            <TableCell className="text-xs">{b.duration_minutes} min</TableCell>
-                            <TableCell className="text-xs">{b.subject}</TableCell>
-                            <TableCell>
-                              <div className="flex gap-1 flex-wrap">
-                                {!!b.student_absent && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">Student Absent</span>}
-                                {!!b.teacher_absent && <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">Teacher Absent</span>}
-                                {!b.student_absent && !b.teacher_absent && <span className="text-xs text-muted-foreground">Present</span>}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              {b.has_report ? (
-                                <Button size="sm" variant="outline" className="text-xs h-7 border-green-400 text-green-700 hover:bg-green-50" onClick={() => openReport(b)}>
-                                  ✓ View / Edit Report
-                                </Button>
-                              ) : (
-                                <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => openReport(b)}>
-                                  Submit Report
-                                </Button>
-                              )}
+                      {(() => {
+                        const doneList = filteredCompleted.filter(
+                          (b) => b.status === "done",
+                        );
+                        const paged = doneList.slice(
+                          (completedPage - 1) * completedPageSize,
+                          completedPage * completedPageSize,
+                        );
+                        return doneList.length === 0 ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={6}
+                              className="text-center text-muted-foreground text-sm py-8"
+                            >
+                              No completed classes in {MONTHS[classesMonth - 1]}{" "}
+                              {classesYear}
                             </TableCell>
                           </TableRow>
-                        ))
-                      )})()}
+                        ) : (
+                          paged.map((b) => (
+                            <TableRow key={b.id}>
+                              <TableCell className="text-sm">
+                                {fmtDate(b.appointment_date, "MMM d, h:mm a")}
+                                {(b.slot_count ?? 1) > 1 && (
+                                  <span className="ml-1 text-xs text-muted-foreground">
+                                    ({(b.slot_count ?? 1) * 30}min)
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {b.student_name}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {b.duration_minutes} min
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {b.subject}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex gap-1 flex-wrap">
+                                  {!!b.student_absent && (
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                                      Student Absent
+                                    </span>
+                                  )}
+                                  {!!b.teacher_absent && (
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                                      Teacher Absent
+                                    </span>
+                                  )}
+                                  {!b.student_absent && !b.teacher_absent && (
+                                    <span className="text-xs text-muted-foreground">
+                                      Present
+                                    </span>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                {b.has_report ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-xs h-7 border-green-400 text-green-700 hover:bg-green-50"
+                                    onClick={() => openReport(b)}
+                                  >
+                                    ✓ View / Edit Report
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-xs h-7"
+                                    onClick={() => openReport(b)}
+                                  >
+                                    Submit Report
+                                  </Button>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        );
+                      })()}
                     </TableBody>
                   </Table>
                 )}
-                {filteredCompleted.filter(b => b.status === "done").length > 0 && (
-                  <TablePagination page={completedPage} totalPages={Math.max(1, Math.ceil(filteredCompleted.filter(b => b.status === "done").length / completedPageSize))}
-                    pageSize={completedPageSize} totalItems={filteredCompleted.filter(b => b.status === "done").length}
-                    onPageChange={setCompletedPage} onPageSizeChange={setCompletedPageSize} />
+                {filteredCompleted.filter((b) => b.status === "done").length >
+                  0 && (
+                  <TablePagination
+                    page={completedPage}
+                    totalPages={Math.max(
+                      1,
+                      Math.ceil(
+                        filteredCompleted.filter((b) => b.status === "done")
+                          .length / completedPageSize,
+                      ),
+                    )}
+                    pageSize={completedPageSize}
+                    totalItems={
+                      filteredCompleted.filter((b) => b.status === "done")
+                        .length
+                    }
+                    onPageChange={setCompletedPage}
+                    onPageSizeChange={setCompletedPageSize}
+                  />
                 )}
               </CardContent>
             </Card>
@@ -1717,32 +2530,82 @@ const TeacherDashboard = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {profileError && <p className="text-sm text-destructive">{profileError}</p>}
-                  {profileSuccess && <p className="text-sm text-green-600">Profile updated successfully.</p>}
+                  {profileError && (
+                    <p className="text-sm text-destructive">{profileError}</p>
+                  )}
+                  {profileSuccess && (
+                    <p className="text-sm text-green-600">
+                      Profile updated successfully.
+                    </p>
+                  )}
                   <div className="space-y-1.5">
                     <Label>Full Name</Label>
-                    <Input value={profileForm.name} onChange={e => setProfileForm(p => ({ ...p, name: e.target.value }))} />
+                    <Input
+                      value={profileForm.name}
+                      onChange={(e) =>
+                        setProfileForm((p) => ({ ...p, name: e.target.value }))
+                      }
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Email</Label>
-                    <Input type="email" value={profileForm.email} onChange={e => setProfileForm(p => ({ ...p, email: e.target.value }))} />
+                    <Input
+                      type="email"
+                      value={profileForm.email}
+                      onChange={(e) =>
+                        setProfileForm((p) => ({ ...p, email: e.target.value }))
+                      }
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Timezone</Label>
-                    <Select value={profileForm.timezone} onValueChange={v => setProfileForm(p => ({ ...p, timezone: v }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                    <Select
+                      value={profileForm.timezone}
+                      onValueChange={(v) =>
+                        setProfileForm((p) => ({ ...p, timezone: v }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent className="max-h-60">
-                        {TIMEZONES.map(tz => <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>)}
+                        {TIMEZONES.map((tz) => (
+                          <SelectItem key={tz.value} value={tz.value}>
+                            {tz.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label>New Password <span className="text-muted-foreground text-xs">(leave blank to keep current)</span></Label>
-                    <Input type="password" placeholder="••••••••" value={profileForm.password}
-                      onChange={e => setProfileForm(p => ({ ...p, password: e.target.value }))} />
+                    <Label>
+                      New Password{" "}
+                      <span className="text-muted-foreground text-xs">
+                        (leave blank to keep current)
+                      </span>
+                    </Label>
+                    <Input
+                      type="password"
+                      placeholder="••••••••"
+                      value={profileForm.password}
+                      onChange={(e) =>
+                        setProfileForm((p) => ({
+                          ...p,
+                          password: e.target.value,
+                        }))
+                      }
+                    />
                   </div>
-                  <Button onClick={handleSaveProfile} disabled={profileLoading} className="w-full">
-                    {profileLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Changes"}
+                  <Button
+                    onClick={handleSaveProfile}
+                    disabled={profileLoading}
+                    className="w-full"
+                  >
+                    {profileLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Save Changes"
+                    )}
                   </Button>
                 </CardContent>
               </Card>
@@ -1758,27 +2621,41 @@ const TeacherDashboard = () => {
                   <HealthBadge health={health} />
                   <div className="grid grid-cols-3 gap-3 pt-2">
                     <div className="text-center p-3 bg-green-50 rounded-lg">
-                      <p className="text-xl font-bold text-green-600">{health.attended}</p>
+                      <p className="text-xl font-bold text-green-600">
+                        {health.attended}
+                      </p>
                       <p className="text-xs text-muted-foreground">Attended</p>
                     </div>
                     <div className="text-center p-3 bg-red-50 rounded-lg">
-                      <p className="text-xl font-bold text-red-600">{health.total_absent}</p>
+                      <p className="text-xl font-bold text-red-600">
+                        {health.total_absent}
+                      </p>
                       <p className="text-xs text-muted-foreground">Absent</p>
                     </div>
                     <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <p className="text-xl font-bold text-blue-600">{health.total_done}</p>
-                      <p className="text-xs text-muted-foreground">Total Done</p>
+                      <p className="text-xl font-bold text-blue-600">
+                        {health.total_done}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Total Done
+                      </p>
                     </div>
                   </div>
                   <div className="border rounded-lg p-3 space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground">This period</p>
+                    <p className="text-xs font-medium text-muted-foreground">
+                      This period
+                    </p>
                     <div className="flex justify-between text-sm">
                       <span>This week</span>
-                      <span className="font-semibold text-blue-600">{classesThisWeek}</span>
+                      <span className="font-semibold text-blue-600">
+                        {classesThisWeek}
+                      </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span>This month</span>
-                      <span className="font-semibold text-primary">{classesThisMonth}</span>
+                      <span className="font-semibold text-primary">
+                        {classesThisMonth}
+                      </span>
                     </div>
                   </div>
                 </CardContent>
@@ -1811,18 +2688,26 @@ const TeacherDashboard = () => {
                   <TableBody>
                     {students.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground text-sm py-8">
+                        <TableCell
+                          colSpan={6}
+                          className="text-center text-muted-foreground text-sm py-8"
+                        >
                           No students assigned yet
                         </TableCell>
                       </TableRow>
-                    ) : students.map(s => (
-                      <TableRow key={s.id}>
-                        <TableCell className="font-medium">{s.name}</TableCell>
-                        <TableCell>{s.nationality || "—"}</TableCell>
-                        <TableCell>{s.age || "—"}</TableCell>
-                        <TableCell className="text-xs">{s.duration_minutes} min</TableCell>
-                        <TableCell className="text-xs">{s.subject}</TableCell>
-                        {/* <TableCell>
+                    ) : (
+                      students.map((s) => (
+                        <TableRow key={s.id}>
+                          <TableCell className="font-medium">
+                            {s.name}
+                          </TableCell>
+                          <TableCell>{s.nationality || "—"}</TableCell>
+                          <TableCell>{s.age || "—"}</TableCell>
+                          <TableCell className="text-xs">
+                            {s.duration_minutes} min
+                          </TableCell>
+                          <TableCell className="text-xs">{s.subject}</TableCell>
+                          {/* <TableCell>
                           <div className="flex gap-1">
                             <Badge variant="secondary">{s.unused_sessions ?? s.sessions_remaining} remaining</Badge>
                             {s.sessions_remaining !== (s.unused_sessions ?? s.sessions_remaining) && (
@@ -1830,8 +2715,9 @@ const TeacherDashboard = () => {
                             )}
                           </div>
                         </TableCell> */}
-                      </TableRow>
-                    ))}
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>
@@ -1841,9 +2727,14 @@ const TeacherDashboard = () => {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <CalendarOff className="h-4 w-4 text-primary" /> My Leave Requests
+                  <CalendarOff className="h-4 w-4 text-primary" /> My Leave
+                  Requests
                 </CardTitle>
-                <Button size="sm" onClick={() => setShowLeaveModal(true)} className="gap-1 text-xs">
+                <Button
+                  size="sm"
+                  onClick={() => setShowLeaveModal(true)}
+                  className="gap-1 text-xs"
+                >
                   <Plus className="h-3 w-3" /> Request Leave
                 </Button>
               </CardHeader>
@@ -1861,32 +2752,47 @@ const TeacherDashboard = () => {
                   <TableBody>
                     {leaves.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground text-sm py-8">
+                        <TableCell
+                          colSpan={5}
+                          className="text-center text-muted-foreground text-sm py-8"
+                        >
                           No leave requests submitted
                         </TableCell>
                       </TableRow>
-                    ) : leaves.map(lv => (
-                      <TableRow key={lv.id}>
-                        <TableCell className="text-sm font-medium">
-                          {fmtDateOnly(lv.leave_date)}
-                        </TableCell>
-                        <TableCell className="text-sm capitalize">{lv.reason_type}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{lv.notes || "—"}</TableCell>
-                        <TableCell>
-                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${leaveStatusColors[lv.status] || "bg-gray-100 text-gray-700"}`}>
-                            {lv.status}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          {lv.status === "pending" && (
-                            <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive"
-                              onClick={() => handleCancelLeave(lv.id)}>
-                              <X className="h-3 w-3 mr-1" /> Cancel
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    ) : (
+                      leaves.map((lv) => (
+                        <TableRow key={lv.id}>
+                          <TableCell className="text-sm font-medium">
+                            {fmtDateOnly(lv.leave_date)}
+                          </TableCell>
+                          <TableCell className="text-sm capitalize">
+                            {lv.reason_type}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {lv.notes || "—"}
+                          </TableCell>
+                          <TableCell>
+                            <span
+                              className={`text-xs px-2 py-1 rounded-full font-medium ${leaveStatusColors[lv.status] || "bg-gray-100 text-gray-700"}`}
+                            >
+                              {lv.status}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {lv.status === "pending" && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-xs text-destructive hover:text-destructive"
+                                onClick={() => handleCancelLeave(lv.id)}
+                              >
+                                <X className="h-3 w-3 mr-1" /> Cancel
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>
@@ -1898,7 +2804,17 @@ const TeacherDashboard = () => {
       {/* ── Dialogs ── */}
 
       {/* Day schedule modal */}
-      <Dialog open={showDayModal} onOpenChange={(o) => { if (!o) { setShowDayModal(false); setDayModalEditingId(null); setDayModalOtherMode(false); setDayModalError(null); } }}>
+      <Dialog
+        open={showDayModal}
+        onOpenChange={(o) => {
+          if (!o) {
+            setShowDayModal(false);
+            setDayModalEditingId(null);
+            setDayModalOtherMode(false);
+            setDayModalError(null);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
@@ -1909,16 +2825,30 @@ const TeacherDashboard = () => {
             {dayScheduleItems.map((item, idx) => {
               if (item.kind === "note") {
                 const n = item.note;
-                const bg = isValidHex(n.noteColor) ? n.noteColor! : DEFAULT_NOTE_COLOR;
+                const bg = isValidHex(n.noteColor)
+                  ? n.noteColor!
+                  : DEFAULT_NOTE_COLOR;
                 return (
                   <div
                     key={`note-${idx}`}
                     className="rounded-lg border p-3 flex items-center gap-2"
-                    style={{ backgroundColor: bg, borderColor: bg, color: getContrastText(bg) }}
+                    style={{
+                      backgroundColor: bg,
+                      borderColor: bg,
+                      color: getContrastText(bg),
+                    }}
                   >
-                    {n.noteIcon && <span className="shrink-0">{n.noteIcon}</span>}
-                    <span className="font-medium text-sm truncate">{n.noteText}</span>
-                    {n.time && <span className="ml-auto shrink-0 text-xs font-semibold">{n.time}</span>}
+                    {n.noteIcon && (
+                      <span className="shrink-0">{n.noteIcon}</span>
+                    )}
+                    <span className="font-medium text-sm truncate">
+                      {n.noteText}
+                    </span>
+                    {n.time && (
+                      <span className="ml-auto shrink-0 text-xs font-semibold">
+                        {n.time}
+                      </span>
+                    )}
                   </div>
                 );
               }
@@ -1930,54 +2860,123 @@ const TeacherDashboard = () => {
                 <div key={b.id} className="rounded-lg border p-3 space-y-2">
                   {/* Time + status */}
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-sm">{fmtDate(b.appointment_date, "h:mm a")}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[b.status] || "bg-gray-100"}`}>{b.status}</span>
+                    <span className="font-semibold text-sm">
+                      {fmtDate(b.appointment_date, "h:mm a")}
+                    </span>
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full ${statusColors[b.status] || "bg-gray-100"}`}
+                    >
+                      {b.status}
+                    </span>
                   </div>
 
                   {/* Student + subject */}
-                  <p className="text-sm font-medium">{b.student_name} <span className="text-muted-foreground font-normal">· {b.subject}</span></p>
+                  <p className="text-sm font-medium">
+                    {b.student_name}{" "}
+                    <span className="text-muted-foreground font-normal">
+                      · {b.subject}
+                    </span>
+                  </p>
 
                   {/* Class info — display or edit */}
                   {isEditing ? (
                     <div className="space-y-2 pt-1 border-t">
-                      {dayModalError && <p className="text-xs text-destructive">{dayModalError}</p>}
+                      {dayModalError && (
+                        <p className="text-xs text-destructive">
+                          {dayModalError}
+                        </p>
+                      )}
                       <div className="space-y-1">
-                        <label className="text-xs font-medium text-muted-foreground">Mode of Class</label>
+                        <label className="text-xs font-medium text-muted-foreground">
+                          Mode of Class
+                        </label>
                         <Select
-                          value={dayModalOtherMode || (dayModalForm.class_mode !== "" && !knownModes.includes(dayModalForm.class_mode)) ? "Others" : dayModalForm.class_mode}
+                          value={
+                            dayModalOtherMode ||
+                            (dayModalForm.class_mode !== "" &&
+                              !knownModes.includes(dayModalForm.class_mode))
+                              ? "Others"
+                              : dayModalForm.class_mode
+                          }
                           onValueChange={(v) => {
-                            if (v === "Others") { setDayModalOtherMode(true); setDayModalForm(f => ({ ...f, class_mode: "" })); }
-                            else { setDayModalOtherMode(false); setDayModalForm(f => ({ ...f, class_mode: v })); }
+                            if (v === "Others") {
+                              setDayModalOtherMode(true);
+                              setDayModalForm((f) => ({
+                                ...f,
+                                class_mode: "",
+                              }));
+                            } else {
+                              setDayModalOtherMode(false);
+                              setDayModalForm((f) => ({ ...f, class_mode: v }));
+                            }
                           }}
                         >
-                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select platform" /></SelectTrigger>
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="Select platform" />
+                          </SelectTrigger>
                           <SelectContent>
-                            {classModeOptions.map(v => <SelectItem key={v} value={v} className="text-xs">{v}</SelectItem>)}
+                            {classModeOptions.map((v) => (
+                              <SelectItem key={v} value={v} className="text-xs">
+                                {v}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
-                        {(dayModalOtherMode || (dayModalForm.class_mode !== "" && !knownModes.includes(dayModalForm.class_mode))) && (
+                        {(dayModalOtherMode ||
+                          (dayModalForm.class_mode !== "" &&
+                            !knownModes.includes(dayModalForm.class_mode))) && (
                           <Input
                             placeholder="Enter platform name..."
                             value={dayModalForm.class_mode}
-                            onChange={e => setDayModalForm(f => ({ ...f, class_mode: e.target.value }))}
+                            onChange={(e) =>
+                              setDayModalForm((f) => ({
+                                ...f,
+                                class_mode: e.target.value,
+                              }))
+                            }
                             className="h-8 text-xs mt-1"
                           />
                         )}
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs font-medium text-muted-foreground">Meeting Link</label>
+                        <label className="text-xs font-medium text-muted-foreground">
+                          Meeting Link
+                        </label>
                         <Input
                           placeholder="https://..."
                           value={dayModalForm.meeting_link}
-                          onChange={e => setDayModalForm(f => ({ ...f, meeting_link: e.target.value }))}
+                          onChange={(e) =>
+                            setDayModalForm((f) => ({
+                              ...f,
+                              meeting_link: e.target.value,
+                            }))
+                          }
                           className="h-8 text-xs"
                         />
                       </div>
                       <div className="flex gap-2 pt-1">
-                        <Button size="sm" className="h-7 text-xs flex-1" onClick={handleSaveDayModalClassInfo} disabled={dayModalSaving}>
-                          {dayModalSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs flex-1"
+                          onClick={handleSaveDayModalClassInfo}
+                          disabled={dayModalSaving}
+                        >
+                          {dayModalSaving ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            "Save"
+                          )}
                         </Button>
-                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setDayModalEditingId(null); setDayModalOtherMode(false); setDayModalError(null); }}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setDayModalEditingId(null);
+                            setDayModalOtherMode(false);
+                            setDayModalError(null);
+                          }}
+                        >
                           Cancel
                         </Button>
                       </div>
@@ -1989,19 +2988,32 @@ const TeacherDashboard = () => {
                           {b.class_mode && (
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                               <Video className="h-3 w-3 shrink-0" />
-                              <span className="font-medium text-foreground">{b.class_mode}</span>
+                              <span className="font-medium text-foreground">
+                                {b.class_mode}
+                              </span>
                             </div>
                           )}
                           {b.meeting_link ? (
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
                               <Video className="h-3 w-3 shrink-0" />
-                              <a href={b.meeting_link} target="_blank" rel="noopener noreferrer"
-                                className="text-primary underline break-all">{b.meeting_link}</a>
+                              <a
+                                href={b.meeting_link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary underline break-all"
+                              >
+                                {b.meeting_link}
+                              </a>
                               <button
                                 onClick={() => {
-                                  navigator.clipboard.writeText(b.meeting_link!);
+                                  navigator.clipboard.writeText(
+                                    b.meeting_link!,
+                                  );
                                   setDayModalCopiedId(b.id);
-                                  setTimeout(() => setDayModalCopiedId(null), 2000);
+                                  setTimeout(
+                                    () => setDayModalCopiedId(null),
+                                    2000,
+                                  );
                                 }}
                                 className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20"
                               >
@@ -2009,26 +3021,47 @@ const TeacherDashboard = () => {
                               </button>
                             </div>
                           ) : (
-                            <p className="text-xs text-muted-foreground">No link set</p>
+                            <p className="text-xs text-muted-foreground">
+                              No link set
+                            </p>
                           )}
-                          <Button size="sm" variant="outline" className="h-6 text-xs gap-1 mt-1"
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-xs gap-1 mt-1"
                             onClick={() => {
                               setDayModalEditingId(b.id);
-                              setDayModalOtherMode(!!(b.class_mode && !knownModes.includes(b.class_mode)));
-                              setDayModalForm({ class_mode: b.class_mode || "", meeting_link: b.meeting_link || "" });
+                              setDayModalOtherMode(
+                                !!(
+                                  b.class_mode &&
+                                  !knownModes.includes(b.class_mode)
+                                ),
+                              );
+                              setDayModalForm({
+                                class_mode: b.class_mode || "",
+                                meeting_link: b.meeting_link || "",
+                              });
                               setDayModalError(null);
-                            }}>
+                            }}
+                          >
                             <Video className="h-3 w-3" /> Edit Info
                           </Button>
                         </>
                       ) : (
-                        <Button size="sm" variant="outline" className="h-6 text-xs gap-1"
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 text-xs gap-1"
                           onClick={() => {
                             setDayModalEditingId(b.id);
                             setDayModalOtherMode(false);
-                            setDayModalForm({ class_mode: "", meeting_link: "" });
+                            setDayModalForm({
+                              class_mode: "",
+                              meeting_link: "",
+                            });
                             setDayModalError(null);
-                          }}>
+                          }}
+                        >
                           <Video className="h-3 w-3" /> Set Class Info
                         </Button>
                       )}
@@ -2042,41 +3075,89 @@ const TeacherDashboard = () => {
       </Dialog>
 
       {/* Class Info dialog */}
-      <Dialog open={!!editingBooking} onOpenChange={o => { if (!o) setEditingBooking(null); }}>
+      <Dialog
+        open={!!editingBooking}
+        onOpenChange={(o) => {
+          if (!o) setEditingBooking(null);
+        }}
+      >
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Set Class Info</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Set Class Info</DialogTitle>
+          </DialogHeader>
           <div className="space-y-3 py-2">
-            {classInfoError && <p className="text-sm text-destructive">{classInfoError}</p>}
+            {classInfoError && (
+              <p className="text-sm text-destructive">{classInfoError}</p>
+            )}
             <div className="space-y-1.5">
               <Label>Mode of Class</Label>
-              <Select value={selectValue} onValueChange={v => { if (v === "Others") { setOtherModeActive(true); setClassForm(p => ({ ...p, class_mode: "" })); } else { setOtherModeActive(false); setClassForm(p => ({ ...p, class_mode: v })); } }}>
-                <SelectTrigger><SelectValue placeholder="Select platform" /></SelectTrigger>
+              <Select
+                value={selectValue}
+                onValueChange={(v) => {
+                  if (v === "Others") {
+                    setOtherModeActive(true);
+                    setClassForm((p) => ({ ...p, class_mode: "" }));
+                  } else {
+                    setOtherModeActive(false);
+                    setClassForm((p) => ({ ...p, class_mode: v }));
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select platform" />
+                </SelectTrigger>
                 <SelectContent>
-                  {classModeOptions.map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                  {classModeOptions.map((v) => (
+                    <SelectItem key={v} value={v}>
+                      {v}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               {selectValue === "Others" && (
-                <Input placeholder="Enter platform name..." value={classForm.class_mode}
-                  onChange={e => setClassForm(p => ({ ...p, class_mode: e.target.value }))} className="mt-1.5" />
+                <Input
+                  placeholder="Enter platform name..."
+                  value={classForm.class_mode}
+                  onChange={(e) =>
+                    setClassForm((p) => ({ ...p, class_mode: e.target.value }))
+                  }
+                  className="mt-1.5"
+                />
               )}
             </div>
             <div className="space-y-1.5">
               <Label>Meeting Link</Label>
-              <Input placeholder="https://..." value={classForm.meeting_link}
-                onChange={e => setClassForm(p => ({ ...p, meeting_link: e.target.value }))} />
+              <Input
+                placeholder="https://..."
+                value={classForm.meeting_link}
+                onChange={(e) =>
+                  setClassForm((p) => ({ ...p, meeting_link: e.target.value }))
+                }
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingBooking(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setEditingBooking(null)}>
+              Cancel
+            </Button>
             <Button onClick={handleSaveClassInfo} disabled={classInfoLoading}>
-              {classInfoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+              {classInfoLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Save"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Slot note dialog — personal calendar note, e.g. "LUNCH" */}
-      <Dialog open={!!noteDialogSlot} onOpenChange={o => { if (!o) setNoteDialogSlot(null); }}>
+      <Dialog
+        open={!!noteDialogSlot}
+        onOpenChange={(o) => {
+          if (!o) setNoteDialogSlot(null);
+        }}
+      >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>
@@ -2085,24 +3166,35 @@ const TeacherDashboard = () => {
           </DialogHeader>
           <div className="space-y-3 py-2">
             <p className="text-xs text-muted-foreground">
-              This is a personal note, not a booking. Saving a note will close this slot if it's currently open.
+              This is a personal note, not a booking. Saving a note will close
+              this slot if it's currently open.
             </p>
-            {noteError && <p className="text-sm text-destructive">{noteError}</p>}
+            {noteError && (
+              <p className="text-sm text-destructive">{noteError}</p>
+            )}
             <div className="space-y-1.5">
               <Label>Note</Label>
               <Input
                 placeholder="e.g. LUNCH"
                 value={noteText}
                 maxLength={100}
-                onChange={e => setNoteText(e.target.value)}
+                onChange={(e) => setNoteText(e.target.value)}
               />
             </div>
             <div className="space-y-1.5">
               <Label>Icon</Label>
               <Popover open={iconPickerOpen} onOpenChange={setIconPickerOpen}>
                 <PopoverTrigger asChild>
-                  <Button type="button" variant="outline" className="h-9 w-20 text-lg">
-                    {noteIcon || <span className="text-xs text-muted-foreground">Pick</span>}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 w-20 text-lg"
+                  >
+                    {noteIcon || (
+                      <span className="text-xs text-muted-foreground">
+                        Pick
+                      </span>
+                    )}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-64 p-2" align="start">
@@ -2111,9 +3203,14 @@ const TeacherDashboard = () => {
                       <button
                         key={icon}
                         type="button"
-                        onClick={() => { setNoteIcon(icon); setIconPickerOpen(false); }}
+                        onClick={() => {
+                          setNoteIcon(icon);
+                          setIconPickerOpen(false);
+                        }}
                         className={`h-8 w-8 flex items-center justify-center rounded text-lg transition-colors ${
-                          icon === noteIcon ? "bg-primary/10 ring-1 ring-primary" : "hover:bg-gray-100"
+                          icon === noteIcon
+                            ? "bg-primary/10 ring-1 ring-primary"
+                            : "hover:bg-gray-100"
                         }`}
                         title={icon}
                       >
@@ -2124,7 +3221,10 @@ const TeacherDashboard = () => {
                   {noteIcon && (
                     <button
                       type="button"
-                      onClick={() => { setNoteIcon(""); setIconPickerOpen(false); }}
+                      onClick={() => {
+                        setNoteIcon("");
+                        setIconPickerOpen(false);
+                      }}
                       className="mt-2 w-full text-xs text-muted-foreground hover:text-foreground text-center py-1 border-t"
                     >
                       Clear icon
@@ -2144,7 +3244,9 @@ const TeacherDashboard = () => {
                     title={c.label}
                     style={{ backgroundColor: c.hex }}
                     className={`h-7 w-7 rounded-full transition-all ${
-                      noteColor.toLowerCase() === c.hex.toLowerCase() ? "ring-2 ring-offset-2 ring-primary" : "hover:scale-110"
+                      noteColor.toLowerCase() === c.hex.toLowerCase()
+                        ? "ring-2 ring-offset-2 ring-primary"
+                        : "hover:scale-110"
                     }`}
                   />
                 ))}
@@ -2164,62 +3266,137 @@ const TeacherDashboard = () => {
                 />
               </div>
               {!isValidHex(noteColor) && (
-                <p className="text-xs text-destructive">Enter a valid hex color, e.g. #FFBF00</p>
+                <p className="text-xs text-destructive">
+                  Enter a valid hex color, e.g. #FFBF00
+                </p>
               )}
             </div>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"
                 checked={noteAdminVisible}
-                onChange={e => setNoteAdminVisible(e.target.checked)}
+                onChange={(e) => setNoteAdminVisible(e.target.checked)}
                 className="accent-primary h-4 w-4"
               />
               Show this note to admin
             </label>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            {noteDialogSlot && slotNotes.has(`${noteDialogSlot.dateStr}|${noteDialogSlot.time}`) && (
-              <Button variant="destructive" onClick={deleteNote} disabled={noteSaving}>
-                {noteSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Remove"}
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => setNoteDialogSlot(null)}>Cancel</Button>
-            <Button onClick={saveNote} disabled={noteSaving || !noteText.trim() || !isValidHex(noteColor)}>
-              {noteSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+            {noteDialogSlot &&
+              slotNotes.has(
+                `${noteDialogSlot.dateStr}|${noteDialogSlot.time}`,
+              ) && (
+                <Button
+                  variant="destructive"
+                  onClick={deleteNote}
+                  disabled={noteSaving}
+                >
+                  {noteSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Remove"
+                  )}
+                </Button>
+              )}
+            <Button variant="outline" onClick={() => setNoteDialogSlot(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={saveNote}
+              disabled={
+                noteSaving || !noteText.trim() || !isValidHex(noteColor)
+              }
+            >
+              {noteSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Save"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Bulk Class Info dialog */}
-      <Dialog open={bulkClassInfoOpen} onOpenChange={o => { if (!o) setBulkClassInfoOpen(false); }}>
+      <Dialog
+        open={bulkClassInfoOpen}
+        onOpenChange={(o) => {
+          if (!o) setBulkClassInfoOpen(false);
+        }}
+      >
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Set Class Info for {selectedBookingIds.size} Booking(s)</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>
+              Set Class Info for {selectedBookingIds.size} Booking(s)
+            </DialogTitle>
+          </DialogHeader>
           <div className="space-y-3 py-2">
-            {classInfoError && <p className="text-sm text-destructive">{classInfoError}</p>}
+            {classInfoError && (
+              <p className="text-sm text-destructive">{classInfoError}</p>
+            )}
             <div className="space-y-1.5">
               <Label>Mode of Class</Label>
-              <Select value={selectValue} onValueChange={v => { if (v === "Others") { setOtherModeActive(true); setClassForm(p => ({ ...p, class_mode: "" })); } else { setOtherModeActive(false); setClassForm(p => ({ ...p, class_mode: v })); } }}>
-                <SelectTrigger><SelectValue placeholder="Select platform" /></SelectTrigger>
+              <Select
+                value={selectValue}
+                onValueChange={(v) => {
+                  if (v === "Others") {
+                    setOtherModeActive(true);
+                    setClassForm((p) => ({ ...p, class_mode: "" }));
+                  } else {
+                    setOtherModeActive(false);
+                    setClassForm((p) => ({ ...p, class_mode: v }));
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select platform" />
+                </SelectTrigger>
                 <SelectContent>
-                  {classModeOptions.map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                  {classModeOptions.map((v) => (
+                    <SelectItem key={v} value={v}>
+                      {v}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               {selectValue === "Others" && (
-                <Input placeholder="Enter platform name..." value={classForm.class_mode}
-                  onChange={e => setClassForm(p => ({ ...p, class_mode: e.target.value }))} className="mt-1.5" />
+                <Input
+                  placeholder="Enter platform name..."
+                  value={classForm.class_mode}
+                  onChange={(e) =>
+                    setClassForm((p) => ({ ...p, class_mode: e.target.value }))
+                  }
+                  className="mt-1.5"
+                />
               )}
             </div>
             <div className="space-y-1.5">
               <Label>Meeting Link</Label>
-              <Input placeholder="https://..." value={classForm.meeting_link}
-                onChange={e => setClassForm(p => ({ ...p, meeting_link: e.target.value }))} />
+              <Input
+                placeholder="https://..."
+                value={classForm.meeting_link}
+                onChange={(e) =>
+                  setClassForm((p) => ({ ...p, meeting_link: e.target.value }))
+                }
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setBulkClassInfoOpen(false)}>Cancel</Button>
-            <Button onClick={handleBulkSaveClassInfo} disabled={classInfoLoading}>
-              {classInfoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+            <Button
+              variant="outline"
+              onClick={() => setBulkClassInfoOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleBulkSaveClassInfo}
+              disabled={classInfoLoading}
+            >
+              {classInfoLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Save"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2227,14 +3404,33 @@ const TeacherDashboard = () => {
 
       {/* Cancel Booking dialog */}
       {cancelConfirm && (
-        <Dialog open onOpenChange={o => { if (!o) setCancelConfirm(null); }}>
+        <Dialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setCancelConfirm(null);
+          }}
+        >
           <DialogContent className="sm:max-w-sm">
-            <DialogHeader><DialogTitle>Cancel Class</DialogTitle></DialogHeader>
-            <p className="text-sm text-muted-foreground py-2">Are you sure? The student and admin will be notified.</p>
+            <DialogHeader>
+              <DialogTitle>Cancel Class</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground py-2">
+              Are you sure? The student and admin will be notified.
+            </p>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setCancelConfirm(null)}>No, Keep It</Button>
-              <Button variant="destructive" onClick={() => handleCancelBooking(false)} disabled={cancelLoading}>
-                {cancelLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Yes, Cancel"}
+              <Button variant="outline" onClick={() => setCancelConfirm(null)}>
+                No, Keep It
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => handleCancelBooking(false)}
+                disabled={cancelLoading}
+              >
+                {cancelLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Yes, Cancel"
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -2243,20 +3439,51 @@ const TeacherDashboard = () => {
 
       {/* Recurring Cancel Choice dialog */}
       {recurringCancelBooking && (
-        <Dialog open onOpenChange={o => { if (!o) setRecurringCancelBooking(null); }}>
+        <Dialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setRecurringCancelBooking(null);
+          }}
+        >
           <DialogContent className="sm:max-w-sm">
-            <DialogHeader><DialogTitle>Cancel Class</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Cancel Class</DialogTitle>
+            </DialogHeader>
             <p className="text-sm text-muted-foreground py-2">
-              This class is part of a recurring schedule. What would you like to cancel?
+              This class is part of a recurring schedule. What would you like to
+              cancel?
             </p>
             <div className="flex flex-col gap-2 pt-1">
-              <Button variant="outline" className="justify-start" onClick={() => handleCancelBooking(false)} disabled={cancelLoading}>
-                {cancelLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Cancel this session only"}
+              <Button
+                variant="outline"
+                className="justify-start"
+                onClick={() => handleCancelBooking(false)}
+                disabled={cancelLoading}
+              >
+                {cancelLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Cancel this session only"
+                )}
               </Button>
-              <Button variant="destructive" className="justify-start" onClick={() => handleCancelBooking(true)} disabled={cancelLoading}>
-                {cancelLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Cancel all upcoming sessions in this series"}
+              <Button
+                variant="destructive"
+                className="justify-start"
+                onClick={() => handleCancelBooking(true)}
+                disabled={cancelLoading}
+              >
+                {cancelLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Cancel all upcoming sessions in this series"
+                )}
               </Button>
-              <Button variant="ghost" onClick={() => setRecurringCancelBooking(null)}>No, Keep It</Button>
+              <Button
+                variant="ghost"
+                onClick={() => setRecurringCancelBooking(null)}
+              >
+                No, Keep It
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -2264,14 +3491,25 @@ const TeacherDashboard = () => {
 
       {/* Cancel Blocked dialog */}
       {cancelBlocked && (
-        <Dialog open onOpenChange={o => { if (!o) setCancelBlocked(false); }}>
+        <Dialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setCancelBlocked(false);
+          }}
+        >
           <DialogContent className="sm:max-w-sm">
-            <DialogHeader><DialogTitle>Cannot Cancel</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Cannot Cancel</DialogTitle>
+            </DialogHeader>
             <p className="text-sm text-muted-foreground py-2">
-              Cancellation is not allowed within <span className="font-semibold">{cancellationHours} hour(s)</span> of the scheduled class time. Your admin has been notified.
+              Cancellation is not allowed within{" "}
+              <span className="font-semibold">{cancellationHours} hour(s)</span>{" "}
+              of the scheduled class time. Your admin has been notified.
             </p>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setCancelBlocked(false)}>Close</Button>
+              <Button variant="outline" onClick={() => setCancelBlocked(false)}>
+                Close
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -2280,32 +3518,64 @@ const TeacherDashboard = () => {
       {/* Leave Request dialog */}
       <Dialog open={showLeaveModal} onOpenChange={setShowLeaveModal}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Request Leave</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Request Leave</DialogTitle>
+          </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
               <Label>Leave Date</Label>
-              <Input type="date" value={leaveForm.leave_date}
-                onChange={e => setLeaveForm(p => ({ ...p, leave_date: e.target.value }))} />
+              <Input
+                type="date"
+                value={leaveForm.leave_date}
+                onChange={(e) =>
+                  setLeaveForm((p) => ({ ...p, leave_date: e.target.value }))
+                }
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Reason Type</Label>
-              <Select value={leaveForm.reason_type} onValueChange={v => setLeaveForm(p => ({ ...p, reason_type: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select
+                value={leaveForm.reason_type}
+                onValueChange={(v) =>
+                  setLeaveForm((p) => ({ ...p, reason_type: v }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
-                  {["sick","personal","vacation","other"].map(v => <SelectItem key={v} value={v} className="capitalize">{v}</SelectItem>)}
+                  {["sick", "personal", "vacation", "other"].map((v) => (
+                    <SelectItem key={v} value={v} className="capitalize">
+                      {v}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
               <Label>Notes (optional)</Label>
-              <Input placeholder="Additional details..." value={leaveForm.notes}
-                onChange={e => setLeaveForm(p => ({ ...p, notes: e.target.value }))} />
+              <Input
+                placeholder="Additional details..."
+                value={leaveForm.notes}
+                onChange={(e) =>
+                  setLeaveForm((p) => ({ ...p, notes: e.target.value }))
+                }
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowLeaveModal(false)}>Cancel</Button>
-            <Button onClick={handleSubmitLeave} disabled={leaveLoading || !leaveForm.leave_date}>
-              {leaveLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit"}
+            <Button variant="outline" onClick={() => setShowLeaveModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitLeave}
+              disabled={leaveLoading || !leaveForm.leave_date}
+            >
+              {leaveLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Submit"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2315,10 +3585,11 @@ const TeacherDashboard = () => {
       <ReportModal
         open={reportModal.open || !!postDoneReport}
         onClose={() => {
-          setReportModal(prev => ({ ...prev, open: false }));
+          setReportModal((prev) => ({ ...prev, open: false }));
           setPostDoneReport(null);
           fetchData();
-          if (page === "classes") fetchFilteredCompleted(classesMonth, classesYear);
+          if (page === "classes")
+            fetchFilteredCompleted(classesMonth, classesYear);
         }}
         bookingId={postDoneReport?.bookingId ?? reportModal.bookingId}
         studentId={postDoneReport?.studentId ?? reportModal.studentId}
@@ -2327,7 +3598,15 @@ const TeacherDashboard = () => {
       />
 
       {/* Recurring Availability Dialog */}
-      <Dialog open={showRecurringAvail} onOpenChange={(o) => { if (!o) { setShowRecurringAvail(false); setRecurringAvailMsg(null); } }}>
+      <Dialog
+        open={showRecurringAvail}
+        onOpenChange={(o) => {
+          if (!o) {
+            setShowRecurringAvail(false);
+            setRecurringAvailMsg(null);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Set Recurring Availability</DialogTitle>
@@ -2335,19 +3614,76 @@ const TeacherDashboard = () => {
           <div className="space-y-4">
             {/* Quick presets */}
             <div>
-              <p className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wide">Quick Presets</p>
+              <p className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wide">
+                Quick Presets
+              </p>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { label: "Weekdays Full Day", days: ["Monday","Tuesday","Wednesday","Thursday","Friday"], start: "09:00", end: "18:00" },
-                  { label: "Weekday Mornings", days: ["Monday","Tuesday","Wednesday","Thursday","Friday"], start: "07:00", end: "12:00" },
-                  { label: "Weekday Afternoons", days: ["Monday","Tuesday","Wednesday","Thursday","Friday"], start: "13:00", end: "18:00" },
-                  { label: "Mon / Wed / Fri", days: ["Monday","Wednesday","Friday"], start: "09:00", end: "18:00" },
-                  { label: "⭐ Peak Hours", days: ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"], start: "18:00", end: "22:00" },
-                ].map(p => (
+                  {
+                    label: "Weekdays Full Day",
+                    days: [
+                      "Monday",
+                      "Tuesday",
+                      "Wednesday",
+                      "Thursday",
+                      "Friday",
+                    ],
+                    start: "09:00",
+                    end: "18:00",
+                  },
+                  {
+                    label: "Weekday Mornings",
+                    days: [
+                      "Monday",
+                      "Tuesday",
+                      "Wednesday",
+                      "Thursday",
+                      "Friday",
+                    ],
+                    start: "07:00",
+                    end: "12:00",
+                  },
+                  {
+                    label: "Weekday Afternoons",
+                    days: [
+                      "Monday",
+                      "Tuesday",
+                      "Wednesday",
+                      "Thursday",
+                      "Friday",
+                    ],
+                    start: "13:00",
+                    end: "18:00",
+                  },
+                  {
+                    label: "Mon / Wed / Fri",
+                    days: ["Monday", "Wednesday", "Friday"],
+                    start: "09:00",
+                    end: "18:00",
+                  },
+                  {
+                    label: "⭐ Peak Hours",
+                    days: [
+                      "Monday",
+                      "Tuesday",
+                      "Wednesday",
+                      "Thursday",
+                      "Friday",
+                      "Saturday",
+                      "Sunday",
+                    ],
+                    start: "18:00",
+                    end: "22:00",
+                  },
+                ].map((p) => (
                   <button
                     key={p.label}
                     type="button"
-                    onClick={() => { setRecurringAvailDays(p.days); setRecurringAvailStart(p.start); setRecurringAvailEnd(p.end); }}
+                    onClick={() => {
+                      setRecurringAvailDays(p.days);
+                      setRecurringAvailStart(p.start);
+                      setRecurringAvailEnd(p.end);
+                    }}
                     className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${p.label.startsWith("⭐") ? "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100 hover:border-amber-400" : "bg-white text-muted-foreground border-gray-200 hover:border-primary hover:text-primary"}`}
                   >
                     {p.label}
@@ -2360,11 +3696,25 @@ const TeacherDashboard = () => {
             <div>
               <p className="text-sm font-medium mb-2">Days of the week</p>
               <div className="flex flex-wrap gap-2">
-                {["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map((day) => (
+                {[
+                  "Monday",
+                  "Tuesday",
+                  "Wednesday",
+                  "Thursday",
+                  "Friday",
+                  "Saturday",
+                  "Sunday",
+                ].map((day) => (
                   <button
                     key={day}
                     type="button"
-                    onClick={() => setRecurringAvailDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])}
+                    onClick={() =>
+                      setRecurringAvailDays((prev) =>
+                        prev.includes(day)
+                          ? prev.filter((d) => d !== day)
+                          : [...prev, day],
+                      )
+                    }
                     className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${recurringAvailDays.includes(day) ? "bg-primary text-white border-primary" : "bg-white text-muted-foreground border-gray-200 hover:border-primary"}`}
                   >
                     {day.substring(0, 3)}
@@ -2376,40 +3726,48 @@ const TeacherDashboard = () => {
             {/* Time range */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-sm font-medium block mb-1">Start Time</label>
+                <label className="text-sm font-medium block mb-1">
+                  Start Time
+                </label>
                 <select
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                   value={recurringAvailStart}
-                  onChange={e => {
+                  onChange={(e) => {
                     const v = e.target.value;
                     setRecurringAvailStart(v);
                     if (v >= recurringAvailEnd) {
-                      const next = SLOT_TIMES.find(t => t > v);
+                      const next = SLOT_TIMES.find((t) => t > v);
                       if (next) setRecurringAvailEnd(next);
                     }
                   }}
                 >
-                  {SLOT_TIMES.slice(0, -1).map(t => (
-                    <option key={t} value={t}>{fmt12(t)}</option>
+                  {SLOT_TIMES.slice(0, -1).map((t) => (
+                    <option key={t} value={t}>
+                      {fmt12(t)}
+                    </option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="text-sm font-medium block mb-1">End Time</label>
+                <label className="text-sm font-medium block mb-1">
+                  End Time
+                </label>
                 <select
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                   value={recurringAvailEnd}
-                  onChange={e => {
+                  onChange={(e) => {
                     const v = e.target.value;
                     setRecurringAvailEnd(v);
                     if (v <= recurringAvailStart) {
-                      const prev = [...SLOT_TIMES].reverse().find(t => t < v);
+                      const prev = [...SLOT_TIMES].reverse().find((t) => t < v);
                       if (prev) setRecurringAvailStart(prev);
                     }
                   }}
                 >
-                  {SLOT_TIMES.slice(1).map(t => (
-                    <option key={t} value={t}>{fmt12(t)}</option>
+                  {SLOT_TIMES.slice(1).map((t) => (
+                    <option key={t} value={t}>
+                      {fmt12(t)}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -2417,32 +3775,56 @@ const TeacherDashboard = () => {
 
             {/* Weeks */}
             <div>
-              <label className="text-sm font-medium block mb-1">Number of Weeks</label>
+              <label className="text-sm font-medium block mb-1">
+                Number of Weeks
+              </label>
               <select
                 className="w-full border rounded-lg px-3 py-2 text-sm"
                 value={recurringAvailWeeks}
-                onChange={e => setRecurringAvailWeeks(Number(e.target.value))}
+                onChange={(e) => setRecurringAvailWeeks(Number(e.target.value))}
               >
-                {[1,2,3,4,6,8,12].map(w => (
-                  <option key={w} value={w}>{w} week{w > 1 ? "s" : ""}</option>
+                {[1, 2, 3, 4, 6, 8, 12].map((w) => (
+                  <option key={w} value={w}>
+                    {w} week{w > 1 ? "s" : ""}
+                  </option>
                 ))}
               </select>
             </div>
 
             {recurringAvailMsg && (
-              <p className={`text-sm ${recurringAvailMsg.startsWith("Done") ? "text-green-600" : "text-red-600"}`}>{recurringAvailMsg}</p>
+              <p
+                className={`text-sm ${recurringAvailMsg.startsWith("Done") ? "text-green-600" : "text-red-600"}`}
+              >
+                {recurringAvailMsg}
+              </p>
             )}
           </div>
           <div className="flex gap-2 pt-2">
-            <Button variant="outline" className="flex-1" onClick={() => { setShowRecurringAvail(false); setRecurringAvailMsg(null); }}>Cancel</Button>
-            <Button className="flex-1" disabled={recurringAvailLoading || recurringAvailDays.length === 0} onClick={handleRecurringAvailability}>
-              {recurringAvailLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setShowRecurringAvail(false);
+                setRecurringAvailMsg(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={
+                recurringAvailLoading || recurringAvailDays.length === 0
+              }
+              onClick={handleRecurringAvailability}
+            >
+              {recurringAvailLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
               {recurringAvailMsg?.startsWith("Done") ? "Close" : "Apply"}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 };
