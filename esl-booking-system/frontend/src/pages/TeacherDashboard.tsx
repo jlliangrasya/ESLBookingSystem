@@ -51,6 +51,10 @@ interface PendingItem {
   student_id: number; duration_minutes: number; subject: string;
   student_package_id: number; student_absent: boolean; slot_count?: number;
 }
+interface WeekBooking {
+  id: number; appointment_date: string; status: string; student_name: string;
+  subject: string; student_absent: boolean; teacher_absent: boolean; slot_count?: number;
+}
 interface TeacherLeave {
   id: number; leave_date: string; reason_type: string; notes: string | null;
   status: string; created_at: string;
@@ -82,6 +86,19 @@ const fmt12 = (time: string): string => {
   if (h > 12) h -= 12;
   if (h === 0) h = 12;
   return `${h}:${mStr} ${ampm}`;
+};
+
+// Every "YYYY-MM-DD|HH:mm" availability-grid key a booking occupies. Multi-slot bookings
+// (slot_count > 1) cover consecutive 30-min slots, so they expand to one key each.
+const slotKeysFor = (appointmentDate: string, slotCount = 1): string[] => {
+  const dateKey = fmtDate(appointmentDate, "yyyy-MM-dd");
+  const [bh, bm] = fmtDate(appointmentDate, "HH:mm").split(":").map(Number);
+  return Array.from({ length: slotCount || 1 }, (_, i) => {
+    const totalMin = bh * 60 + bm + i * 30;
+    const h = String(Math.floor(totalMin / 60)).padStart(2, "0");
+    const m = String(totalMin % 60).padStart(2, "0");
+    return `${dateKey}|${h}:${m}`;
+  });
 };
 
 // Formats a "yyyy-MM-dd" calendar key as a local date, avoiding the UTC
@@ -245,6 +262,9 @@ const TeacherDashboard = () => {
   const [openSlots, setOpenSlots] = useState<Set<string>>(new Set());
   const [weekSlotsLoading, setWeekSlotsLoading] = useState(false);
   const [togglingSlot, setTogglingSlot] = useState<string | null>(null);
+  // Every booking in the displayed week (any date, any status but cancelled) — `bookings`
+  // above only holds upcoming classes, so past cells in the grid need their own source.
+  const [weekBookings, setWeekBookings] = useState<WeekBooking[]>([]);
 
   // Personal calendar notes (e.g. "LUNCH") on closed slots — double-click a slot to add
   const [slotNotes, setSlotNotes] = useState<Map<string, { note_text: string; admin_visibility: boolean; note_color: string; note_icon: string | null }>>(new Map());
@@ -369,6 +389,19 @@ const TeacherDashboard = () => {
       // non-critical
     } finally {
       setWeekSlotsLoading(false);
+    }
+  };
+
+  const fetchWeekBookings = async (start: Date) => {
+    try {
+      const startStr = start.toLocaleDateString("en-CA");
+      const res = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/teacher/week-bookings?startDate=${startStr}`,
+        { headers }
+      );
+      setWeekBookings(res.data || []);
+    } catch {
+      // non-critical — the grid still renders, past cells just stay empty
     }
   };
 
@@ -604,6 +637,7 @@ const TeacherDashboard = () => {
     if (token) {
       fetchOpenSlots(weekStart);
       fetchSlotNotes(weekStart);
+      fetchWeekBookings(weekStart);
     }
   }, [weekStart]);
 
@@ -650,19 +684,15 @@ const TeacherDashboard = () => {
   // Multi-slot bookings (slot_count > 1) are expanded into every 30-min slot they occupy
   // so the availability grid marks ALL covered slots as booked, not just the first.
   const bookedSlotKeys = new Set<string>(
-    bookings.flatMap(b => {
-      const slotCount = b.slot_count ?? 1;
-      const dateKey = fmtDate(b.appointment_date, "yyyy-MM-dd");
-      const baseTime = fmtDate(b.appointment_date, "HH:mm");
-      const [bh, bm] = baseTime.split(":").map(Number);
-      return Array.from({ length: slotCount }, (_, i) => {
-        const totalMin = bh * 60 + bm + i * 30;
-        const h = String(Math.floor(totalMin / 60)).padStart(2, "0");
-        const m = String(totalMin % 60).padStart(2, "0");
-        return `${dateKey}|${h}:${m}`;
-      });
-    })
+    bookings.flatMap(b => slotKeysFor(b.appointment_date, b.slot_count))
   );
+
+  // Same expansion for the whole displayed week, but keyed to the booking itself so past
+  // cells can render who the class was with instead of going blank.
+  const weekBookingBySlot = new Map<string, WeekBooking>();
+  weekBookings.forEach(b => {
+    slotKeysFor(b.appointment_date, b.slot_count).forEach(k => weekBookingBySlot.set(k, b));
+  });
 
   // Handlers
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -677,6 +707,7 @@ const TeacherDashboard = () => {
       await axios.post(`${import.meta.env.VITE_API_URL}/api/teacher/bookings/${item.id}/done`, {}, { headers });
       setPendingConfirmation(prev => prev.filter(p => p.id !== item.id));
       fetchData();
+      fetchWeekBookings(weekStart); // the grid shows this past class — refresh its status
       // Open report modal right after marking done
       setPostDoneReport({ bookingId: item.id, studentId: item.student_id, studentName: item.student_name, classDate: item.appointment_date });
     } catch (err: unknown) {
@@ -789,6 +820,7 @@ const TeacherDashboard = () => {
       setCancelConfirm(null);
       setRecurringCancelBooking(null);
       fetchData();
+      fetchWeekBookings(weekStart);
     } catch (err: unknown) {
       alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to cancel");
     } finally {
@@ -1157,7 +1189,7 @@ const TeacherDashboard = () => {
                     <span className="w-3 h-3 rounded-sm bg-gray-200 inline-block" /> Closed
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-sm bg-gray-100 inline-block" /> Unavailable (past)
+                    <span className="w-3 h-3 rounded-sm bg-gray-100 inline-block" /> Past (gray = history, read-only)
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-sm bg-amber-100 inline-block" /> Note — pick a color/icon (double-click a slot to add)
@@ -1210,26 +1242,62 @@ const TeacherDashboard = () => {
                               const isToggling = togglingSlot === key;
                               const note = slotNotes.get(key);
 
+                              // Past slots are read-only and uniformly gray — no booked green,
+                              // no note colors. Only the text carries over, so the week still
+                              // reads as history instead of a wall of blanks.
                               if (isPast) {
+                                const pastBooking = weekBookingBySlot.get(key);
+                                const when = `${day.toLocaleDateString("en-US", { month: "short", day: "numeric" })} · ${fmt12(time)}`;
+
+                                let pastText = "";
+                                let pastTitle = when;
+                                if (pastBooking) {
+                                  const outcome = pastBooking.student_absent
+                                    ? "student absent"
+                                    : pastBooking.teacher_absent
+                                    ? "you were absent"
+                                    : pastBooking.status === "done"
+                                    ? "completed"
+                                    : "not yet confirmed";
+                                  pastText = pastBooking.student_name.split(" ")[0];
+                                  pastTitle = `${when} — ${pastBooking.student_name}${pastBooking.subject ? ` (${pastBooking.subject})` : ""} · ${outcome}`;
+                                } else if (note) {
+                                  pastText = `${note.note_icon ? `${note.note_icon} ` : ""}${note.note_text}`;
+                                  pastTitle = `${when} — ${pastText} (past note)`;
+                                }
+
                                 return (
                                   <td
                                     key={i}
-                                    className="border-b border-r p-1 bg-gray-50 text-center"
-                                    title="Unavailable"
+                                    className="border-b border-r p-1 text-center bg-gray-50 select-none"
+                                    title={pastTitle}
                                   >
-                                    <span className="text-gray-300 text-[10px] select-none">—</span>
+                                    {pastText ? (
+                                      <span className="text-[10px] font-medium text-gray-400 truncate block max-w-[80px] mx-auto">
+                                        {pastText}
+                                      </span>
+                                    ) : (
+                                      <>&nbsp;</>
+                                    )}
                                   </td>
                                 );
                               }
 
                               if (isBooked) {
+                                const booking = weekBookingBySlot.get(key);
                                 return (
                                   <td
                                     key={i}
                                     className="border-b border-r p-1 bg-green-500 text-center"
-                                    title="Class booked at this slot"
+                                    title={
+                                      booking
+                                        ? `Class with ${booking.student_name}${booking.subject ? ` (${booking.subject})` : ""}`
+                                        : "Class booked at this slot"
+                                    }
                                   >
-                                    <span className="text-[10px] font-semibold text-white select-none">BOOKED</span>
+                                    <span className="text-[10px] font-semibold text-white select-none truncate block max-w-[80px] mx-auto">
+                                      {booking ? booking.student_name.split(" ")[0] : "BOOKED"}
+                                    </span>
                                   </td>
                                 );
                               }

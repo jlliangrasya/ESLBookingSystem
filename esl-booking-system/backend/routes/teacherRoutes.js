@@ -884,6 +884,45 @@ router.get('/weekly-slots', authenticateToken, requireRole('teacher'), async (re
     }
 });
 
+// GET /api/teacher/week-bookings?startDate=YYYY-MM-DD — every booking in the 7-day window.
+// The dashboard's `bookings` list only carries upcoming classes, so the availability grid
+// has nothing to draw in past cells. This returns the whole week regardless of date/status
+// so past slots can still show what was scheduled. Cancelled classes are left out — they
+// never happened, so they aren't part of the schedule history.
+router.get('/week-bookings', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const teacherId = req.user.id;
+        const companyId = req.user.company_id;
+        const startDate = req.query.startDate || todayDate();
+        const endDt = new Date(startDate);
+        endDt.setDate(endDt.getDate() + 7);
+        const endDate = endDt.toISOString().split('T')[0];
+
+        const [rows] = await pool.query(
+            `SELECT b.id,
+                    b.appointment_date,
+                    b.status,
+                    b.student_absent,
+                    b.teacher_absent,
+                    b.booking_group_id,
+                    u.name AS student_name,
+                    sp.subject
+             FROM bookings b
+             JOIN student_packages sp ON b.student_package_id = sp.id
+             JOIN users u ON sp.student_id = u.id
+             WHERE b.teacher_id = ? AND b.company_id = ?
+               AND DATE(b.appointment_date) >= ? AND DATE(b.appointment_date) < ?
+               AND b.status <> 'cancelled'
+             ORDER BY b.appointment_date ASC`,
+            [teacherId, companyId, startDate, endDate]
+        );
+        res.json(groupMultiSlotBookings(rows));
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // POST /api/teacher/weekly-slots — open or close a single slot
 router.post('/weekly-slots', authenticateToken, requireRole('teacher'), async (req, res) => {
     try {
