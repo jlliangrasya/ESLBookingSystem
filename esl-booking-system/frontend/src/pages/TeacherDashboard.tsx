@@ -484,9 +484,12 @@ const TeacherDashboard = () => {
         { headers }
       );
       if (reqId !== monthNotesReqIdRef.current) return; // a newer month was requested since
+      // Drop notes on days already past, matching how the backend only returns
+      // upcoming bookings (DATE(appointment_date) >= today) — past cells stay empty.
+      const today = new Date().toLocaleDateString("en-CA");
       const noteMap: Record<string, MonthCalendarEvent[]> = {};
       (res.data as { note_date: string; slot_time: string; note_text: string; admin_visibility: boolean; note_color: string; note_icon: string | null }[])
-        .filter((n) => n.admin_visibility)
+        .filter((n) => n.admin_visibility && n.note_date >= today)
         .forEach((n) => {
           if (!noteMap[n.note_date]) noteMap[n.note_date] = [];
           noteMap[n.note_date].push({
