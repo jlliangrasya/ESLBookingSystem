@@ -639,6 +639,39 @@ router.get("/teachers/:id/notes", authenticateToken, requireRole('company_admin'
   }
 });
 
+// GET every booking in a teacher's week (admin view — mirrors teacher's week-bookings).
+// The profile's `schedule` payload only carries upcoming classes, so the availability grid
+// has nothing to draw in past cells. Rows are returned ungrouped — one per 30-min slot —
+// so the grid's exact date+time match covers every slot a multi-slot class occupies.
+// Cancelled classes are left out: they never happened, so they aren't schedule history.
+router.get("/teachers/:id/week-bookings", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const { id } = req.params;
+    const startDate = req.query.startDate || new Date().toISOString().split('T')[0];
+    const endDt = new Date(startDate + 'T00:00:00Z');
+    endDt.setUTCDate(endDt.getUTCDate() + 7);
+    const endDate = endDt.toISOString().split('T')[0];
+
+    const [rows] = await pool.query(
+      `SELECT b.id, b.appointment_date, b.status, b.student_absent, b.teacher_absent,
+              u.name AS student_name, sp.subject
+       FROM bookings b
+       JOIN student_packages sp ON b.student_package_id = sp.id
+       JOIN users u ON sp.student_id = u.id
+       WHERE b.company_id = ? AND b.teacher_id = ?
+         AND DATE(b.appointment_date) >= ? AND DATE(b.appointment_date) < ?
+         AND b.status <> 'cancelled'
+       ORDER BY b.appointment_date ASC`,
+      [companyId, id, startDate, endDate]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // POST toggle teacher's open slots (admin — mirrors teacher's weekly-slots)
 router.post("/teachers/:id/weekly-slots", authenticateToken, requireRole('company_admin'), async (req, res) => {
   try {

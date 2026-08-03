@@ -55,6 +55,22 @@ interface CompletedBooking {
   has_report: boolean;
 }
 
+interface WeekBooking {
+  id: number;
+  appointment_date: string;
+  status: string;
+  student_name: string;
+  subject: string | null;
+  student_absent: boolean;
+  teacher_absent: boolean;
+}
+
+interface TeacherNote {
+  note_text: string;
+  note_color: string;
+  note_icon: string | null;
+}
+
 interface LeaveEntry {
   id: number;
   leave_date: string;
@@ -174,6 +190,11 @@ const AdminTeacherProfilePage = () => {
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [openSlots, setOpenSlots] = useState<Set<string>>(new Set());
   const [togglingSlot, setTogglingSlot] = useState<string | null>(null);
+  // Every booking in the displayed week (any date/status but cancelled) plus the teacher's
+  // admin-visible notes — `schedule` above only holds upcoming classes, so past cells in the
+  // grid need their own source to show history instead of going blank.
+  const [weekBookings, setWeekBookings] = useState<WeekBooking[]>([]);
+  const [weekNotes, setWeekNotes] = useState<Map<string, TeacherNote>>(new Map());
 
   // Recurring availability dialog
   const [showRecurringAvail, setShowRecurringAvail] = useState(false);
@@ -268,6 +289,28 @@ const AdminTeacherProfilePage = () => {
     }
   }, [id]);
 
+  // Bookings + admin-visible notes for the displayed week, used to fill in past grid cells.
+  const fetchWeekHistory = useCallback(async (start: Date) => {
+    const startStr = format(start, "yyyy-MM-dd");
+    try {
+      const [bookingsRes, notesRes] = await Promise.all([
+        axios.get(`${base}/api/admin/teachers/${id}/week-bookings?startDate=${startStr}`, { headers }),
+        axios.get(`${base}/api/admin/teachers/${id}/notes?startDate=${startStr}`, { headers }),
+      ]);
+      setWeekBookings(bookingsRes.data || []);
+      const noteMap = new Map<string, TeacherNote>();
+      (notesRes.data as ({ note_date: string; slot_time: string } & TeacherNote)[]).forEach(n => {
+        noteMap.set(`${n.note_date}|${n.slot_time}`, {
+          note_text: n.note_text, note_color: n.note_color, note_icon: n.note_icon,
+        });
+      });
+      setWeekNotes(noteMap);
+    } catch (err) {
+      // non-critical — the grid still renders, past cells just stay empty
+      console.error("Error fetching week history:", err);
+    }
+  }, [id]);
+
   const toggleSlot = async (dateStr: string, time: string) => {
     const key = `${dateStr}|${time}`;
     const isOpen = openSlots.has(key);
@@ -328,7 +371,7 @@ const AdminTeacherProfilePage = () => {
   };
 
   useEffect(() => { fetchData(); }, [id]);
-  useEffect(() => { fetchOpenSlots(weekStart); }, [weekStart, fetchOpenSlots]);
+  useEffect(() => { fetchOpenSlots(weekStart); fetchWeekHistory(weekStart); }, [weekStart, fetchOpenSlots, fetchWeekHistory]);
 
   const openEdit = () => {
     if (!teacher) return;
@@ -1045,18 +1088,73 @@ const AdminTeacherProfilePage = () => {
                             const t = normalized.slice(11, 16);
                             return d === day && t === time;
                           });
+
+                          // Past slots are read-only and uniformly gray — only the text carries
+                          // over, so the week still reads as history instead of a wall of blanks.
+                          if (isPast) {
+                            const pastBooking = weekBookings.find(b => {
+                              const normalized = b.appointment_date.includes('T')
+                                ? b.appointment_date
+                                : b.appointment_date.replace(' ', 'T');
+                              return normalized.slice(0, 10) === day && normalized.slice(11, 16) === time;
+                            });
+                            const pastNote = weekNotes.get(key);
+                            const when = `${format(addDays(weekStart, j), "MMM d")} · ${fmt12(time)}`;
+
+                            let pastText = "";
+                            let pastTitle = when;
+                            if (pastBooking) {
+                              const outcome = pastBooking.student_absent
+                                ? "student absent"
+                                : pastBooking.teacher_absent
+                                ? "teacher absent"
+                                : pastBooking.status === "done"
+                                ? "completed"
+                                : "not yet confirmed";
+                              pastText = pastBooking.student_name.split(" ")[0];
+                              pastTitle = `${when} — ${pastBooking.student_name}${pastBooking.subject ? ` (${pastBooking.subject})` : ""} · ${outcome}`;
+                            } else if (pastNote) {
+                              pastText = `${pastNote.note_icon ? `${pastNote.note_icon} ` : ""}${pastNote.note_text}`;
+                              pastTitle = `${when} — ${pastText} (past note)`;
+                            }
+
+                            return (
+                              <td
+                                key={j}
+                                className="p-1 text-center border bg-gray-50 cursor-not-allowed select-none"
+                                title={pastTitle}
+                              >
+                                {pastText ? (
+                                  <span className="text-[10px] font-medium text-gray-400 truncate block max-w-[80px] mx-auto">
+                                    {pastText}
+                                  </span>
+                                ) : (
+                                  <>&nbsp;</>
+                                )}
+                              </td>
+                            );
+                          }
+
                           return (
                             <td
                               key={j}
-                              onClick={() => !isPast && !bookedEntry && !isToggling && toggleSlot(day, time)}
+                              onClick={() => !bookedEntry && !isToggling && toggleSlot(day, time)}
                               className={`p-1 text-center border cursor-pointer transition-colors ${
-                                isPast ? "bg-gray-50 text-gray-300 cursor-not-allowed"
-                                : bookedEntry ? "bg-blue-100 text-blue-700 cursor-default"
+                                bookedEntry ? "bg-blue-100 text-blue-700 cursor-default"
                                 : isOpen ? "bg-green-100 text-green-700 hover:bg-green-200"
                                 : "bg-gray-100 text-gray-400 hover:bg-gray-200"
                               }`}
+                              title={
+                                bookedEntry
+                                  ? `Class with ${bookedEntry.student_name}${bookedEntry.subject ? ` (${bookedEntry.subject})` : ""}`
+                                  : undefined
+                              }
                             >
-                              {isToggling ? "..." : bookedEntry ? "Booked" : isOpen ? "✓" : "+"}
+                              {isToggling ? "..." : bookedEntry ? (
+                                <span className="text-[10px] font-semibold truncate block max-w-[80px] mx-auto">
+                                  {bookedEntry.student_name.split(" ")[0]}
+                                </span>
+                              ) : isOpen ? "✓" : "+"}
                             </td>
                           );
                         })}
@@ -1069,7 +1167,8 @@ const AdminTeacherProfilePage = () => {
             <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
               <span><span className="inline-block w-3 h-3 bg-green-100 border rounded mr-1" />Open (✓)</span>
               <span><span className="inline-block w-3 h-3 bg-gray-100 border rounded mr-1" />Closed (+)</span>
-              <span><span className="inline-block w-3 h-3 bg-blue-100 border rounded mr-1" />Booked</span>
+              <span><span className="inline-block w-3 h-3 bg-blue-100 border rounded mr-1" />Booked (student name)</span>
+              <span><span className="inline-block w-3 h-3 bg-gray-50 border rounded mr-1" />Past (gray = history, read-only)</span>
             </div>
           </CardContent>
         </Card>
