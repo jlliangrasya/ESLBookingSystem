@@ -627,7 +627,7 @@ router.get("/teachers/:id/notes", authenticateToken, requireRole('company_admin'
 
     const [rows] = await pool.query(
       `SELECT DATE_FORMAT(note_date, '%Y-%m-%d') AS note_date, TIME_FORMAT(slot_time, '%H:%i') AS slot_time,
-              note_text, note_color, note_icon
+              note_text, note_color, note_icon, note_group_id
        FROM teacher_notes
        WHERE company_id = ? AND teacher_id = ? AND admin_visibility = 1 AND note_date >= ? AND note_date < ?
        ORDER BY note_date ASC, slot_time ASC`,

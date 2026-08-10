@@ -106,6 +106,19 @@ const MIGRATIONS = [
       FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
     )`,
   },
+  // ── 015: Merged teacher notes ─────────────────────────────────────────────
+  // Split from 015_teacher_note_groups.sql so a re-run after a half-applied
+  // state adds only the missing piece instead of failing on "duplicate column".
+  {
+    name: 'teacher_notes.note_group_id column',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'teacher_notes' AND COLUMN_NAME = 'note_group_id'",
+    up: 'ALTER TABLE teacher_notes ADD COLUMN note_group_id VARCHAR(36) NULL',
+  },
+  {
+    name: 'teacher_notes note-group index',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'teacher_notes' AND INDEX_NAME = 'idx_note_group'",
+    up: 'CREATE INDEX idx_note_group ON teacher_notes (company_id, teacher_id, note_group_id)',
+  },
 ];
 
 async function main() {

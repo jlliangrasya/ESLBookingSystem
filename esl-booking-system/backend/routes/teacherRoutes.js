@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const pool = require('../db');
 const authenticateToken = require('../middleware/authMiddleware');
 const requireRole = require('../middleware/requireRole');
@@ -10,6 +11,40 @@ const router = express.Router();
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const DEFAULT_NOTE_COLOR = '#FDE68A';
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^\d{2}:\d{2}(:\d{2})?$/;
+const MAX_BULK_SLOTS = 400; // a full 7-day × 32-row grid is 224 cells
+
+/**
+ * Normalise a bulk slot payload into `[{ date, time }]` with `time` as HH:mm:00.
+ * Accepts `{ slots: [{ slot_date|note_date, slot_time }] }` — the shape both the
+ * availability grid's drag-selection and the merged-note dialog send.
+ * Returns a string instead of an array when the payload is unusable.
+ */
+function normaliseSlots(slots) {
+    if (!Array.isArray(slots) || slots.length === 0) return 'slots must be a non-empty array';
+    if (slots.length > MAX_BULK_SLOTS) return `slots may not exceed ${MAX_BULK_SLOTS} entries`;
+    const seen = new Set();
+    const out = [];
+    for (const s of slots) {
+        const date = s && (s.slot_date || s.note_date);
+        const rawTime = s && s.slot_time;
+        if (!DATE_RE.test(date || '') || !TIME_RE.test(rawTime || '')) {
+            return 'each slot needs a YYYY-MM-DD date and an HH:mm time';
+        }
+        const time = rawTime.length === 5 ? `${rawTime}:00` : rawTime;
+        const key = `${date}|${time}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ date, time });
+    }
+    return out;
+}
+
+/** True when the slot's PHT wall-clock start is already behind us. */
+function isPastSlot(date, time) {
+    return new Date(`${date}T${time.slice(0, 5)}:00+08:00`) < new Date();
+}
 
 /** Format a stored PHT datetime string for notification messages without UTC shift. */
 function fmtAppt(dtStr) {
@@ -923,6 +958,57 @@ router.get('/week-bookings', authenticateToken, requireRole('teacher'), async (r
     }
 });
 
+// POST /api/teacher/weekly-slots/bulk — open or close every slot in a drag-selected range.
+// Past slots are skipped rather than rejected: a selection dragged across "now" should still
+// apply to the future half of it, so the response reports how many were actually touched.
+router.post('/weekly-slots/bulk', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const teacherId = req.user.id;
+        const companyId = req.user.company_id;
+        const { action } = req.body;
+
+        if (action !== 'open' && action !== 'close') {
+            return res.status(400).json({ message: 'action must be "open" or "close"' });
+        }
+        const slots = normaliseSlots(req.body.slots);
+        if (typeof slots === 'string') return res.status(400).json({ message: slots });
+
+        const usable = slots.filter(s => !isPastSlot(s.date, s.time));
+        if (usable.length === 0) {
+            return res.json({ message: 'No future slots in selection', affected: 0, skippedPast: slots.length });
+        }
+
+        if (action === 'open') {
+            // A note lives on a closed slot, so opening one would orphan it — drop the notes
+            // covered by the selection first, then open every slot in it.
+            await pool.query(
+                `DELETE FROM teacher_notes
+                 WHERE company_id = ? AND teacher_id = ? AND (note_date, slot_time) IN (?)`,
+                [companyId, teacherId, usable.map(s => [s.date, s.time])]
+            );
+            await pool.query(
+                `INSERT IGNORE INTO teacher_available_slots (company_id, teacher_id, slot_date, slot_time) VALUES ?`,
+                [usable.map(s => [companyId, teacherId, s.date, s.time])]
+            );
+        } else {
+            await pool.query(
+                `DELETE FROM teacher_available_slots
+                 WHERE company_id = ? AND teacher_id = ? AND (slot_date, slot_time) IN (?)`,
+                [companyId, teacherId, usable.map(s => [s.date, s.time])]
+            );
+        }
+
+        res.json({
+            message: `${usable.length} slot${usable.length === 1 ? '' : 's'} ${action}d`,
+            affected: usable.length,
+            skippedPast: slots.length - usable.length,
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // POST /api/teacher/weekly-slots — open or close a single slot
 router.post('/weekly-slots', authenticateToken, requireRole('teacher'), async (req, res) => {
     try {
@@ -1065,7 +1151,7 @@ router.get('/notes', authenticateToken, requireRole('teacher'), async (req, res)
             `SELECT id,
                     DATE_FORMAT(note_date, '%Y-%m-%d') AS note_date,
                     TIME_FORMAT(slot_time, '%H:%i')    AS slot_time,
-                    note_text, admin_visibility, note_color, note_icon
+                    note_text, admin_visibility, note_color, note_icon, note_group_id
              FROM teacher_notes
              WHERE company_id = ? AND teacher_id = ? AND note_date >= ? AND note_date < ?
              ORDER BY note_date ASC, slot_time ASC`,
@@ -1078,54 +1164,89 @@ router.get('/notes', authenticateToken, requireRole('teacher'), async (req, res)
     }
 });
 
-// POST /api/teacher/notes — add/update a note on a slot.
-// A note can only exist on a closed slot, so this always closes the slot
-// first (removing it from teacher_available_slots) before saving the note.
+// POST /api/teacher/notes — add/update the same note across one or more slots.
+// Body is either a single slot (`note_date` + `slot_time`) or a batch (`slots: [...]`)
+// coming from a drag-selection in the weekly grid. With `merge: true` every slot in the
+// batch is stamped with one shared note_group_id so the grid draws the run as a single
+// merged cell (e.g. 8:00 PM – 9:30 PM as one block) and later edits hit the whole block.
+// A note can only exist on a closed slot, so the slots are always closed first.
 router.post('/notes', authenticateToken, requireRole('teacher'), async (req, res) => {
     try {
         const teacherId = req.user.id;
         const companyId = req.user.company_id;
-        const { note_date, slot_time, note_text, admin_visibility, note_color, note_icon } = req.body;
+        const { note_date, slot_time, note_text, admin_visibility, note_color, note_icon, merge } = req.body;
 
-        if (!note_date || !slot_time || !note_text || !note_text.trim()) {
-            return res.status(400).json({ message: 'note_date, slot_time, and note_text are required' });
+        if (!note_text || !note_text.trim()) {
+            return res.status(400).json({ message: 'note_text is required' });
         }
+        const slots = req.body.slots !== undefined
+            ? normaliseSlots(req.body.slots)
+            : normaliseSlots([{ slot_date: note_date, slot_time }]);
+        if (typeof slots === 'string') return res.status(400).json({ message: slots });
+
+        const usable = slots.filter(s => !isPastSlot(s.date, s.time));
+        if (usable.length === 0) {
+            return res.status(400).json({ message: 'Cannot add notes to past slots' });
+        }
+
         const color = typeof note_color === 'string' && HEX_COLOR_RE.test(note_color) ? note_color : DEFAULT_NOTE_COLOR;
         const icon = typeof note_icon === 'string' ? Array.from(note_icon.trim()).slice(0, 10).join('') || null : null;
+        const text = note_text.trim();
+        const visible = admin_visibility ? 1 : 0;
+        // Only a real run of slots is worth merging; a lone slot stays ungrouped (NULL).
+        const groupId = merge && usable.length > 1 ? crypto.randomUUID() : null;
 
         await pool.query(
-            `DELETE FROM teacher_available_slots WHERE company_id = ? AND teacher_id = ? AND slot_date = ? AND slot_time = ?`,
-            [companyId, teacherId, note_date, slot_time]
+            `DELETE FROM teacher_available_slots
+             WHERE company_id = ? AND teacher_id = ? AND (slot_date, slot_time) IN (?)`,
+            [companyId, teacherId, usable.map(s => [s.date, s.time])]
         );
         await pool.query(
-            `INSERT INTO teacher_notes (company_id, teacher_id, note_date, slot_time, note_text, admin_visibility, note_color, note_icon)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO teacher_notes (company_id, teacher_id, note_date, slot_time, note_text, admin_visibility, note_color, note_icon, note_group_id)
+             VALUES ?
              ON DUPLICATE KEY UPDATE note_text = VALUES(note_text), admin_visibility = VALUES(admin_visibility),
-                                     note_color = VALUES(note_color), note_icon = VALUES(note_icon)`,
-            [companyId, teacherId, note_date, slot_time, note_text.trim(), admin_visibility ? 1 : 0, color, icon]
+                                     note_color = VALUES(note_color), note_icon = VALUES(note_icon),
+                                     note_group_id = VALUES(note_group_id)`,
+            [usable.map(s => [companyId, teacherId, s.date, s.time, text, visible, color, icon, groupId])]
         );
 
-        res.json({ message: 'Note saved successfully' });
+        res.json({
+            message: 'Note saved successfully',
+            affected: usable.length,
+            skippedPast: slots.length - usable.length,
+            note_group_id: groupId,
+        });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });
     }
 });
 
-// DELETE /api/teacher/notes — remove a note from a slot (slot stays closed)
+// DELETE /api/teacher/notes — remove notes from one slot, a batch of slots, or a whole
+// merged block (`note_group_id`). The slots themselves stay closed either way.
 router.delete('/notes', authenticateToken, requireRole('teacher'), async (req, res) => {
     try {
         const teacherId = req.user.id;
         const companyId = req.user.company_id;
-        const { note_date, slot_time } = req.body;
+        const { note_date, slot_time, note_group_id } = req.body;
 
-        if (!note_date || !slot_time) {
-            return res.status(400).json({ message: 'note_date and slot_time are required' });
+        if (note_group_id) {
+            await pool.query(
+                `DELETE FROM teacher_notes WHERE company_id = ? AND teacher_id = ? AND note_group_id = ?`,
+                [companyId, teacherId, note_group_id]
+            );
+            return res.json({ message: 'Note removed successfully' });
         }
 
+        const slots = req.body.slots !== undefined
+            ? normaliseSlots(req.body.slots)
+            : normaliseSlots([{ slot_date: note_date, slot_time }]);
+        if (typeof slots === 'string') return res.status(400).json({ message: slots });
+
         await pool.query(
-            `DELETE FROM teacher_notes WHERE company_id = ? AND teacher_id = ? AND note_date = ? AND slot_time = ?`,
-            [companyId, teacherId, note_date, slot_time]
+            `DELETE FROM teacher_notes
+             WHERE company_id = ? AND teacher_id = ? AND (note_date, slot_time) IN (?)`,
+            [companyId, teacherId, slots.map(s => [s.date, s.time])]
         );
 
         res.json({ message: 'Note removed successfully' });

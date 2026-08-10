@@ -180,6 +180,49 @@ const SLOT_TIMES: string[] = Array.from({ length: 32 }, (_, i) => {
   return `${h}:${m}`;
 });
 
+/** A single 30-min cell in the weekly availability grid. */
+type SlotRef = { dateStr: string; time: string };
+
+type SlotNote = {
+  note_text: string;
+  admin_visibility: boolean;
+  note_color: string;
+  note_icon: string | null;
+  note_group_id: string | null;
+};
+
+/** What the note dialog is currently editing — one slot, a drag-selection, or a merged block. */
+type NoteTarget = {
+  slots: SlotRef[];
+  /** Existing merged block being edited (null when creating). */
+  groupId: string | null;
+  /** True when the slots are one contiguous run on a single day, so they can be merged. */
+  mergeable: boolean;
+  /** Human-readable range for the dialog title. */
+  label: string;
+  /** True when at least one of the slots already carries a note. */
+  existing: boolean;
+};
+
+/** Availability grid cells are read-only once their start time has gone by. */
+const isPastSlot = (dateStr: string, time: string): boolean =>
+  new Date(`${dateStr}T${time}:00`) < new Date();
+
+/** "Mon, Aug 10" for a YYYY-MM-DD key, read as a local date (never UTC-shifted). */
+const labelForDate = (dateStr: string): string =>
+  new Date(`${dateStr}T00:00:00`).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+
+/** End of a run of `span` half-hour slots starting at `time`, as HH:mm. */
+const slotRangeEnd = (time: string, span: number): string => {
+  const [h, m] = time.split(":").map(Number);
+  const total = h * 60 + m + span * 30;
+  return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+};
+
 const getWeekStart = (d: Date): Date => {
   const date = new Date(d);
   const day = date.getDay();
@@ -448,26 +491,27 @@ const TeacherDashboard = () => {
   const [openSlots, setOpenSlots] = useState<Set<string>>(new Set());
   const [weekSlotsLoading, setWeekSlotsLoading] = useState(false);
   const [togglingSlot, setTogglingSlot] = useState<string | null>(null);
+  // Drag-highlight over the grid. The selection is the rectangle between the cell the
+  // drag started on (anchor) and the one under the pointer (focus), both as
+  // { d: day column index, t: SLOT_TIMES index }. Null when nothing is selected.
+  const [selAnchor, setSelAnchor] = useState<{ d: number; t: number } | null>(
+    null,
+  );
+  const [selFocus, setSelFocus] = useState<{ d: number; t: number } | null>(
+    null,
+  );
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState<"open" | "close" | null>(null);
   // Every booking in the displayed week (any date, any status but cancelled) — `bookings`
   // above only holds upcoming classes, so past cells in the grid need their own source.
   const [weekBookings, setWeekBookings] = useState<WeekBooking[]>([]);
 
   // Personal calendar notes (e.g. "LUNCH") on closed slots — double-click a slot to add
-  const [slotNotes, setSlotNotes] = useState<
-    Map<
-      string,
-      {
-        note_text: string;
-        admin_visibility: boolean;
-        note_color: string;
-        note_icon: string | null;
-      }
-    >
-  >(new Map());
-  const [noteDialogSlot, setNoteDialogSlot] = useState<{
-    dateStr: string;
-    time: string;
-  } | null>(null);
+  const [slotNotes, setSlotNotes] = useState<Map<string, SlotNote>>(new Map());
+  // The dialog writes to a list of slots: one for a plain double-click, the whole
+  // drag-selection for a bulk note, or every slot of a merged block when editing one.
+  const [noteTarget, setNoteTarget] = useState<NoteTarget | null>(null);
+  const [noteMerge, setNoteMerge] = useState(true);
   const [noteText, setNoteText] = useState("");
   const [noteAdminVisible, setNoteAdminVisible] = useState(false);
   const [noteColor, setNoteColor] = useState(DEFAULT_NOTE_COLOR);
@@ -644,6 +688,17 @@ const TeacherDashboard = () => {
     }
   };
 
+  // True once a press has been dragged onto a different cell. Read by the cell's click
+  // handler, which fires after mouseup: the derived selection can't be used for this,
+  // because pressing on a merged block already selects every slot it covers.
+  const dragMovedRef = useRef(false);
+
+  const clearSelection = () => {
+    setSelAnchor(null);
+    setSelFocus(null);
+    setIsSelecting(false);
+  };
+
   const toggleSlot = async (dateStr: string, time: string) => {
     const key = `${dateStr}|${time}`;
     const isOpen = openSlots.has(key);
@@ -699,32 +754,18 @@ const TeacherDashboard = () => {
         `${import.meta.env.VITE_API_URL}/api/teacher/notes?startDate=${startStr}`,
         { headers },
       );
-      const noteMap = new Map<
-        string,
-        {
-          note_text: string;
-          admin_visibility: boolean;
-          note_color: string;
-          note_icon: string | null;
-        }
-      >();
-      (
-        res.data as {
-          note_date: string;
-          slot_time: string;
-          note_text: string;
-          admin_visibility: boolean;
-          note_color: string;
-          note_icon: string | null;
-        }[]
-      ).forEach((n) => {
-        noteMap.set(`${n.note_date}|${n.slot_time}`, {
-          note_text: n.note_text,
-          admin_visibility: n.admin_visibility,
-          note_color: n.note_color,
-          note_icon: n.note_icon,
-        });
-      });
+      const noteMap = new Map<string, SlotNote>();
+      (res.data as ({ note_date: string; slot_time: string } & SlotNote)[]).forEach(
+        (n) => {
+          noteMap.set(`${n.note_date}|${n.slot_time}`, {
+            note_text: n.note_text,
+            admin_visibility: n.admin_visibility,
+            note_color: n.note_color,
+            note_icon: n.note_icon,
+            note_group_id: n.note_group_id ?? null,
+          });
+        },
+      );
       setSlotNotes(noteMap);
     } catch {
       // non-critical
@@ -746,7 +787,7 @@ const TeacherDashboard = () => {
       // upcoming bookings (DATE(appointment_date) >= today) — past cells stay empty.
       const today = new Date().toLocaleDateString("en-CA");
       const noteMap: Record<string, MonthCalendarEvent[]> = {};
-      (
+      const rows = (
         res.data as {
           note_date: string;
           slot_time: string;
@@ -754,48 +795,88 @@ const TeacherDashboard = () => {
           admin_visibility: boolean;
           note_color: string;
           note_icon: string | null;
+          note_group_id: string | null;
         }[]
-      )
-        .filter((n) => n.admin_visibility && n.note_date >= today)
-        .forEach((n) => {
-          if (!noteMap[n.note_date]) noteMap[n.note_date] = [];
-          noteMap[n.note_date].push({
-            kind: "note",
-            time: fmt12(n.slot_time),
-            sortTime: n.slot_time,
-            noteText: n.note_text,
-            noteColor: n.note_color,
-            noteIcon: n.note_icon,
-          });
+      ).filter((n) => n.admin_visibility && n.note_date >= today);
+
+      // A merged note is stored as one row per slot sharing a note_group_id. Show one
+      // chip per block covering its whole range, not one chip per half hour.
+      const groupLastSlot = new Map<string, string>();
+      rows.forEach((n) => {
+        if (!n.note_group_id) return;
+        const seenEnd = groupLastSlot.get(n.note_group_id);
+        if (!seenEnd || n.slot_time > seenEnd)
+          groupLastSlot.set(n.note_group_id, n.slot_time);
+      });
+      const seenGroups = new Set<string>();
+
+      // Rows arrive sorted by date then time, so the first row of a group is its start.
+      rows.forEach((n) => {
+        if (n.note_group_id) {
+          if (seenGroups.has(n.note_group_id)) return;
+          seenGroups.add(n.note_group_id);
+        }
+        const lastSlot = n.note_group_id
+          ? groupLastSlot.get(n.note_group_id)
+          : undefined;
+        if (!noteMap[n.note_date]) noteMap[n.note_date] = [];
+        noteMap[n.note_date].push({
+          kind: "note",
+          time:
+            lastSlot && lastSlot !== n.slot_time
+              ? `${fmt12(n.slot_time)} – ${fmt12(slotRangeEnd(lastSlot, 1))}`
+              : fmt12(n.slot_time),
+          sortTime: n.slot_time,
+          noteText: n.note_text,
+          noteColor: n.note_color,
+          noteIcon: n.note_icon,
         });
+      });
       setCalendarNotes(noteMap);
     } catch {
       // non-critical
     }
   };
 
-  const openNoteDialog = (dateStr: string, time: string) => {
-    const existing = slotNotes.get(`${dateStr}|${time}`);
-    setNoteText(existing?.note_text || "");
-    setNoteAdminVisible(existing?.admin_visibility || false);
-    setNoteColor(existing?.note_color || DEFAULT_NOTE_COLOR);
-    setNoteIcon(existing?.note_icon || "");
+  /** Seed and open the note dialog for whatever set of slots was picked. */
+  const openNoteDialogFor = (target: NoteTarget) => {
+    const seed = target.slots
+      .map((s) => slotNotes.get(`${s.dateStr}|${s.time}`))
+      .find(Boolean);
+    setNoteText(seed?.note_text || "");
+    setNoteAdminVisible(seed?.admin_visibility || false);
+    setNoteColor(seed?.note_color || DEFAULT_NOTE_COLOR);
+    setNoteIcon(seed?.note_icon || "");
+    // Editing an existing block keeps it merged; a fresh contiguous run defaults to merged
+    // since that's what "8:00 PM to 9:30 PM is one note" means.
+    setNoteMerge(target.mergeable);
     setNoteError(null);
-    setNoteDialogSlot({ dateStr, time });
+    setNoteTarget(target);
   };
 
+  const openNoteDialog = (dateStr: string, time: string) =>
+    openNoteDialogFor({
+      slots: [{ dateStr, time }],
+      groupId: null,
+      mergeable: false,
+      label: `${labelForDate(dateStr)} · ${fmt12(time)}`,
+      existing: slotNotes.has(`${dateStr}|${time}`),
+    });
+
   const saveNote = async () => {
-    if (!noteDialogSlot || !noteText.trim()) return;
-    const { dateStr, time } = noteDialogSlot;
-    const key = `${dateStr}|${time}`;
+    if (!noteTarget || !noteText.trim()) return;
+    const merge = noteTarget.mergeable && noteMerge;
     setNoteSaving(true);
     setNoteError(null);
     try {
       await axios.post(
         `${import.meta.env.VITE_API_URL}/api/teacher/notes`,
         {
-          note_date: dateStr,
-          slot_time: `${time}:00`,
+          slots: noteTarget.slots.map((s) => ({
+            slot_date: s.dateStr,
+            slot_time: `${s.time}:00`,
+          })),
+          merge,
           note_text: noteText.trim(),
           admin_visibility: noteAdminVisible,
           note_color: noteColor,
@@ -803,24 +884,11 @@ const TeacherDashboard = () => {
         },
         { headers },
       );
-      // Saving a note always closes the slot — reflect that locally
-      setOpenSlots((prev) => {
-        if (!prev.has(key)) return prev;
-        const next = new Set(prev);
-        next.delete(key);
-        return next;
-      });
-      setSlotNotes((prev) => {
-        const next = new Map(prev);
-        next.set(key, {
-          note_text: noteText.trim(),
-          admin_visibility: noteAdminVisible,
-          note_color: noteColor,
-          note_icon: noteIcon || null,
-        });
-        return next;
-      });
-      setNoteDialogSlot(null);
+      // Re-editing a block that shrank/grew shifts group membership around, so pull the
+      // week back from the server rather than guessing the new shape locally.
+      await Promise.all([fetchSlotNotes(weekStart), fetchOpenSlots(weekStart)]);
+      setNoteTarget(null);
+      clearSelection();
     } catch (err: unknown) {
       setNoteError(
         (err as { response?: { data?: { message?: string } } })?.response?.data
@@ -832,22 +900,34 @@ const TeacherDashboard = () => {
   };
 
   const deleteNote = async () => {
-    if (!noteDialogSlot) return;
-    const { dateStr, time } = noteDialogSlot;
-    const key = `${dateStr}|${time}`;
+    if (!noteTarget) return;
     setNoteSaving(true);
     setNoteError(null);
     try {
       await axios.delete(`${import.meta.env.VITE_API_URL}/api/teacher/notes`, {
         headers,
-        data: { note_date: dateStr, slot_time: `${time}:00` },
+        data: noteTarget.groupId
+          ? { note_group_id: noteTarget.groupId }
+          : {
+              slots: noteTarget.slots.map((s) => ({
+                slot_date: s.dateStr,
+                slot_time: `${s.time}:00`,
+              })),
+            },
       });
       setSlotNotes((prev) => {
         const next = new Map(prev);
-        next.delete(key);
+        if (noteTarget.groupId) {
+          next.forEach((n, k) => {
+            if (n.note_group_id === noteTarget.groupId) next.delete(k);
+          });
+        } else {
+          noteTarget.slots.forEach((s) => next.delete(`${s.dateStr}|${s.time}`));
+        }
         return next;
       });
-      setNoteDialogSlot(null);
+      setNoteTarget(null);
+      clearSelection();
     } catch (err: unknown) {
       setNoteError(
         (err as { response?: { data?: { message?: string } } })?.response?.data
@@ -946,6 +1026,47 @@ const TeacherDashboard = () => {
     }
   }, [weekStart]);
 
+  // Changing weeks would leave the selection pointing at the wrong dates.
+  useEffect(() => {
+    setSelAnchor(null);
+    setSelFocus(null);
+    setIsSelecting(false);
+  }, [weekStart]);
+
+  // A drag ends wherever the button is released, which is often outside the grid.
+  // A press that never left its starting cell isn't a selection at all — drop it so the
+  // cell's own click / double-click handling takes over unchanged.
+  useEffect(() => {
+    if (!isSelecting) return;
+    const onMouseUp = () => {
+      setIsSelecting(false);
+      if (
+        selAnchor &&
+        selFocus &&
+        selAnchor.d === selFocus.d &&
+        selAnchor.t === selFocus.t
+      ) {
+        setSelAnchor(null);
+        setSelFocus(null);
+      }
+    };
+    window.addEventListener("mouseup", onMouseUp);
+    return () => window.removeEventListener("mouseup", onMouseUp);
+  }, [isSelecting, selAnchor, selFocus]);
+
+  // Escape drops the highlight (unless the note dialog owns the key press).
+  useEffect(() => {
+    if (!selAnchor || noteTarget) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setSelAnchor(null);
+      setSelFocus(null);
+      setIsSelecting(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selAnchor, noteTarget]);
+
   // Load filtered completed when navigating to classes page
   useEffect(() => {
     if (page === "classes") fetchFilteredCompleted(classesMonth, classesYear);
@@ -1028,6 +1149,220 @@ const TeacherDashboard = () => {
       weekBookingBySlot.set(k, b),
     );
   });
+
+  // ── Weekly grid: merged note blocks ───────────────────────────────────────────
+  // A note saved over a range stamps one shared note_group_id on every slot it covers.
+  // Collapse each run into a single tall cell: `noteSpans` maps the run's first slot to its
+  // height, `noteCovered` holds the slots it swallows (they render nothing), and
+  // `noteRunSlots` lets a click anywhere in the run edit the block as a whole.
+  const noteSpans = new Map<string, number>();
+  const noteCovered = new Set<string>();
+  const noteRunSlots = new Map<string, SlotRef[]>();
+  // Runs per day as SLOT_TIMES index ranges, so a drag can snap out to whole blocks.
+  const noteRunRanges = new Map<string, { start: number; end: number }[]>();
+  weekDays.forEach((day) => {
+    const dateStr = day.toLocaleDateString("en-CA");
+    const ranges: { start: number; end: number }[] = [];
+    let i = 0;
+    while (i < SLOT_TIMES.length) {
+      const groupId = slotNotes.get(
+        `${dateStr}|${SLOT_TIMES[i]}`,
+      )?.note_group_id;
+      if (!groupId) {
+        i++;
+        continue;
+      }
+      // A run can't straddle the past/future divide or a booked slot — those cells have
+      // their own rendering and can't be swallowed by the block above them.
+      const headIsPast = isPastSlot(dateStr, SLOT_TIMES[i]);
+      let j = i + 1;
+      while (
+        j < SLOT_TIMES.length &&
+        slotNotes.get(`${dateStr}|${SLOT_TIMES[j]}`)?.note_group_id ===
+          groupId &&
+        isPastSlot(dateStr, SLOT_TIMES[j]) === headIsPast &&
+        !bookedSlotKeys.has(`${dateStr}|${SLOT_TIMES[j]}`)
+      ) {
+        j++;
+      }
+      const run = SLOT_TIMES.slice(i, j).map((time) => ({ dateStr, time }));
+      noteSpans.set(`${dateStr}|${SLOT_TIMES[i]}`, run.length);
+      run.forEach((s, k) => {
+        noteRunSlots.set(`${s.dateStr}|${s.time}`, run);
+        if (k > 0) noteCovered.add(`${s.dateStr}|${s.time}`);
+      });
+      ranges.push({ start: i, end: j - 1 });
+      i = j;
+    }
+    noteRunRanges.set(dateStr, ranges);
+  });
+
+  // ── Weekly grid: drag-selection ───────────────────────────────────────────────
+  // Every cell inside the rectangle spanned by the anchor and focus cells.
+  const selectedCells: {
+    key: string;
+    dateStr: string;
+    time: string;
+    isPast: boolean;
+    isBooked: boolean;
+  }[] = [];
+  if (selAnchor && selFocus) {
+    const [d0, d1] = [
+      Math.min(selAnchor.d, selFocus.d),
+      Math.max(selAnchor.d, selFocus.d),
+    ];
+    let t0 = Math.min(selAnchor.t, selFocus.t);
+    let t1 = Math.max(selAnchor.t, selFocus.t);
+    // A merged block renders as one cell, so the pointer only ever reports its top row.
+    // Grow the range until every block it touches is covered end to end — otherwise a
+    // bulk action would slice a block in half. Runs are disjoint, so this settles fast.
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (let d = d0; d <= d1; d++) {
+        const ranges =
+          noteRunRanges.get(weekDays[d].toLocaleDateString("en-CA")) ?? [];
+        for (const r of ranges) {
+          if (r.start > t1 || r.end < t0) continue; // no overlap
+          if (r.start < t0) {
+            t0 = r.start;
+            grew = true;
+          }
+          if (r.end > t1) {
+            t1 = r.end;
+            grew = true;
+          }
+        }
+      }
+    }
+    for (let d = d0; d <= d1; d++) {
+      const dateStr = weekDays[d].toLocaleDateString("en-CA");
+      for (let t = t0; t <= t1; t++) {
+        const time = SLOT_TIMES[t];
+        const key = `${dateStr}|${time}`;
+        selectedCells.push({
+          key,
+          dateStr,
+          time,
+          isPast: isPastSlot(dateStr, time),
+          isBooked: bookedSlotKeys.has(key),
+        });
+      }
+    }
+  }
+  const selectedKeys = new Set(selectedCells.map((c) => c.key));
+  // Past and booked cells are read-only, so bulk actions only ever touch the rest.
+  const editableSelection = selectedCells.filter(
+    (c) => !c.isPast && !c.isBooked,
+  );
+  const selectionDayCount = new Set(editableSelection.map((c) => c.dateStr))
+    .size;
+  // Only one unbroken run on a single day can be drawn as one merged cell. The rectangle
+  // is contiguous by construction, but dropping past/booked cells can punch holes in it.
+  const selectionMergeable =
+    editableSelection.length > 1 &&
+    selectionDayCount === 1 &&
+    editableSelection.every(
+      (c, i, arr) =>
+        i === 0 ||
+        SLOT_TIMES.indexOf(c.time) === SLOT_TIMES.indexOf(arr[i - 1].time) + 1,
+    );
+  const selectionLabel = (() => {
+    if (editableSelection.length === 0) return "";
+    const first = editableSelection[0];
+    if (editableSelection.length === 1)
+      return `${labelForDate(first.dateStr)} · ${fmt12(first.time)}`;
+    if (selectionDayCount === 1) {
+      const last = editableSelection[editableSelection.length - 1];
+      return `${labelForDate(first.dateStr)} · ${fmt12(first.time)} – ${fmt12(slotRangeEnd(last.time, 1))}`;
+    }
+    return `${editableSelection.length} slots across ${selectionDayCount} days`;
+  })();
+
+  const handleCellMouseDown = (d: number, t: number, e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); // keep the browser from text-selecting across the grid
+    dragMovedRef.current = false;
+    setSelAnchor({ d, t });
+    setSelFocus({ d, t });
+    setIsSelecting(true);
+  };
+
+  const handleCellMouseEnter = (d: number, t: number) => {
+    if (!isSelecting) return;
+    if (selAnchor && (selAnchor.d !== d || selAnchor.t !== t)) {
+      dragMovedRef.current = true;
+    }
+    setSelFocus({ d, t });
+  };
+
+  /** Bulk open or close every editable cell in the selection. */
+  const applyBulkSlots = async (action: "open" | "close") => {
+    const targets = editableSelection.filter((c) =>
+      action === "open" ? !openSlots.has(c.key) : openSlots.has(c.key),
+    );
+    if (targets.length === 0) return;
+    // A note only lives on a closed slot, so opening one throws its note away.
+    if (
+      action === "open" &&
+      targets.some((c) => slotNotes.has(c.key)) &&
+      !window.confirm(
+        "Some selected slots have notes on them. Opening those slots will delete their notes. Continue?",
+      )
+    ) {
+      return;
+    }
+    setBulkBusy(action);
+    try {
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/teacher/weekly-slots/bulk`,
+        {
+          action,
+          slots: targets.map((c) => ({
+            slot_date: c.dateStr,
+            slot_time: `${c.time}:00`,
+          })),
+        },
+        { headers },
+      );
+      await Promise.all([fetchOpenSlots(weekStart), fetchSlotNotes(weekStart)]);
+      clearSelection();
+    } catch (err: unknown) {
+      alert(
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || `Failed to ${action} the selected slots`,
+      );
+    } finally {
+      setBulkBusy(null);
+    }
+  };
+
+  const openNoteDialogForSelection = () => {
+    if (editableSelection.length === 0) return;
+    openNoteDialogFor({
+      slots: editableSelection.map(({ dateStr, time }) => ({ dateStr, time })),
+      groupId: null,
+      mergeable: selectionMergeable,
+      label: selectionLabel,
+      existing: editableSelection.some((c) => slotNotes.has(c.key)),
+    });
+  };
+
+  /** Open the dialog on the whole merged block a cell belongs to. */
+  const openNoteDialogForRun = (dateStr: string, time: string) => {
+    const run = noteRunSlots.get(`${dateStr}|${time}`);
+    if (!run || run.length < 2) {
+      openNoteDialog(dateStr, time);
+      return;
+    }
+    const last = run[run.length - 1];
+    openNoteDialogFor({
+      slots: run,
+      groupId: slotNotes.get(`${dateStr}|${time}`)?.note_group_id ?? null,
+      mergeable: true,
+      label: `${labelForDate(run[0].dateStr)} · ${fmt12(run[0].time)} – ${fmt12(slotRangeEnd(last.time, 1))}`,
+      existing: true,
+    });
+  };
 
   // Handlers
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1649,7 +1984,7 @@ const TeacherDashboard = () => {
                     <CalendarDays className="h-4 w-4 text-primary" />
                     My Availability
                     <span className="text-xs text-muted-foreground font-normal">
-                      — click a slot to open or close it
+                      — click a slot to open or close it, or drag to select many
                     </span>
                   </CardTitle>
                   <div className="flex items-center gap-2">
@@ -1731,6 +2066,64 @@ const TeacherDashboard = () => {
                     Note — pick a color/icon (double-click a slot to add)
                   </span>
                 </div>
+
+                {/* Bulk actions for a drag-highlighted range */}
+                {editableSelection.length > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap mb-3 rounded border border-primary/40 bg-primary/5 px-3 py-2">
+                    <span className="text-xs font-medium">
+                      {editableSelection.length} slot
+                      {editableSelection.length === 1 ? "" : "s"} selected
+                      <span className="text-muted-foreground font-normal">
+                        {" "}
+                        — {selectionLabel}
+                      </span>
+                    </span>
+                    <div className="flex items-center gap-2 ml-auto">
+                      <Button
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        disabled={bulkBusy !== null}
+                        onClick={() => applyBulkSlots("open")}
+                      >
+                        {bulkBusy === "open" ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          "Open all"
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-xs"
+                        disabled={bulkBusy !== null}
+                        onClick={() => applyBulkSlots("close")}
+                      >
+                        {bulkBusy === "close" ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          "Close all"
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-xs"
+                        disabled={bulkBusy !== null}
+                        onClick={openNoteDialogForSelection}
+                      >
+                        {selectionMergeable ? "Add merged note" : "Add note"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-xs text-muted-foreground"
+                        onClick={clearSelection}
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {weekSlotsLoading ? (
                   <div className="flex justify-center py-8">
                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -1778,7 +2171,7 @@ const TeacherDashboard = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {SLOT_TIMES.map((time) => (
+                        {SLOT_TIMES.map((time, timeIdx) => (
                           <tr key={time} className="group">
                             <td className="border-b border-r p-1 text-right pr-2 whitespace-nowrap bg-gray-50 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary group-hover:font-semibold transition-colors">
                               {fmt12(time)}
@@ -1786,12 +2179,34 @@ const TeacherDashboard = () => {
                             {weekDays.map((day, i) => {
                               const dateStr = day.toLocaleDateString("en-CA");
                               const key = `${dateStr}|${time}`;
-                              const isPast =
-                                new Date(`${dateStr}T${time}:00`) < new Date();
+                              // Swallowed by the merged note block starting above it
+                              if (noteCovered.has(key)) return null;
+                              const rowSpan = noteSpans.get(key) ?? 1;
+                              const isPast = isPastSlot(dateStr, time);
                               const isBooked = bookedSlotKeys.has(key);
                               const isOpen = openSlots.has(key);
                               const isToggling = togglingSlot === key;
                               const note = slotNotes.get(key);
+                              // A merged block highlights when any slot it covers is in
+                              // the drag rectangle.
+                              const isSelected =
+                                rowSpan > 1
+                                  ? SLOT_TIMES.slice(
+                                      timeIdx,
+                                      timeIdx + rowSpan,
+                                    ).some((t) =>
+                                      selectedKeys.has(`${dateStr}|${t}`),
+                                    )
+                                  : selectedKeys.has(key);
+                              const dragProps = {
+                                onMouseDown: (e: React.MouseEvent) =>
+                                  handleCellMouseDown(i, timeIdx, e),
+                                onMouseEnter: () =>
+                                  handleCellMouseEnter(i, timeIdx),
+                              };
+                              const selectedRing = isSelected
+                                ? " ring-2 ring-inset ring-primary"
+                                : "";
 
                               // Past slots are read-only and uniformly gray — no booked green,
                               // no note colors. Only the text carries over, so the week still
@@ -1821,7 +2236,9 @@ const TeacherDashboard = () => {
                                 return (
                                   <td
                                     key={i}
-                                    className="border-b border-r p-1 text-center bg-gray-50 select-none"
+                                    rowSpan={rowSpan}
+                                    {...dragProps}
+                                    className={`border-b border-r p-1 text-center bg-gray-50 select-none${selectedRing}`}
                                     title={pastTitle}
                                   >
                                     {pastText ? (
@@ -1840,7 +2257,8 @@ const TeacherDashboard = () => {
                                 return (
                                   <td
                                     key={i}
-                                    className="border-b border-r p-1 bg-green-500 text-center"
+                                    {...dragProps}
+                                    className={`border-b border-r p-1 bg-green-500 text-center select-none${selectedRing}`}
                                     title={
                                       booking
                                         ? `Class with ${booking.student_name}${booking.subject ? ` (${booking.subject})` : ""}`
@@ -1863,9 +2281,13 @@ const TeacherDashboard = () => {
                                     ? DEFAULT_NOTE_COLOR
                                     : null;
 
+                              const isMergedNote = rowSpan > 1;
+
                               return (
                                 <td
                                   key={i}
+                                  rowSpan={rowSpan}
+                                  {...dragProps}
                                   style={
                                     noteBg
                                       ? {
@@ -1874,7 +2296,7 @@ const TeacherDashboard = () => {
                                         }
                                       : undefined
                                   }
-                                  className={`border-b border-r p-1 text-center cursor-pointer transition-colors select-none ${
+                                  className={`border-b border-r p-1 text-center cursor-pointer transition-colors select-none${selectedRing} ${
                                     noteBg
                                       ? "hover:brightness-95"
                                       : isOpen
@@ -1882,7 +2304,10 @@ const TeacherDashboard = () => {
                                         : "bg-white hover:bg-gray-100 text-gray-400"
                                   }`}
                                   onClick={() => {
-                                    if (note) openNoteDialog(dateStr, time);
+                                    // A drag that ended back on its starting cell still
+                                    // fires a click — don't also toggle that cell.
+                                    if (dragMovedRef.current) return;
+                                    if (note) openNoteDialogForRun(dateStr, time);
                                     else if (!isToggling)
                                       handleSlotClick(dateStr, time);
                                   }}
@@ -1892,20 +2317,30 @@ const TeacherDashboard = () => {
                                   }
                                   title={
                                     note
-                                      ? `${note.note_icon ? note.note_icon + " " : ""}${note.note_text}${note.admin_visibility ? " (visible to admin)" : " (private)"} — click to edit`
+                                      ? `${note.note_icon ? note.note_icon + " " : ""}${note.note_text}${isMergedNote ? ` · ${fmt12(time)} – ${fmt12(slotRangeEnd(time, rowSpan))}` : ""}${note.admin_visibility ? " (visible to admin)" : " (private)"} — click to edit`
                                       : isOpen
                                         ? "Click to close slot · close it first to add a note"
-                                        : "Click to open slot · double-click to add a note"
+                                        : "Click to open slot · double-click to add a note · drag to select a range"
                                   }
                                 >
                                   {isToggling ? (
                                     <Loader2 className="h-3 w-3 animate-spin mx-auto" />
                                   ) : note ? (
-                                    <span className="text-[11px] font-semibold truncate block max-w-[80px] mx-auto">
-                                      {note.note_icon
-                                        ? `${note.note_icon} `
-                                        : ""}
-                                      {note.note_text}
+                                    <span className="block max-w-[80px] mx-auto">
+                                      <span
+                                        className={`text-[11px] font-semibold block ${isMergedNote ? "break-words" : "truncate"}`}
+                                      >
+                                        {note.note_icon
+                                          ? `${note.note_icon} `
+                                          : ""}
+                                        {note.note_text}
+                                      </span>
+                                      {isMergedNote && (
+                                        <span className="block text-[9px] opacity-75 mt-0.5">
+                                          {fmt12(time)} –{" "}
+                                          {fmt12(slotRangeEnd(time, rowSpan))}
+                                        </span>
+                                      )}
                                     </span>
                                   ) : (
                                     <span className="text-[11px]">
@@ -3153,21 +3588,24 @@ const TeacherDashboard = () => {
 
       {/* Slot note dialog — personal calendar note, e.g. "LUNCH" */}
       <Dialog
-        open={!!noteDialogSlot}
+        open={!!noteTarget}
         onOpenChange={(o) => {
-          if (!o) setNoteDialogSlot(null);
+          if (!o) setNoteTarget(null);
         }}
       >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>
-              {noteDialogSlot && `Note — ${fmt12(noteDialogSlot.time)}`}
+              {noteTarget && `Note — ${noteTarget.label}`}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <p className="text-xs text-muted-foreground">
-              This is a personal note, not a booking. Saving a note will close
-              this slot if it's currently open.
+              This is a personal note, not a booking. Saving it will close{" "}
+              {noteTarget && noteTarget.slots.length > 1
+                ? `all ${noteTarget.slots.length} selected slots`
+                : "this slot"}{" "}
+              if currently open.
             </p>
             {noteError && (
               <p className="text-sm text-destructive">{noteError}</p>
@@ -3271,6 +3709,23 @@ const TeacherDashboard = () => {
                 </p>
               )}
             </div>
+            {noteTarget?.mergeable && (
+              <label className="flex items-start gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={noteMerge}
+                  onChange={(e) => setNoteMerge(e.target.checked)}
+                  className="accent-primary h-4 w-4 mt-0.5"
+                />
+                <span>
+                  Merge into one block
+                  <span className="block text-xs text-muted-foreground">
+                    Draws {noteTarget.label.split(" · ")[1]} as a single cell
+                    instead of {noteTarget.slots.length} separate notes.
+                  </span>
+                </span>
+              </label>
+            )}
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"
@@ -3282,23 +3737,20 @@ const TeacherDashboard = () => {
             </label>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            {noteDialogSlot &&
-              slotNotes.has(
-                `${noteDialogSlot.dateStr}|${noteDialogSlot.time}`,
-              ) && (
-                <Button
-                  variant="destructive"
-                  onClick={deleteNote}
-                  disabled={noteSaving}
-                >
-                  {noteSaving ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    "Remove"
-                  )}
-                </Button>
-              )}
-            <Button variant="outline" onClick={() => setNoteDialogSlot(null)}>
+            {noteTarget?.existing && (
+              <Button
+                variant="destructive"
+                onClick={deleteNote}
+                disabled={noteSaving}
+              >
+                {noteSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Remove"
+                )}
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setNoteTarget(null)}>
               Cancel
             </Button>
             <Button

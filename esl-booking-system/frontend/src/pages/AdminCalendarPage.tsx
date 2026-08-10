@@ -91,7 +91,7 @@ const AdminCalendarPage = () => {
   const [bookings, setBookings] = useState<CalendarBooking[]>([]);
   const [loadingGrid, setLoadingGrid] = useState(false);
   const [togglingSlot, setTogglingSlot] = useState<string | null>(null);
-  const [notesByKey, setNotesByKey] = useState<Map<string, { note_text: string; note_color: string; note_icon: string | null }>>(new Map());
+  const [notesByKey, setNotesByKey] = useState<Map<string, { note_text: string; note_color: string; note_icon: string | null; note_group_id: string | null }>>(new Map());
 
   const [bookableStudents, setBookableStudents] = useState<BookablePackage[]>([]);
 
@@ -143,8 +143,8 @@ const AdminCalendarPage = () => {
       ));
       setBookings(schedRes.data);
       setNotesByKey(new Map(
-        (notesRes.data as { note_date: string; slot_time: string; note_text: string; note_color: string; note_icon: string | null }[])
-          .map(n => [`${n.note_date}|${n.slot_time}`, { note_text: n.note_text, note_color: n.note_color, note_icon: n.note_icon }])
+        (notesRes.data as { note_date: string; slot_time: string; note_text: string; note_color: string; note_icon: string | null; note_group_id: string | null }[])
+          .map(n => [`${n.note_date}|${n.slot_time}`, { note_text: n.note_text, note_color: n.note_color, note_icon: n.note_icon, note_group_id: n.note_group_id ?? null }])
       ));
     } catch (err) {
       console.error("Error fetching calendar grid:", err);
@@ -294,6 +294,33 @@ const AdminCalendarPage = () => {
     return `${format(new Date(`${date}T00:00:00`), "MMM d, yyyy")} · ${fmt12(time)} – ${fmt12(end)}`;
   };
 
+  // Teacher notes saved across a range share one note_group_id, so draw each run as a
+  // single tall cell — the same block the teacher sees on their own grid. `noteSpans` maps
+  // a run's first slot to its height; `noteCovered` holds the slots it swallows.
+  const noteSpans = new Map<string, number>();
+  const noteCovered = new Set<string>();
+  for (let j = 0; j < 7; j++) {
+    const day = format(addDays(weekStart, j), "yyyy-MM-dd");
+    let i = 0;
+    while (i < SLOT_TIMES.length) {
+      const groupId = notesByKey.get(`${day}|${SLOT_TIMES[i]}`)?.note_group_id;
+      if (!groupId) { i++; continue; }
+      // A run can't swallow a booked slot or straddle the past/future divide — those cells
+      // render differently and have to stay on their own row.
+      const headIsPast = new Date(`${day}T${SLOT_TIMES[i]}:00`) < new Date();
+      let k = i + 1;
+      while (
+        k < SLOT_TIMES.length &&
+        notesByKey.get(`${day}|${SLOT_TIMES[k]}`)?.note_group_id === groupId &&
+        (new Date(`${day}T${SLOT_TIMES[k]}:00`) < new Date()) === headIsPast &&
+        !bookingByKey.has(`${day}|${SLOT_TIMES[k]}`)
+      ) k++;
+      noteSpans.set(`${day}|${SLOT_TIMES[i]}`, k - i);
+      for (let m = i + 1; m < k; m++) noteCovered.add(`${day}|${SLOT_TIMES[m]}`);
+      i = k;
+    }
+  }
+
   const prevTeacher = () => setTeacherIdx(i => (i - 1 + teachers.length) % teachers.length);
   const nextTeacher = () => setTeacherIdx(i => (i + 1) % teachers.length);
 
@@ -402,6 +429,9 @@ const AdminCalendarPage = () => {
                         {[...Array(7)].map((_, j) => {
                           const day = format(addDays(weekStart, j), "yyyy-MM-dd");
                           const key = `${day}|${time}`;
+                          // Swallowed by the merged note block starting above it
+                          if (noteCovered.has(key)) return null;
+                          const noteSpan = noteSpans.get(key) ?? 1;
                           const booking = bookingByKey.get(key);
                           const isOpen = openSlots.has(key);
                           const isPast = new Date(`${day}T${time}:00`) < new Date();
@@ -434,6 +464,7 @@ const AdminCalendarPage = () => {
                           return (
                             <td
                               key={j}
+                              rowSpan={noteSpan}
                               onClick={() => {
                                 if (isPast || isToggling) return;
                                 if (isOpen) openBookingModal(day, time);
@@ -441,7 +472,7 @@ const AdminCalendarPage = () => {
                               }}
                               title={
                                 note
-                                  ? `Teacher note: ${note.note_icon ? note.note_icon + " " : ""}${note.note_text}`
+                                  ? `Teacher note: ${note.note_icon ? note.note_icon + " " : ""}${note.note_text}${noteSpan > 1 ? ` · ${fmt12(time)} – ${fmt12(addMinutes(time, noteSpan * 30))}` : ""}`
                                   : isPast ? undefined : isOpen ? "Open — click to book a class" : "Closed — click to open this slot"
                               }
                               style={noteBg ? { backgroundColor: noteBg, color: getContrastText(noteBg) } : undefined}
@@ -453,8 +484,15 @@ const AdminCalendarPage = () => {
                               }`}
                             >
                               {isToggling ? "..." : isPast ? "" : note ? (
-                                <span className="text-[10px] font-semibold truncate block max-w-[80px] mx-auto">
-                                  {note.note_icon ? `${note.note_icon} ` : ""}{note.note_text}
+                                <span className="block max-w-[80px] mx-auto">
+                                  <span className={`text-[10px] font-semibold block ${noteSpan > 1 ? "break-words" : "truncate"}`}>
+                                    {note.note_icon ? `${note.note_icon} ` : ""}{note.note_text}
+                                  </span>
+                                  {noteSpan > 1 && (
+                                    <span className="block text-[9px] opacity-75 mt-0.5">
+                                      {fmt12(time)} – {fmt12(addMinutes(time, noteSpan * 30))}
+                                    </span>
+                                  )}
                                 </span>
                               ) : isOpen ? "✓" : "+"}
                             </td>

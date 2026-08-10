@@ -35,6 +35,12 @@ async function ensureSchedulerSchema() {
     const addCols = [
         ['companies', 'onboarding_followup_sent', 'TINYINT(1) NOT NULL DEFAULT 0'],
         ['push_subscriptions', 'failure_count', 'INT NOT NULL DEFAULT 0'],
+        // Which next_due_date each billing notice was already sent for. Stored per
+        // company (not per run) so the notice is tied to the billing cycle it is
+        // about: paying extends next_due_date, which re-arms the reminder by
+        // itself, and nothing else can send a second notice for the same cycle.
+        ['companies', 'payment_reminder_sent_for', 'DATE NULL'],
+        ['companies', 'due_warning_sent_for', 'DATE NULL'],
     ];
     for (const [table, col, def] of addCols) {
         try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); }
@@ -45,18 +51,32 @@ async function ensureSchedulerSchema() {
 // Atomically claim a daily job for today (PHT). Returns true if this call won
 // the claim (job hasn't run today yet), false if it already ran.
 // Safe under overlapping ticks and multiple instances.
+//
+// Deliberately NOT written as INSERT ... ON DUPLICATE KEY UPDATE. That form can
+// only signal "already claimed" through MySQL's affected-rows == 0 for a row set
+// to its current values — a MySQL-ism our DB (TiDB) does not reproduce, so every
+// call looked like a fresh claim and daily jobs re-ran on every 15-min sweep and
+// every boot. A conditional single-row UPDATE carries the condition in the WHERE
+// clause instead: when it matches, the row genuinely changes, so affected-rows is
+// 1 on any engine, and 0 means someone else already claimed today.
 async function claimDailyRun(jobName) {
     const today = phtTodaySql();
     const now = phtNowSql();
-    const [result] = await pool.query(
-        `INSERT INTO scheduler_runs (job_name, last_run_date, last_run_at) VALUES (?, ?, ?)
-         ON DUPLICATE KEY UPDATE
-           last_run_at  = IF(last_run_date < VALUES(last_run_date), VALUES(last_run_at), last_run_at),
-           last_run_date = IF(last_run_date < VALUES(last_run_date), VALUES(last_run_date), last_run_date)`,
-        [jobName, today, now]
+
+    // Seed the row without claiming it. The epoch date guarantees the first real
+    // claim below wins; INSERT IGNORE makes a concurrent seed harmless.
+    await pool.query(
+        `INSERT IGNORE INTO scheduler_runs (job_name, last_run_date, last_run_at)
+         VALUES (?, '1970-01-01', '1970-01-01 00:00:00')`,
+        [jobName]
     );
-    // affectedRows: 1 = inserted, 2 = updated (claimed); 0 = already ran today
-    return result.affectedRows > 0;
+
+    const [claim] = await pool.query(
+        `UPDATE scheduler_runs SET last_run_date = ?, last_run_at = ?
+         WHERE job_name = ? AND last_run_date < ?`,
+        [today, now, jobName, today]
+    );
+    return claim.affectedRows > 0;
 }
 
 // ── Billing Checks (daily, PHT calendar dates) ────────────────────────────────
@@ -70,10 +90,23 @@ async function runBillingChecks() {
         const [due5] = await pool.query(
             `SELECT c.id, c.company_name AS name FROM companies c
              WHERE c.next_due_date = ?
-             AND c.status = 'active'`,
+             AND c.status = 'active'
+             AND (c.payment_reminder_sent_for IS NULL OR c.payment_reminder_sent_for <> c.next_due_date)`,
             [phtTodaySql(5)]
         );
+        let notified5 = 0;
         await Promise.all(due5.map(async (company) => {
+            // Claim before sending, exactly like the class reminders: if the job
+            // somehow runs twice, the second pass finds the cycle already marked
+            // and sends nothing.
+            const [claim] = await pool.query(
+                `UPDATE companies SET payment_reminder_sent_for = next_due_date
+                 WHERE id = ? AND (payment_reminder_sent_for IS NULL OR payment_reminder_sent_for <> next_due_date)`,
+                [company.id]
+            );
+            if (claim.affectedRows === 0) return;
+            notified5++;
+
             const [owners] = await pool.query(
                 "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin' AND is_owner = TRUE",
                 [company.id]
@@ -91,20 +124,30 @@ async function runBillingChecks() {
         const [due3] = await pool.query(
             `SELECT c.id, c.company_name AS name FROM companies c
              WHERE c.next_due_date = ?
-             AND c.status = 'active'`,
+             AND c.status = 'active'
+             AND (c.due_warning_sent_for IS NULL OR c.due_warning_sent_for <> c.next_due_date)`,
             [phtTodaySql(3)]
         );
+        let notified3 = 0;
         if (due3.length > 0) {
             const [superAdmins] = await pool.query("SELECT id FROM users WHERE role = 'super_admin'");
-            await Promise.all(due3.flatMap(company =>
-                superAdmins.map(sa => notify({
+            await Promise.all(due3.map(async (company) => {
+                const [claim] = await pool.query(
+                    `UPDATE companies SET due_warning_sent_for = next_due_date
+                     WHERE id = ? AND (due_warning_sent_for IS NULL OR due_warning_sent_for <> next_due_date)`,
+                    [company.id]
+                );
+                if (claim.affectedRows === 0) return;
+                notified3++;
+
+                await Promise.all(superAdmins.map(sa => notify({
                     userId: sa.id,
                     companyId: null,
                     type: 'payment_overdue_warning',
                     title: 'Company payment due in 3 days',
                     message: `"${company.name}" has not paid their subscription and it is due in 3 days.`,
-                }))
-            ));
+                })));
+            }));
         }
 
         // C. Auto-suspend companies past their due date (self-service recovery via suspended page)
@@ -114,8 +157,17 @@ async function runBillingChecks() {
              AND c.status = 'active'`,
             [today]
         );
+        let suspendedOverdue = 0;
         await Promise.all(overdue.map(async (company) => {
-            await pool.query("UPDATE companies SET status = 'suspended' WHERE id = ?", [company.id]);
+            // status = 'active' in the WHERE makes this the claim: a second pass
+            // finds the company already suspended and skips the notification.
+            const [claim] = await pool.query(
+                "UPDATE companies SET status = 'suspended' WHERE id = ? AND status = 'active'",
+                [company.id]
+            );
+            if (claim.affectedRows === 0) return;
+            suspendedOverdue++;
+
             const [owners] = await pool.query(
                 "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin' AND is_owner = TRUE",
                 [company.id]
@@ -138,8 +190,15 @@ async function runBillingChecks() {
              AND c.next_due_date IS NULL`,
             [today]
         );
+        let suspendedTrials = 0;
         await Promise.all(expiredTrials.map(async (company) => {
-            await pool.query("UPDATE companies SET status = 'suspended' WHERE id = ?", [company.id]);
+            const [claim] = await pool.query(
+                "UPDATE companies SET status = 'suspended' WHERE id = ? AND status = 'active'",
+                [company.id]
+            );
+            if (claim.affectedRows === 0) return;
+            suspendedTrials++;
+
             const [owners] = await pool.query(
                 "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin' AND is_owner = TRUE",
                 [company.id]
@@ -154,7 +213,9 @@ async function runBillingChecks() {
             logger.warn(`[Scheduler] Suspended company (trial expired): ${company.name} (id=${company.id})`);
         }));
 
-        logger.info(`[Scheduler] Done. Notified (5d): ${due5.length}, Notified SA (3d): ${due3.length}, Suspended (overdue): ${overdue.length}, Suspended (trial expired): ${expiredTrials.length}`);
+        // sent/candidates on each line — a candidate that wasn't sent means the
+        // claim was already held, which is the signal that something ran twice.
+        logger.info(`[Scheduler] Done. Notified (5d): ${notified5}/${due5.length}, Notified SA (3d): ${notified3}/${due3.length}, Suspended (overdue): ${suspendedOverdue}/${overdue.length}, Suspended (trial expired): ${suspendedTrials}/${expiredTrials.length}`);
     } catch (err) {
         logger.error('[Scheduler] Error during billing checks:', err);
     }
