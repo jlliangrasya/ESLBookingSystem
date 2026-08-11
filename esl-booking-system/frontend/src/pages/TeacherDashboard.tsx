@@ -171,6 +171,28 @@ const MONTHS = [
   "December",
 ];
 
+/** How far the pointer must travel before a press counts as a drag rather than a click. */
+const DRAG_THRESHOLD_PX = 8;
+/** How long a single click waits to see whether a second one turns it into a double. */
+const DOUBLE_CLICK_MS = 250;
+/** Touch has no double-click, so holding stands in for it. */
+const LONG_PRESS_MS = 500;
+/** Finger travel before a hold is written off as the start of a scroll. */
+const TOUCH_SCROLL_CANCEL_PX = 10;
+
+/**
+ * The grid cell under a viewport point. Touch gives every pointermove to the element the
+ * press started on, so a finger dragged across the grid has to be located by hit-testing
+ * rather than by the mouse's enter/leave events.
+ */
+const cellFromPoint = (x: number, y: number): { d: number; t: number } | null => {
+  const el = document.elementFromPoint(x, y);
+  const cell = el instanceof Element ? el.closest("[data-slot-cell]") : null;
+  if (!(cell instanceof HTMLElement)) return null;
+  const [d, t] = (cell.dataset.slotCell ?? "").split(":").map(Number);
+  return Number.isInteger(d) && Number.isInteger(t) ? { d, t } : null;
+};
+
 const SLOT_TIMES: string[] = Array.from({ length: 32 }, (_, i) => {
   const totalMins = 7 * 60 + i * 30;
   const h = Math.floor(totalMins / 60)
@@ -688,12 +710,33 @@ const TeacherDashboard = () => {
     }
   };
 
-  // True once a press has been dragged onto a different cell. Read by the cell's click
-  // handler, which fires after mouseup: the derived selection can't be used for this,
-  // because pressing on a merged block already selects every slot it covers.
+  // True once a press has turned into a real drag.
   const dragMovedRef = useRef(false);
+  // Where the mouse went down, held in a ref so an ordinary click changes no state at all
+  // and re-renders nothing — the grid clicks exactly as fast as it did before highlighting
+  // existed. A highlight only begins once the pointer has been dragged clear of
+  // DRAG_THRESHOLD_PX, so the few pixels of drift in a normal click can never start one.
+  const pressRef = useRef<{
+    d: number;
+    t: number;
+    x: number;
+    y: number;
+    touch: boolean;
+  } | null>(null);
+  // Touch only: the hold timer, and whether it got far enough to count as a hold.
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFiredRef = useRef(false);
+  // Mirrors isSelecting for the non-passive touchmove listener, which is registered once
+  // and so can't see the current render's state.
+  const isSelectingRef = useRef(false);
+  const gridScrollRef = useRef<HTMLDivElement>(null);
+  // True while a finished drag's highlight is still standing, waiting for the click or
+  // double-click that acts on it. Both of those fire after mouseup, so they can't read
+  // this off state — the render they were built in predates the mouseup.
+  const selectionCommittedRef = useRef(false);
 
   const clearSelection = () => {
+    selectionCommittedRef.current = false;
     setSelAnchor(null);
     setSelFocus(null);
     setIsSelecting(false);
@@ -726,26 +769,14 @@ const TeacherDashboard = () => {
     }
   };
 
-  // A native double-click fires two "click" events before "dblclick" — without this guard,
-  // both clicks would read the same stale openSlots state and toggle the slot before the
-  // note dialog opens. Delay the single-click toggle briefly so a following dblclick can cancel it.
-  const slotClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleSlotClick = (dateStr: string, time: string) => {
-    if (slotClickTimer.current) clearTimeout(slotClickTimer.current);
-    slotClickTimer.current = setTimeout(() => {
-      slotClickTimer.current = null;
-      toggleSlot(dateStr, time);
-    }, 250);
-  };
-
-  const handleSlotDoubleClick = (dateStr: string, time: string) => {
-    if (slotClickTimer.current) {
-      clearTimeout(slotClickTimer.current);
-      slotClickTimer.current = null;
-    }
-    openNoteDialog(dateStr, time);
-  };
+  // A press waiting to be resolved as a single or double click. Since the two mean
+  // different things on the same cell, the single-click action has to wait out
+  // DOUBLE_CLICK_MS to see whether a second press follows.
+  const pendingClickRef = useRef<{
+    target: string;
+    timer: ReturnType<typeof setTimeout>;
+    run: () => void;
+  } | null>(null);
 
   const fetchSlotNotes = async (start: Date) => {
     try {
@@ -1028,37 +1059,18 @@ const TeacherDashboard = () => {
 
   // Changing weeks would leave the selection pointing at the wrong dates.
   useEffect(() => {
+    selectionCommittedRef.current = false;
     setSelAnchor(null);
     setSelFocus(null);
     setIsSelecting(false);
   }, [weekStart]);
-
-  // A drag ends wherever the button is released, which is often outside the grid.
-  // A press that never left its starting cell isn't a selection at all — drop it so the
-  // cell's own click / double-click handling takes over unchanged.
-  useEffect(() => {
-    if (!isSelecting) return;
-    const onMouseUp = () => {
-      setIsSelecting(false);
-      if (
-        selAnchor &&
-        selFocus &&
-        selAnchor.d === selFocus.d &&
-        selAnchor.t === selFocus.t
-      ) {
-        setSelAnchor(null);
-        setSelFocus(null);
-      }
-    };
-    window.addEventListener("mouseup", onMouseUp);
-    return () => window.removeEventListener("mouseup", onMouseUp);
-  }, [isSelecting, selAnchor, selFocus]);
 
   // Escape drops the highlight (unless the note dialog owns the key press).
   useEffect(() => {
     if (!selAnchor || noteTarget) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      selectionCommittedRef.current = false;
       setSelAnchor(null);
       setSelFocus(null);
       setIsSelecting(false);
@@ -1198,14 +1210,12 @@ const TeacherDashboard = () => {
   });
 
   // ── Weekly grid: drag-selection ───────────────────────────────────────────────
-  // Every cell inside the rectangle spanned by the anchor and focus cells.
-  const selectedCells: {
-    key: string;
-    dateStr: string;
-    time: string;
-    isPast: boolean;
-    isBooked: boolean;
-  }[] = [];
+  // The cells inside the rectangle spanned by the anchor and focus cells — but only the
+  // ones a bulk action could actually touch. Booked and past cells are skipped entirely:
+  // they never highlight and never join the selection, so what you see highlighted is
+  // exactly what a click or a note will apply to. A drag straight across a booked class
+  // simply steps over it.
+  const selectedCells: { key: string; dateStr: string; time: string }[] = [];
   if (selAnchor && selFocus) {
     const [d0, d1] = [
       Math.min(selAnchor.d, selFocus.d),
@@ -1239,68 +1249,217 @@ const TeacherDashboard = () => {
       for (let t = t0; t <= t1; t++) {
         const time = SLOT_TIMES[t];
         const key = `${dateStr}|${time}`;
-        selectedCells.push({
-          key,
-          dateStr,
-          time,
-          isPast: isPastSlot(dateStr, time),
-          isBooked: bookedSlotKeys.has(key),
-        });
+        if (bookedSlotKeys.has(key) || isPastSlot(dateStr, time)) continue;
+        selectedCells.push({ key, dateStr, time });
       }
     }
   }
   const selectedKeys = new Set(selectedCells.map((c) => c.key));
-  // Past and booked cells are read-only, so bulk actions only ever touch the rest.
-  const editableSelection = selectedCells.filter(
-    (c) => !c.isPast && !c.isBooked,
-  );
-  const selectionDayCount = new Set(editableSelection.map((c) => c.dateStr))
-    .size;
+  const selectionSize = selectedCells.length;
+  const selectionDayCount = new Set(selectedCells.map((c) => c.dateStr)).size;
   // Only one unbroken run on a single day can be drawn as one merged cell. The rectangle
-  // is contiguous by construction, but dropping past/booked cells can punch holes in it.
+  // is contiguous by construction, but skipping booked/past cells can punch holes in it.
   const selectionMergeable =
-    editableSelection.length > 1 &&
+    selectionSize > 1 &&
     selectionDayCount === 1 &&
-    editableSelection.every(
+    selectedCells.every(
       (c, i, arr) =>
         i === 0 ||
         SLOT_TIMES.indexOf(c.time) === SLOT_TIMES.indexOf(arr[i - 1].time) + 1,
     );
   const selectionLabel = (() => {
-    if (editableSelection.length === 0) return "";
-    const first = editableSelection[0];
-    if (editableSelection.length === 1)
+    if (selectionSize === 0) return "";
+    const first = selectedCells[0];
+    if (selectionSize === 1)
       return `${labelForDate(first.dateStr)} · ${fmt12(first.time)}`;
     if (selectionDayCount === 1) {
-      const last = editableSelection[editableSelection.length - 1];
+      const last = selectedCells[selectionSize - 1];
       return `${labelForDate(first.dateStr)} · ${fmt12(first.time)} – ${fmt12(slotRangeEnd(last.time, 1))}`;
     }
-    return `${editableSelection.length} slots across ${selectionDayCount} days`;
+    return `${selectionSize} slots across ${selectionDayCount} days`;
   })();
 
-  const handleCellMouseDown = (d: number, t: number, e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    e.preventDefault(); // keep the browser from text-selecting across the grid
+  // A gesture ends wherever the pointer is released, which is often outside the grid, so
+  // the release is caught on the window. Only a press that actually swept across more
+  // than one cell leaves a highlight standing.
+  // Declared here rather than with the other effects because it reads `selectionSize`.
+  useEffect(() => {
+    const finish = (cancelled: boolean) => {
+      const press = pressRef.current;
+      const held = longPressFiredRef.current;
+      pressRef.current = null;
+      longPressFiredRef.current = false;
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+
+      if (isSelecting) {
+        isSelectingRef.current = false; // unlock grid scrolling immediately
+        setIsSelecting(false);
+        if (!cancelled && dragMovedRef.current && selectionSize > 1) {
+          selectionCommittedRef.current = true; // a real range — keep it highlighted
+          return;
+        }
+        selectionCommittedRef.current = false;
+        setSelAnchor(null);
+        setSelFocus(null);
+        // A hold that never moved is touch's stand-in for a double-click.
+        if (!cancelled && held && press) {
+          resolveGestureRef.current(press.d, press.t, "note", press.touch);
+        }
+        return;
+      }
+      if (cancelled || !press) return;
+      // Holding on a standing highlight, or a plain tap/click on any cell.
+      resolveGestureRef.current(
+        press.d,
+        press.t,
+        held ? "note" : "primary",
+        press.touch,
+      );
+    };
+    const onUp = () => finish(false);
+    const onCancel = () => finish(true);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    return () => {
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+  }, [isSelecting, selectionSize]);
+
+  // Keep the non-passive touchmove listener below in step with the selection state.
+  useEffect(() => {
+    isSelectingRef.current = isSelecting;
+  }, [isSelecting]);
+
+  // Once a hold has opened a highlight, finger movement must extend it rather than scroll
+  // the grid. Only a non-passive listener may cancel the scroll, and React's own handlers
+  // don't give that guarantee, so this one is attached directly.
+  useEffect(() => {
+    const el = gridScrollRef.current;
+    if (!el) return;
+    const onTouchMove = (e: TouchEvent) => {
+      if (isSelectingRef.current) e.preventDefault();
+    };
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => el.removeEventListener("touchmove", onTouchMove);
+    // The grid unmounts while the week loads and while another page is shown, so
+    // re-attach whenever it can have come back.
+  }, [weekSlotsLoading, page]);
+
+  const clearLongPress = () => {
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+  };
+
+  /** Open a one-cell highlight anchored where the finger is being held. */
+  const beginTouchSelection = () => {
+    longPressTimerRef.current = null;
+    longPressFiredRef.current = true;
+    const press = pressRef.current;
+    if (!press) return;
+    // Holding on a standing highlight means "note for the whole highlight" — don't tear
+    // the highlight down to start a new one.
+    const key = `${weekDays[press.d].toLocaleDateString("en-CA")}|${SLOT_TIMES[press.t]}`;
+    if (selectionCommittedRef.current && selectedKeys.has(key)) return;
     dragMovedRef.current = false;
-    setSelAnchor({ d, t });
-    setSelFocus({ d, t });
+    selectionCommittedRef.current = false;
+    // Set the ref up front, not via its effect: the very next touchmove has to be
+    // cancelled, and the effect would not have run by then.
+    isSelectingRef.current = true;
+    setSelAnchor({ d: press.d, t: press.t });
+    setSelFocus({ d: press.d, t: press.t });
     setIsSelecting(true);
   };
 
-  const handleCellMouseEnter = (d: number, t: number) => {
-    if (!isSelecting) return;
-    if (selAnchor && (selAnchor.d !== d || selAnchor.t !== t)) {
-      dragMovedRef.current = true;
+  // A press only records where it started; whether it becomes a tap, a hold or a drag is
+  // decided later by what the pointer does. Nothing here touches state, so an ordinary
+  // click or tap re-renders nothing.
+  const handleCellPointerDown = (d: number, t: number, e: React.PointerEvent) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    dragMovedRef.current = false;
+    longPressFiredRef.current = false;
+    clearLongPress();
+    // Pressing inside a standing highlight keeps it — that press is the start of the
+    // gesture that acts on the whole highlight. Pressing outside drops it.
+    const key = `${weekDays[d].toLocaleDateString("en-CA")}|${SLOT_TIMES[t]}`;
+    if (selectionCommittedRef.current && !selectedKeys.has(key)) clearSelection();
+    const touch = e.pointerType !== "mouse";
+    pressRef.current = { d, t, x: e.clientX, y: e.clientY, touch };
+    if (touch) {
+      longPressTimerRef.current = setTimeout(beginTouchSelection, LONG_PRESS_MS);
     }
+  };
+
+  const handleCellPointerMove = (d: number, t: number, e: React.PointerEvent) => {
+    const press = pressRef.current;
+    if (!press) return;
+
+    if (press.touch) {
+      if (isSelecting) {
+        // Touch sends every move to the cell the press began on, so hit-test for the one
+        // actually under the finger.
+        const cell = cellFromPoint(e.clientX, e.clientY);
+        if (cell) {
+          dragMovedRef.current = true;
+          setSelFocus(cell);
+        }
+        return;
+      }
+      // Moving before the hold lands means the user is scrolling the grid, not selecting.
+      if (
+        Math.abs(e.clientX - press.x) > TOUCH_SCROLL_CANCEL_PX ||
+        Math.abs(e.clientY - press.y) > TOUCH_SCROLL_CANCEL_PX
+      ) {
+        clearLongPress();
+        pressRef.current = null;
+      }
+      return;
+    }
+
+    if (isSelecting) return; // pointerenter extends it from here
+    if (
+      Math.abs(e.clientX - press.x) < DRAG_THRESHOLD_PX &&
+      Math.abs(e.clientY - press.y) < DRAG_THRESHOLD_PX
+    ) {
+      return;
+    }
+    e.preventDefault(); // no text selection dragging across the grid
+    dragMovedRef.current = true;
+    selectionCommittedRef.current = false;
+    setSelAnchor({ d: press.d, t: press.t });
+    setSelFocus({ d, t }); // the cell the pointer has already reached
+    setIsSelecting(true);
+  };
+
+  const handleCellPointerEnter = (d: number, t: number, e: React.PointerEvent) => {
+    if (e.pointerType !== "mouse" || !isSelecting) return;
     setSelFocus({ d, t });
+  };
+
+  /**
+   * One click on a standing highlight opens every slot in it — or closes them all when
+   * they are already open, so a highlight toggles exactly the way a single cell does.
+   */
+  const applySelectionClick = () => {
+    if (selectedCells.length === 0) {
+      clearSelection();
+      return;
+    }
+    const allOpen = selectedCells.every((c) => openSlots.has(c.key));
+    applyBulkSlots(allOpen ? "close" : "open");
   };
 
   /** Bulk open or close every editable cell in the selection. */
   const applyBulkSlots = async (action: "open" | "close") => {
-    const targets = editableSelection.filter((c) =>
+    if (bulkBusy) return;
+    const targets = selectedCells.filter((c) =>
       action === "open" ? !openSlots.has(c.key) : openSlots.has(c.key),
     );
-    if (targets.length === 0) return;
+    if (targets.length === 0) {
+      clearSelection();
+      return;
+    }
     // A note only lives on a closed slot, so opening one throws its note away.
     if (
       action === "open" &&
@@ -1337,13 +1496,13 @@ const TeacherDashboard = () => {
   };
 
   const openNoteDialogForSelection = () => {
-    if (editableSelection.length === 0) return;
+    if (selectedCells.length === 0) return;
     openNoteDialogFor({
-      slots: editableSelection.map(({ dateStr, time }) => ({ dateStr, time })),
+      slots: selectedCells.map(({ dateStr, time }) => ({ dateStr, time })),
       groupId: null,
       mergeable: selectionMergeable,
       label: selectionLabel,
-      existing: editableSelection.some((c) => slotNotes.has(c.key)),
+      existing: selectedCells.some((c) => slotNotes.has(c.key)),
     });
   };
 
@@ -1363,6 +1522,87 @@ const TeacherDashboard = () => {
       existing: true,
     });
   };
+
+  /**
+   * Resolve a completed press on the grid into one of the four gestures.
+   *
+   * This runs off mouseup on the cell the press *started* on, rather than off the DOM's
+   * own click/dblclick. The browser only fires `click` when press and release land on the
+   * same element, so on rows this short a click that drifts one pixel across a border
+   * silently does nothing — which is what made single clicks feel unreliable. Resolving
+   * it ourselves makes every press land on the cell the user aimed at.
+   *
+   *   press, no highlight   → open/close that slot
+   *   double, no highlight  → note on that slot (or on its merged block)
+   *   press, on highlight   → open/close every slot in the highlight
+   *   double, on highlight  → one note across the whole highlight
+   */
+  const resolveGesture = (
+    d: number,
+    t: number,
+    gesture: "primary" | "note",
+    touch: boolean,
+  ) => {
+    const dateStr = weekDays[d].toLocaleDateString("en-CA");
+    const time = SLOT_TIMES[t];
+    const key = `${dateStr}|${time}`;
+    const onHighlight = selectionCommittedRef.current && selectedKeys.has(key);
+
+    // Booked and past cells aren't part of any highlight and do nothing on their own.
+    if (!onHighlight && (bookedSlotKeys.has(key) || isPastSlot(dateStr, time))) {
+      return;
+    }
+
+    // "note" arrives already decided — a hold on touch, or the second click of a
+    // double-click on a mouse, which resolveMouseGesture has waited out.
+    if (gesture === "note") {
+      if (onHighlight) openNoteDialogForSelection();
+      else openNoteDialogForRun(dateStr, time);
+      return;
+    }
+
+    const act = () => {
+      if (onHighlight) applySelectionClick();
+      // Clicking a note edits it; opening the slot underneath would throw the note away.
+      else if (slotNotes.has(key)) openNoteDialogForRun(dateStr, time);
+      else toggleSlot(dateStr, time);
+    };
+
+    // A tap is unambiguous — touch's second gesture is the hold, not a double-tap — so it
+    // acts at once instead of sitting out the double-click window.
+    if (!touch) {
+      // One target string per gesture, so the second click of a double-click only pairs
+      // with the first when both aimed at the same thing.
+      const target = onHighlight ? "highlight" : key;
+      const pending = pendingClickRef.current;
+      if (pending) {
+        clearTimeout(pending.timer);
+        pendingClickRef.current = null;
+        if (pending.target === target) {
+          if (onHighlight) openNoteDialogForSelection();
+          else openNoteDialogForRun(dateStr, time);
+          return;
+        }
+        // Aimed somewhere else — that was a separate click, so let it happen rather than
+        // swallowing it. Clicking two cells in quick succession toggles both.
+        pending.run();
+      }
+      const timer = setTimeout(() => {
+        pendingClickRef.current = null;
+        act();
+      }, DOUBLE_CLICK_MS);
+      pendingClickRef.current = { target, timer, run: act };
+      return;
+    }
+    act();
+  };
+
+  // Keep the window-level mouseup handler pointed at the current render's closure
+  // without making it re-subscribe on every keystroke elsewhere on the page.
+  const resolveGestureRef = useRef(resolveGesture);
+  useEffect(() => {
+    resolveGestureRef.current = resolveGesture;
+  });
 
   // Handlers
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1983,8 +2223,13 @@ const TeacherDashboard = () => {
                   <CardTitle className="text-base flex items-center gap-2">
                     <CalendarDays className="h-4 w-4 text-primary" />
                     My Availability
-                    <span className="text-xs text-muted-foreground font-normal">
-                      — click a slot to open or close it, or drag to select many
+                    <span className="text-xs text-muted-foreground font-normal hidden min-[620px]:inline">
+                      — click: open/close · double-click: note · drag to highlight,
+                      then click or double-click for the whole range
+                    </span>
+                    <span className="text-xs text-muted-foreground font-normal min-[620px]:hidden">
+                      — tap: open/close · hold: note · hold then drag: highlight a
+                      range
                     </span>
                   </CardTitle>
                   <div className="flex items-center gap-2">
@@ -2063,74 +2308,28 @@ const TeacherDashboard = () => {
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-sm bg-amber-100 inline-block" />{" "}
-                    Note — pick a color/icon (double-click a slot to add)
+                    Note — pick a color/icon (double-click or hold a slot to add)
                   </span>
                 </div>
 
-                {/* Bulk actions for a drag-highlighted range */}
-                {editableSelection.length > 0 && (
-                  <div className="flex items-center gap-2 flex-wrap mb-3 rounded border border-primary/40 bg-primary/5 px-3 py-2">
-                    <span className="text-xs font-medium">
-                      {editableSelection.length} slot
-                      {editableSelection.length === 1 ? "" : "s"} selected
-                      <span className="text-muted-foreground font-normal">
-                        {" "}
-                        — {selectionLabel}
-                      </span>
-                    </span>
-                    <div className="flex items-center gap-2 ml-auto">
-                      <Button
-                        size="sm"
-                        className="h-7 px-2 text-xs"
-                        disabled={bulkBusy !== null}
-                        onClick={() => applyBulkSlots("open")}
-                      >
-                        {bulkBusy === "open" ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          "Open all"
-                        )}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 px-2 text-xs"
-                        disabled={bulkBusy !== null}
-                        onClick={() => applyBulkSlots("close")}
-                      >
-                        {bulkBusy === "close" ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          "Close all"
-                        )}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 px-2 text-xs"
-                        disabled={bulkBusy !== null}
-                        onClick={openNoteDialogForSelection}
-                      >
-                        {selectionMergeable ? "Add merged note" : "Add note"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 px-2 text-xs text-muted-foreground"
-                        onClick={clearSelection}
-                      >
-                        Clear
-                      </Button>
-                    </div>
-                  </div>
-                )}
                 {weekSlotsLoading ? (
                   <div className="flex justify-center py-8">
                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
                   </div>
                 ) : (
-                  <div className="overflow-auto max-h-96 rounded border">
-                    <table className="min-w-full border-collapse text-xs">
+                  <div
+                    ref={gridScrollRef}
+                    className="overflow-auto max-h-96 rounded border overscroll-contain"
+                  >
+                    {/* touch-manipulation kills the double-tap-to-zoom that would otherwise
+                        fight every tap; select-none stops the iOS text-selection callout
+                        appearing on a long press. */}
+                    <table
+                      className={`min-w-full border-collapse text-xs select-none [-webkit-touch-callout:none] ${
+                        isSelecting ? "touch-none" : "touch-manipulation"
+                      }`}
+                      onContextMenu={(e) => e.preventDefault()}
+                    >
                       <thead className="sticky top-0 bg-white z-10">
                         <tr>
                           <th className="border-b border-r p-1.5 text-left text-muted-foreground w-16 bg-white">
@@ -2173,7 +2372,7 @@ const TeacherDashboard = () => {
                       <tbody>
                         {SLOT_TIMES.map((time, timeIdx) => (
                           <tr key={time} className="group">
-                            <td className="border-b border-r p-1 text-right pr-2 whitespace-nowrap bg-gray-50 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary group-hover:font-semibold transition-colors">
+                            <td className="border-b border-r p-2 min-[620px]:p-1 text-right pr-2 whitespace-nowrap bg-gray-50 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary group-hover:font-semibold transition-colors">
                               {fmt12(time)}
                             </td>
                             {weekDays.map((day, i) => {
@@ -2199,10 +2398,14 @@ const TeacherDashboard = () => {
                                     )
                                   : selectedKeys.has(key);
                               const dragProps = {
-                                onMouseDown: (e: React.MouseEvent) =>
-                                  handleCellMouseDown(i, timeIdx, e),
-                                onMouseEnter: () =>
-                                  handleCellMouseEnter(i, timeIdx),
+                                // Marks the cell for the touch hit-test in cellFromPoint
+                                "data-slot-cell": `${i}:${timeIdx}`,
+                                onPointerDown: (e: React.PointerEvent) =>
+                                  handleCellPointerDown(i, timeIdx, e),
+                                onPointerMove: (e: React.PointerEvent) =>
+                                  handleCellPointerMove(i, timeIdx, e),
+                                onPointerEnter: (e: React.PointerEvent) =>
+                                  handleCellPointerEnter(i, timeIdx, e),
                               };
                               const selectedRing = isSelected
                                 ? " ring-2 ring-inset ring-primary"
@@ -2238,7 +2441,7 @@ const TeacherDashboard = () => {
                                     key={i}
                                     rowSpan={rowSpan}
                                     {...dragProps}
-                                    className={`border-b border-r p-1 text-center bg-gray-50 select-none${selectedRing}`}
+                                    className={`border-b border-r p-2 min-[620px]:p-1 text-center bg-gray-50 select-none${selectedRing}`}
                                     title={pastTitle}
                                   >
                                     {pastText ? (
@@ -2258,7 +2461,7 @@ const TeacherDashboard = () => {
                                   <td
                                     key={i}
                                     {...dragProps}
-                                    className={`border-b border-r p-1 bg-green-500 text-center select-none${selectedRing}`}
+                                    className={`border-b border-r p-2 min-[620px]:p-1 bg-green-500 text-center select-none${selectedRing}`}
                                     title={
                                       booking
                                         ? `Class with ${booking.student_name}${booking.subject ? ` (${booking.subject})` : ""}`
@@ -2296,31 +2499,19 @@ const TeacherDashboard = () => {
                                         }
                                       : undefined
                                   }
-                                  className={`border-b border-r p-1 text-center cursor-pointer transition-colors select-none${selectedRing} ${
+                                  className={`border-b border-r p-2 min-[620px]:p-1 text-center cursor-pointer transition-colors select-none${selectedRing} ${
                                     noteBg
                                       ? "hover:brightness-95"
                                       : isOpen
                                         ? "bg-green-100 hover:bg-green-200 text-green-700"
                                         : "bg-white hover:bg-gray-100 text-gray-400"
                                   }`}
-                                  onClick={() => {
-                                    // A drag that ended back on its starting cell still
-                                    // fires a click — don't also toggle that cell.
-                                    if (dragMovedRef.current) return;
-                                    if (note) openNoteDialogForRun(dateStr, time);
-                                    else if (!isToggling)
-                                      handleSlotClick(dateStr, time);
-                                  }}
-                                  onDoubleClick={() =>
-                                    !isOpen &&
-                                    handleSlotDoubleClick(dateStr, time)
-                                  }
                                   title={
                                     note
                                       ? `${note.note_icon ? note.note_icon + " " : ""}${note.note_text}${isMergedNote ? ` · ${fmt12(time)} – ${fmt12(slotRangeEnd(time, rowSpan))}` : ""}${note.admin_visibility ? " (visible to admin)" : " (private)"} — click to edit`
                                       : isOpen
-                                        ? "Click to close slot · close it first to add a note"
-                                        : "Click to open slot · double-click to add a note · drag to select a range"
+                                        ? "Click to close · double-click to add a note"
+                                        : "Click to open · double-click to add a note · drag to select a range"
                                   }
                                 >
                                   {isToggling ? (
