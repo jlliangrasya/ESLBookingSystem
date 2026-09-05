@@ -614,7 +614,7 @@ router.get("/students", authenticateToken, requireRole('company_admin'), async (
 
         const [rows] = await pool.query(`
             SELECT
-                u.id, u.name, u.email, u.password, u.guardian_name, u.nationality, u.age, u.created_at,
+                u.id, u.name, u.email, u.password, u.guardian_name, u.nationality, u.age, u.created_at, u.is_active,
                 sp.payment_status, sp.subject, sp.package_id,
                 tp.package_name,
                 sp.sessions_remaining,

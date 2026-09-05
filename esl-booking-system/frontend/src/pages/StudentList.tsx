@@ -23,6 +23,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -43,6 +44,9 @@ import {
   Copy,
   Check,
   ShieldCheck,
+  Archive,
+  ArchiveRestore,
+  AlertTriangle,
 } from "lucide-react";
 import {
   Tooltip,
@@ -68,6 +72,7 @@ interface Student {
   teacher_id: number | null;
   teacher_name: string | null;
   enrolled: boolean;
+  is_active?: boolean | number;
 }
 
 const emptyForm = {
@@ -78,6 +83,10 @@ const emptyForm = {
   nationality: "",
   age: "",
 };
+
+// MySQL hands back is_active as 0/1; treat a missing value as active so the row
+// never disappears if an older API response omits the column.
+const isActive = (s: Student) => s.is_active === undefined || !!s.is_active;
 
 const StudentListPage: React.FC = () => {
   const navigate = useNavigate();
@@ -98,6 +107,11 @@ const StudentListPage: React.FC = () => {
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [credStudent, setCredStudent] = useState<{ name: string; email: string; password: string; age: string; guardian_name: string } | null>(null);
   const [credCopied, setCredCopied] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("active");
+  // The student the admin is about to archive or restore, held until they confirm.
+  const [archiveTarget, setArchiveTarget] = useState<Student | null>(null);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
 
   const handleCopyInfo = (student: Student) => {
     const text = `Name: ${student.name}
@@ -110,6 +124,34 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
     navigator.clipboard.writeText(text);
     setCopiedId(student.id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  // Archiving is a soft delete: the account stops being able to log in and its
+  // future bookings are cancelled with the sessions refunded, but the student's
+  // history stays intact so it can be restored later.
+  const handleConfirmArchive = async () => {
+    if (!archiveTarget) return;
+    const action = isActive(archiveTarget) ? "deactivate" : "reactivate";
+    setArchiveLoading(true);
+    setArchiveError(null);
+    try {
+      const token = localStorage.getItem("token");
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/admin/students/${archiveTarget.id}/${action}`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      setArchiveTarget(null);
+      fetchStudents();
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response) {
+        setArchiveError(err.response.data?.message || `Failed to ${action} student`);
+      } else {
+        setArchiveError("An unexpected error occurred");
+      }
+    } finally {
+      setArchiveLoading(false);
+    }
   };
 
   const filtered = useMemo(() => {
@@ -127,12 +169,23 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
         teacherFilter === "all" ||
         (teacherFilter === "assigned" && !!s.teacher_id) ||
         (teacherFilter === "unassigned" && !s.teacher_id && s.enrolled);
-      return matchSearch && matchSession && matchTeacher;
+      const matchStatus =
+        statusFilter === "all" ||
+        (statusFilter === "active" && isActive(s)) ||
+        (statusFilter === "archived" && !isActive(s));
+      return matchSearch && matchSession && matchTeacher && matchStatus;
     });
-  }, [students, search, sessionFilter, teacherFilter]);
+  }, [students, search, sessionFilter, teacherFilter, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // Archiving the last student on the last page shrinks the list out from under
+  // the current page. The pager hides itself at one page, so without this the
+  // admin is stranded on an empty "No students found" view with no way back.
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const fetchStudents = async () => {
     try {
@@ -288,6 +341,22 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
               <SelectItem value="unassigned">No Teacher Assigned</SelectItem>
             </SelectContent>
           </Select>
+          <Select
+            value={statusFilter}
+            onValueChange={(v) => {
+              setStatusFilter(v);
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="archived">Archived</SelectItem>
+              <SelectItem value="all">Active + Archived</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
@@ -323,10 +392,22 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                     paginated.map((student) => (
                       <TableRow
                         key={student.id}
-                        className="hover:bg-muted/30 transition-colors"
+                        className={`hover:bg-muted/30 transition-colors ${
+                          isActive(student) ? "" : "opacity-60"
+                        }`}
                       >
                         <TableCell className="font-medium">
-                          {student.name}
+                          <div className="flex items-center gap-2">
+                            {student.name}
+                            {!isActive(student) && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] text-muted-foreground"
+                              >
+                                Archived
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>{student.package_name || "—"}</TableCell>
                         <TableCell>
@@ -400,6 +481,41 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                           >
                             View
                           </Button>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  aria-label={`${
+                                    isActive(student) ? "Archive" : "Restore"
+                                  } ${student.name}`}
+                                  className={`h-7 w-7 p-0 student-archive-btn ${
+                                    isActive(student)
+                                      ? "text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      : ""
+                                  }`}
+                                  onClick={() => {
+                                    setArchiveTarget(student);
+                                    setArchiveError(null);
+                                  }}
+                                >
+                                  {isActive(student) ? (
+                                    <Archive className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <ArchiveRestore className="h-3.5 w-3.5" />
+                                  )}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>
+                                  {isActive(student)
+                                    ? "Archive Student"
+                                    : "Restore Student"}
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </TableCell>
                       </TableRow>
                     ))
@@ -440,6 +556,79 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
           )}
         </div>
       </div>
+
+      {/* Archive / Restore confirmation — archiving is reversible, but it cancels
+          future classes, so the consequences are spelled out before confirming. */}
+      <Dialog
+        open={!!archiveTarget}
+        onOpenChange={(open) => {
+          if (!open && !archiveLoading) {
+            setArchiveTarget(null);
+            setArchiveError(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {archiveTarget && isActive(archiveTarget) ? (
+                <>
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                  Archive {archiveTarget?.name}?
+                </>
+              ) : (
+                <>
+                  <ArchiveRestore className="h-5 w-5 text-primary" />
+                  Restore {archiveTarget?.name}?
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {archiveTarget && isActive(archiveTarget)
+                ? "They will no longer be able to log in, and any upcoming classes will be cancelled with those sessions refunded to their package. Their records and history are kept, so you can restore them at any time."
+                : "They will be able to log in again and appear as an active student. Previously cancelled classes are not restored and will need to be rebooked."}
+            </DialogDescription>
+          </DialogHeader>
+          {archiveError && (
+            <Alert variant="destructive">
+              <AlertDescription>{archiveError}</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter className="mt-2">
+            <Button
+              variant="outline"
+              disabled={archiveLoading}
+              onClick={() => {
+                setArchiveTarget(null);
+                setArchiveError(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={
+                archiveTarget && isActive(archiveTarget)
+                  ? "destructive"
+                  : "default"
+              }
+              disabled={archiveLoading}
+              onClick={handleConfirmArchive}
+            >
+              {archiveLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : archiveTarget && isActive(archiveTarget) ? (
+                <>
+                  <Archive className="h-4 w-4 mr-2" /> Archive Student
+                </>
+              ) : (
+                <>
+                  <ArchiveRestore className="h-4 w-4 mr-2" /> Restore Student
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Send Credentials prompt — shown after a student is successfully created */}
       <Dialog open={!!credStudent} onOpenChange={(open) => { if (!open) { setCredStudent(null); setCredCopied(false); } }}>
