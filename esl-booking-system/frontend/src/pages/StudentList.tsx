@@ -44,8 +44,7 @@ import {
   Copy,
   Check,
   ShieldCheck,
-  Archive,
-  ArchiveRestore,
+  Trash2,
   AlertTriangle,
 } from "lucide-react";
 import {
@@ -108,10 +107,23 @@ const StudentListPage: React.FC = () => {
   const [credStudent, setCredStudent] = useState<{ name: string; email: string; password: string; age: string; guardian_name: string } | null>(null);
   const [credCopied, setCredCopied] = useState(false);
   const [statusFilter, setStatusFilter] = useState("active");
-  // The student the admin is about to archive or restore, held until they confirm.
-  const [archiveTarget, setArchiveTarget] = useState<Student | null>(null);
-  const [archiveLoading, setArchiveLoading] = useState(false);
-  const [archiveError, setArchiveError] = useState<string | null>(null);
+  // The student the admin is about to delete, held until they confirm by name.
+  const [deleteTarget, setDeleteTarget] = useState<Student | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // The server checks this too — this only decides when the button lights up.
+  const deleteConfirmed =
+    !!deleteTarget &&
+    deleteConfirmText.trim().toLowerCase() ===
+      deleteTarget.name.trim().toLowerCase();
+
+  const closeDeleteDialog = () => {
+    setDeleteTarget(null);
+    setDeleteConfirmText("");
+    setDeleteError(null);
+  };
 
   const handleCopyInfo = (student: Student) => {
     const text = `Name: ${student.name}
@@ -126,31 +138,32 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Archiving is a soft delete: the account stops being able to log in and its
-  // future bookings are cancelled with the sessions refunded, but the student's
-  // history stays intact so it can be restored later.
-  const handleConfirmArchive = async () => {
-    if (!archiveTarget) return;
-    const action = isActive(archiveTarget) ? "deactivate" : "reactivate";
-    setArchiveLoading(true);
-    setArchiveError(null);
+  // Permanent: the account and every record attached to it are destroyed
+  // server-side in one transaction. There is no undo, which is why the dialog
+  // makes the admin type the student's name first.
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || !deleteConfirmed) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
     try {
       const token = localStorage.getItem("token");
-      await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/admin/students/${archiveTarget.id}/${action}`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } },
+      await axios.delete(
+        `${import.meta.env.VITE_API_URL}/api/admin/students/${deleteTarget.id}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          data: { confirm_name: deleteConfirmText.trim() },
+        },
       );
-      setArchiveTarget(null);
+      closeDeleteDialog();
       fetchStudents();
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response) {
-        setArchiveError(err.response.data?.message || `Failed to ${action} student`);
+        setDeleteError(err.response.data?.message || "Failed to delete student");
       } else {
-        setArchiveError("An unexpected error occurred");
+        setDeleteError("An unexpected error occurred");
       }
     } finally {
-      setArchiveLoading(false);
+      setDeleteLoading(false);
     }
   };
 
@@ -487,32 +500,19 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                                 <Button
                                   size="sm"
                                   variant="ghost"
-                                  aria-label={`${
-                                    isActive(student) ? "Archive" : "Restore"
-                                  } ${student.name}`}
-                                  className={`h-7 w-7 p-0 student-archive-btn ${
-                                    isActive(student)
-                                      ? "text-destructive hover:text-destructive hover:bg-destructive/10"
-                                      : ""
-                                  }`}
+                                  aria-label={`Delete ${student.name}`}
+                                  className="h-7 w-7 p-0 student-delete-btn text-destructive hover:text-destructive hover:bg-destructive/10"
                                   onClick={() => {
-                                    setArchiveTarget(student);
-                                    setArchiveError(null);
+                                    setDeleteTarget(student);
+                                    setDeleteConfirmText("");
+                                    setDeleteError(null);
                                   }}
                                 >
-                                  {isActive(student) ? (
-                                    <Archive className="h-3.5 w-3.5" />
-                                  ) : (
-                                    <ArchiveRestore className="h-3.5 w-3.5" />
-                                  )}
+                                  <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>
-                                <p>
-                                  {isActive(student)
-                                    ? "Archive Student"
-                                    : "Restore Student"}
-                                </p>
+                                <p>Delete Student</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
@@ -557,72 +557,84 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
         </div>
       </div>
 
-      {/* Archive / Restore confirmation — archiving is reversible, but it cancels
-          future classes, so the consequences are spelled out before confirming. */}
+      {/* Delete confirmation. Permanent and unrecoverable, so it spells out what
+          goes and asks the admin to type the name — a click alone is too cheap
+          for an action with no undo. */}
       <Dialog
-        open={!!archiveTarget}
+        open={!!deleteTarget}
         onOpenChange={(open) => {
-          if (!open && !archiveLoading) {
-            setArchiveTarget(null);
-            setArchiveError(null);
-          }
+          if (!open && !deleteLoading) closeDeleteDialog();
         }}
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {archiveTarget && isActive(archiveTarget) ? (
-                <>
-                  <AlertTriangle className="h-5 w-5 text-destructive" />
-                  Archive {archiveTarget?.name}?
-                </>
-              ) : (
-                <>
-                  <ArchiveRestore className="h-5 w-5 text-primary" />
-                  Restore {archiveTarget?.name}?
-                </>
-              )}
+            <DialogTitle className="flex items-start gap-2 text-left">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-destructive mt-0.5" />
+              <span>
+                Are you sure you want to delete {deleteTarget?.name}?
+              </span>
             </DialogTitle>
             <DialogDescription>
-              {archiveTarget && isActive(archiveTarget)
-                ? "They will no longer be able to log in, and any upcoming classes will be cancelled with those sessions refunded to their package. Their records and history are kept, so you can restore them at any time."
-                : "They will be able to log in again and appear as an active student. Previously cancelled classes are not restored and will need to be rebooked."}
+              Deletion will permanently remove their account and all of their
+              data. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          {archiveError && (
+
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+            <p className="text-xs font-medium text-foreground mb-1.5">
+              What will be deleted:
+            </p>
+            <ul className="text-xs text-muted-foreground space-y-0.5 list-disc pl-4">
+              <li>Their login account and profile details</li>
+              <li>All packages, remaining sessions and payment records</li>
+              <li>Every booking, past and upcoming, and its class reports</li>
+              <li>Homework, submissions, feedback and notifications</li>
+            </ul>
+          </div>
+
+          <div>
+            <Label className="text-xs">
+              Type <span className="font-semibold">{deleteTarget?.name}</span> to
+              confirm
+            </Label>
+            <Input
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder={deleteTarget?.name}
+              autoComplete="off"
+              disabled={deleteLoading}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && deleteConfirmed && !deleteLoading) {
+                  handleConfirmDelete();
+                }
+              }}
+            />
+          </div>
+
+          {deleteError && (
             <Alert variant="destructive">
-              <AlertDescription>{archiveError}</AlertDescription>
+              <AlertDescription>{deleteError}</AlertDescription>
             </Alert>
           )}
+
           <DialogFooter className="mt-2">
             <Button
               variant="outline"
-              disabled={archiveLoading}
-              onClick={() => {
-                setArchiveTarget(null);
-                setArchiveError(null);
-              }}
+              disabled={deleteLoading}
+              onClick={closeDeleteDialog}
             >
               Cancel
             </Button>
             <Button
-              variant={
-                archiveTarget && isActive(archiveTarget)
-                  ? "destructive"
-                  : "default"
-              }
-              disabled={archiveLoading}
-              onClick={handleConfirmArchive}
+              variant="destructive"
+              disabled={deleteLoading || !deleteConfirmed}
+              onClick={handleConfirmDelete}
             >
-              {archiveLoading ? (
+              {deleteLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
-              ) : archiveTarget && isActive(archiveTarget) ? (
-                <>
-                  <Archive className="h-4 w-4 mr-2" /> Archive Student
-                </>
               ) : (
                 <>
-                  <ArchiveRestore className="h-4 w-4 mr-2" /> Restore Student
+                  <Trash2 className="h-4 w-4 mr-2" /> Delete Permanently
                 </>
               )}
             </Button>

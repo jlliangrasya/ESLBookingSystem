@@ -8,6 +8,7 @@ const notify = require("../utils/notify");
 const { logAction } = require("../utils/audit");
 const { sendMail } = require("../utils/mailer");
 const { generateTempPassword } = require("../utils/tempPassword");
+const { phtNowSql } = require("../utils/phtTime");
 
 /** Format a stored PHT datetime string for notification messages without UTC shift. */
 function fmtAppt(dtStr) {
@@ -1847,6 +1848,145 @@ router.post('/students/:id/reactivate', authenticateToken, requireRole('company_
     res.json({ message: 'Student reactivated' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Permanently delete a student and every record attached to them (company_admin).
+// Unlike /deactivate above, this cannot be undone: the account, its packages,
+// bookings, class reports, homework and feedback are all destroyed. The typed-name
+// confirmation is re-checked here rather than trusted from the UI, so a stray click
+// or a replayed request can never wipe a roster.
+router.delete('/students/:id', authenticateToken, requireRole('company_admin'), async (req, res) => {
+  const connection = await pool.getConnection();
+  let inTransaction = false;
+  try {
+    const companyId = req.user.company_id;
+    const { id } = req.params;
+    const confirmName = String(req.body?.confirm_name ?? '').trim();
+
+    const [[student]] = await connection.query(
+      "SELECT id, name FROM users WHERE id = ? AND company_id = ? AND role = 'student'",
+      [id, companyId]
+    );
+    if (!student) return res.status(404).json({ message: 'Student not found' });
+
+    if (confirmName.toLowerCase() !== String(student.name).trim().toLowerCase()) {
+      return res.status(400).json({
+        code: 'CONFIRM_NAME_MISMATCH',
+        message: `Type "${student.name}" exactly to confirm this deletion.`,
+      });
+    }
+
+    // Teachers would otherwise find classes silently gone from their schedule.
+    // Collected before the delete removes the rows; sent after it commits.
+    const [affectedTeachers] = await connection.query(
+      `SELECT DISTINCT b.teacher_id FROM bookings b
+       JOIN student_packages sp ON b.student_package_id = sp.id
+       WHERE sp.student_id = ? AND b.company_id = ? AND b.teacher_id IS NOT NULL
+         AND b.status NOT IN ('done', 'cancelled') AND b.appointment_date >= ?`,
+      [id, companyId, phtNowSql()]
+    );
+
+    // Recorded for the audit log and the confirmation message — after the delete
+    // there is nothing left to count.
+    const [[counts]] = await connection.query(
+      `SELECT
+         (SELECT COUNT(*) FROM student_packages WHERE student_id = ?) AS packages,
+         (SELECT COUNT(*) FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id
+           WHERE sp.student_id = ?) AS bookings`,
+      [id, id]
+    );
+
+    // Deployments can be behind on migrations, and a table that was never created
+    // must not roll back the whole delete — so only touch what actually exists.
+    const [tableRows] = await connection.query(
+      'SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()'
+    );
+    const present = new Set(tableRows.map((r) => String(r.name).toLowerCase()));
+
+    await connection.beginTransaction();
+    inTransaction = true;
+
+    const purge = async (table, where, params, requires = []) => {
+      if (!present.has(table)) return;
+      if (requires.some((t) => !present.has(t))) return;
+      await connection.query(`DELETE FROM ${table} WHERE ${where}`, params);
+    };
+
+    const ownPackages = 'SELECT id FROM student_packages WHERE student_id = ?';
+    const ownBookings =
+      'SELECT b.id FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id WHERE sp.student_id = ?';
+
+    // Children first. Several of these have ON DELETE CASCADE and would go on
+    // their own, but the ones added after migration 002 (homework, recurring
+    // schedules, class reports) do not — those would block the delete outright.
+    await purge('assignment_submissions',
+      'student_id = ? OR assignment_id IN (SELECT id FROM assignments WHERE student_id = ?)',
+      [id, id], ['assignments']);
+    await purge('assignments', 'student_id = ?', [id]);
+    await purge('class_reports', `student_id = ? OR booking_id IN (${ownBookings})`, [id, id]);
+    await purge('recurring_schedules',
+      `student_id = ? OR student_package_id IN (${ownPackages})`, [id, id]);
+    await purge('session_adjustments', `student_package_id IN (${ownPackages})`, [id]);
+    await purge('bookings', `student_package_id IN (${ownPackages})`, [id]);
+    await purge('student_packages', 'student_id = ?', [id]);
+    await purge('student_feedback', 'student_id = ?', [id]);
+    await purge('waitlist', 'student_id = ?', [id]);
+    await purge('notifications', 'user_id = ?', [id]);
+    await purge('push_subscriptions', 'user_id = ?', [id]);
+    await purge('announcement_reads', 'user_id = ?', [id]);
+    await purge('account_links', 'user_id_a = ? OR user_id_b = ?', [id, id]);
+
+    const [result] = await connection.query(
+      "DELETE FROM users WHERE id = ? AND company_id = ? AND role = 'student'",
+      [id, companyId]
+    );
+    if (result.affectedRows === 0) {
+      await connection.rollback();
+      inTransaction = false;
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    await connection.commit();
+    inTransaction = false;
+
+    // The middleware caches is_active per user, so without this a token issued
+    // before the delete keeps working until the entry expires.
+    invalidateAuthCache(Number(id), null);
+
+    for (const t of affectedTeachers) {
+      await notify({
+        userId: t.teacher_id,
+        companyId,
+        type: 'class_cancelled',
+        title: 'Upcoming classes removed',
+        message: `${student.name} was deleted from the roster. Their upcoming classes with you have been removed from your schedule.`,
+      });
+    }
+
+    await logAction(companyId, req.user.id, 'student_hard_deleted', 'user', Number(id), {
+      deleted_name: student.name,
+      packages_deleted: counts.packages,
+      bookings_deleted: counts.bookings,
+    });
+
+    res.json({
+      message: `${student.name} and all of their data have been permanently deleted.`,
+      deleted: { packages: counts.packages, bookings: counts.bookings },
+    });
+  } catch (err) {
+    if (inTransaction) await connection.rollback();
+    console.error('Error deleting student:', err);
+    // A table this route does not know about still pointing at the student: the
+    // rollback means nothing was lost, so say so rather than returning a bare 500.
+    if (err && err.code === 'ER_ROW_IS_REFERENCED_2') {
+      return res.status(409).json({
+        message: 'Other records still reference this student, so nothing was deleted. Archive them instead, or contact support.',
+      });
+    }
+    res.status(500).json({ message: 'Server error' });
+  } finally {
+    connection.release();
   }
 });
 

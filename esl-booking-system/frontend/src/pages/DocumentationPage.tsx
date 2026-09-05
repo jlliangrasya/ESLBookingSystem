@@ -300,6 +300,23 @@ const sections: Section[] = [
           remaining sessions. Results are paginated (10 per page).
         </p>
 
+        <H3>Deleting a student</H3>
+        <p>
+          Each row in the Students list has a red delete button. Deleting is
+          permanent and removes the student's login account along with every
+          record attached to them: packages and remaining sessions, all past and
+          upcoming bookings, class reports, homework and submissions, feedback,
+          and notifications. Any teacher with an upcoming class for that student
+          is notified that it has been removed from their schedule.
+        </p>
+        <Callout type="important">
+          Deletion cannot be undone, so the dialog asks you to type the
+          student's full name to confirm. If you only want to stop someone from
+          logging in while keeping their history, use <strong>Deactivate</strong>{" "}
+          on their profile page instead — deactivated students can be
+          reactivated at any time, and appear under the Archived filter.
+        </Callout>
+
         <Callout type="example">
           A student calls to say they couldn't attend but forgot to cancel. The
           admin opens the student's profile, finds the booking, and manually
