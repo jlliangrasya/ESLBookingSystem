@@ -24,6 +24,40 @@ function fmtAppt(dtStr) {
     return `${months[Number(mo) - 1]} ${Number(d)}, ${y} ${h12}:${String(mm).padStart(2,'0')} ${ampm}`;
 }
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^\d{2}:\d{2}(:\d{2})?$/;
+const MAX_BULK_SLOTS = 400; // a full 7-day x 32-row grid is 224 cells
+
+/**
+ * Normalise a bulk slot payload into `[{ date, time }]` with `time` as HH:mm:00.
+ * Mirrors the teacher route's helper so both grids can send the same shape.
+ * Returns a string instead of an array when the payload is unusable.
+ */
+function normaliseSlots(slots) {
+    if (!Array.isArray(slots) || slots.length === 0) return 'slots must be a non-empty array';
+    if (slots.length > MAX_BULK_SLOTS) return `slots may not exceed ${MAX_BULK_SLOTS} entries`;
+    const seen = new Set();
+    const out = [];
+    for (const s of slots) {
+        const date = s && s.slot_date;
+        const rawTime = s && s.slot_time;
+        if (!DATE_RE.test(date || '') || !TIME_RE.test(rawTime || '')) {
+            return 'each slot needs a YYYY-MM-DD date and an HH:mm time';
+        }
+        const time = rawTime.length === 5 ? `${rawTime}:00` : rawTime;
+        const key = `${date}|${time}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ date, time });
+    }
+    return out;
+}
+
+/** True when the slot's PHT wall-clock start is already behind us. */
+function isPastSlot(date, time) {
+    return new Date(`${date}T${time.slice(0, 5)}:00+08:00`) < new Date();
+}
+
 // Helper: check if admin user has a specific permission or is_owner
 const ALLOWED_PERMISSIONS = ['can_add_teacher', 'can_edit_teacher', 'can_delete_teacher'];
 async function canDo(userId, permission) {
@@ -149,7 +183,7 @@ router.get("/teachers", authenticateToken, requireRole('company_admin'), async (
     const year = parseInt(req.query.year) || new Date().getUTCFullYear();
 
     const [rows] = await pool.query(`
-      SELECT u.id, u.name, u.email, u.created_at,
+      SELECT u.id, u.name, u.email, u.password, u.created_at,
              COUNT(DISTINCT CASE WHEN b.appointment_date >= NOW() AND b.status NOT IN ('cancelled','done') THEN COALESCE(b.booking_group_id, CAST(b.id AS CHAR)) END) AS upcoming_classes,
              COUNT(DISTINCT CASE WHEN DATE(b.appointment_date) = CURDATE() AND b.status NOT IN ('cancelled','done') THEN COALESCE(b.booking_group_id, CAST(b.id AS CHAR)) END) AS classes_today,
              COUNT(DISTINCT CASE WHEN b.status IN ('confirmed','done')
@@ -270,8 +304,12 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
   try {
     const companyId = req.user.company_id;
     const { id } = req.params;
+    // password is included so the profile's "Copy Login" button can hand the
+    // admin the same credentials the invite email carried — teachers routinely
+    // lose that email, and the admin is already the one who can reset it. Only
+    // ever returned to a company_admin reading their own company's teacher.
     const [[teacher]] = await pool.query(
-      "SELECT id, name, email, created_at FROM users WHERE id = ? AND company_id = ? AND role = 'teacher'",
+      "SELECT id, name, email, password, created_at FROM users WHERE id = ? AND company_id = ? AND role = 'teacher'",
       [id, companyId]
     );
     if (!teacher) return res.status(404).json({ message: 'Teacher not found' });
@@ -696,6 +734,76 @@ router.post("/teachers/:id/weekly-slots", authenticateToken, requireRole('compan
     }
     res.json({ message: `Slot ${action}d successfully` });
   } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// POST bulk open/close a drag-selected range of a teacher's slots (admin — mirrors
+// the teacher's own /weekly-slots/bulk). Past slots are skipped rather than rejected so a
+// selection dragged across "now" still applies to its future half, and slots carrying a
+// teacher's note are left alone: the note is the teacher's, and opening the slot under it
+// would leave the grid showing a note on an open slot.
+router.post("/teachers/:id/weekly-slots/bulk", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const teacherId = req.params.id;
+    const { action } = req.body;
+
+    if (action !== 'open' && action !== 'close') {
+      return res.status(400).json({ message: 'action must be "open" or "close"' });
+    }
+    const slots = normaliseSlots(req.body.slots);
+    if (typeof slots === 'string') return res.status(400).json({ message: slots });
+
+    const future = slots.filter(s => !isPastSlot(s.date, s.time));
+    const skippedPast = slots.length - future.length;
+    if (future.length === 0) {
+      return res.json({ message: 'No future slots in selection', affected: 0, skippedPast, skippedNotes: 0 });
+    }
+
+    let usable = future;
+    let skippedNotes = 0;
+    if (action === 'open') {
+      const [noted] = await pool.query(
+        `SELECT DATE_FORMAT(note_date, '%Y-%m-%d') AS note_date, TIME_FORMAT(slot_time, '%H:%i:%s') AS slot_time
+         FROM teacher_notes
+         WHERE company_id = ? AND teacher_id = ? AND (note_date, slot_time) IN (?)`,
+        [companyId, teacherId, future.map(s => [s.date, s.time])]
+      );
+      const notedKeys = new Set(noted.map(n => `${n.note_date}|${n.slot_time}`));
+      usable = future.filter(s => !notedKeys.has(`${s.date}|${s.time}`));
+      skippedNotes = future.length - usable.length;
+    }
+
+    if (usable.length === 0) {
+      return res.json({ message: 'Nothing to change in selection', affected: 0, skippedPast, skippedNotes });
+    }
+
+    if (action === 'open') {
+      await pool.query(
+        `INSERT IGNORE INTO teacher_available_slots (company_id, teacher_id, slot_date, slot_time) VALUES ?`,
+        [usable.map(s => [companyId, teacherId, s.date, s.time])]
+      );
+    } else {
+      await pool.query(
+        `DELETE FROM teacher_available_slots
+         WHERE company_id = ? AND teacher_id = ? AND (slot_date, slot_time) IN (?)`,
+        [companyId, teacherId, usable.map(s => [s.date, s.time])]
+      );
+    }
+
+    await logAction(companyId, req.user.id, `admin_slots_bulk_${action}ed`, 'user', Number(teacherId), {
+      slots: usable.length, skipped_past: skippedPast, skipped_notes: skippedNotes,
+    });
+
+    res.json({
+      message: `${usable.length} slot${usable.length === 1 ? '' : 's'} ${action}d`,
+      affected: usable.length,
+      skippedPast,
+      skippedNotes,
+    });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
 });

@@ -13,9 +13,10 @@ import {
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, GraduationCap, CalendarDays, CheckCircle, XCircle, Clock, Plus, Pencil, Trash2, AlertCircle, UserCircle, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2, GraduationCap, CalendarDays, CheckCircle, XCircle, Clock, Plus, Pencil, Trash2, AlertCircle, UserCircle, Search, ChevronLeft, ChevronRight, FileSpreadsheet, Copy, Check } from "lucide-react";
 import AuthContext from "@/context/AuthContext";
 import { AdminTour } from "@/components/AdminTour";
+import BulkImportDialog from "@/components/BulkImportDialog";
 import { useTourEngine } from "@/context/TourEngine";
 import { fmtDate, fmtDateOnly } from "@/utils/timezone";
 
@@ -23,6 +24,9 @@ interface Teacher {
   id: number;
   name: string;
   email: string;
+  // Returned by the list endpoint so the row's Copy button can hand over the
+  // teacher's login without a second request.
+  password: string;
   upcoming_classes: number;
   classes_today: number;
   classes_this_week: number;
@@ -56,6 +60,8 @@ interface LeaveRequest {
   status: string;
   created_at: string;
 }
+
+const LOGIN_URL = "https://brightfolks.pages.dev";
 
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
@@ -102,6 +108,8 @@ const TeacherManagementPage = () => {
   // come back in the response for the admin to copy (see inviteResult).
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState({ name: "", email: "" });
+  const [showBulkImport, setShowBulkImport] = useState(false);
+  const [copiedTeacherId, setCopiedTeacherId] = useState<number | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
   const [addLoading, setAddLoading] = useState(false);
 
@@ -218,6 +226,27 @@ const TeacherManagementPage = () => {
       ].join("\n")
     : "";
 
+  // Row-level copy: the same credential text the invite email carried, for a
+  // teacher who never got it. Mirrors the student list's copy button.
+  const copyTeacherLogin = async (t: Teacher) => {
+    const text = [
+      `Hi ${t.name}, you've been invited to Brightfolks.`,
+      ``,
+      `Login: ${LOGIN_URL}/login`,
+      `Email: ${t.email}`,
+      `Password: ${t.password}`,
+      ``,
+      `You can change your password once you're in.`,
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedTeacherId(t.id);
+      setTimeout(() => setCopiedTeacherId((id) => (id === t.id ? null : id)), 2000);
+    } catch {
+      setCopiedTeacherId(null);
+    }
+  };
+
   const copyInvite = async () => {
     try {
       await navigator.clipboard.writeText(inviteText);
@@ -322,10 +351,16 @@ const TeacherManagementPage = () => {
               Teachers
             </CardTitle>
             {(myPermissions.is_owner || myPermissions.can_add_teacher) && (
-              <Button id="btn-add-teacher" size="sm" onClick={() => setShowAddModal(true)} className="gap-1">
-                <Plus className="h-4 w-4" />
-                {teachers.length === 0 ? "Add your first teacher" : "Add Teacher"}
-              </Button>
+              <div className="flex gap-2">
+                <Button id="btn-bulk-import-teachers" size="sm" variant="outline"
+                  onClick={() => setShowBulkImport(true)} className="gap-1">
+                  <FileSpreadsheet className="h-4 w-4" /> Bulk Add
+                </Button>
+                <Button id="btn-add-teacher" size="sm" onClick={() => setShowAddModal(true)} className="gap-1">
+                  <Plus className="h-4 w-4" />
+                  {teachers.length === 0 ? "Add your first teacher" : "Add Teacher"}
+                </Button>
+              </div>
             )}
           </CardHeader>
           <CardContent>
@@ -449,6 +484,13 @@ const TeacherManagementPage = () => {
                             onClick={() => openLeaves(t)}>
                             <Clock className="h-3 w-3 mr-1" /> Leaves
                           </Button>
+                          <Button size="sm" variant="outline" className="text-xs h-7"
+                            title="Copy this teacher's login credentials"
+                            onClick={() => copyTeacherLogin(t)}>
+                            {copiedTeacherId === t.id
+                              ? <><Check className="h-3 w-3 mr-1 text-green-600" /> Copied</>
+                              : <><Copy className="h-3 w-3 mr-1" /> Login</>}
+                          </Button>
                           {(myPermissions.is_owner || myPermissions.can_edit_teacher) && (
                             <Button size="sm" variant="outline" className="text-xs h-7"
                               onClick={() => { setEditTeacher(t); setEditForm({ name: t.name, email: t.email }); }}>
@@ -487,6 +529,13 @@ const TeacherManagementPage = () => {
           </CardContent>
         </Card>
       </div>
+
+      <BulkImportDialog
+        open={showBulkImport}
+        onOpenChange={setShowBulkImport}
+        type="teachers"
+        onImported={fetchData}
+      />
 
       {/* Add Teacher Modal — name + email only. Nothing else is required at this
           stage: no bio, no photo, no schedule. Those all live on the teacher's

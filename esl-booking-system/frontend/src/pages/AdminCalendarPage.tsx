@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
@@ -66,6 +66,32 @@ const addMinutes = (time: string, mins: number) => {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 };
 
+// Applied to every cell of the row whose time label was clicked. The tint and the
+// top/bottom rules live on a pseudo-element so they sit above the cells' own
+// opaque status colors instead of being hidden behind them.
+const ROW_HIGHLIGHT =
+  "relative after:content-[''] after:absolute after:inset-0 after:pointer-events-none after:bg-primary/15 after:border-y-2 after:border-primary";
+
+/** How far the pointer must travel before a press counts as a drag rather than a click. */
+const DRAG_THRESHOLD_PX = 8;
+/** Touch has no drag-to-select, so a hold starts one. */
+const LONG_PRESS_MS = 500;
+/** Finger travel before a hold is written off as the start of a scroll. */
+const TOUCH_SCROLL_CANCEL_PX = 10;
+
+/**
+ * The grid cell under a viewport point. Touch gives every pointermove to the element the
+ * press started on, so a finger dragged across the grid has to be located by hit-testing
+ * rather than by the mouse's enter/leave events.
+ */
+const cellFromPoint = (x: number, y: number): { d: number; t: number } | null => {
+  const el = document.elementFromPoint(x, y);
+  const cell = el instanceof Element ? el.closest("[data-slot-cell]") : null;
+  if (!(cell instanceof HTMLElement)) return null;
+  const [d, t] = (cell.dataset.slotCell ?? "").split(":").map(Number);
+  return Number.isInteger(d) && Number.isInteger(t) ? { d, t } : null;
+};
+
 const slotsForDuration = (duration: number | null) =>
   Math.max(1, Math.ceil((duration || 25) / 30));
 
@@ -94,6 +120,34 @@ const AdminCalendarPage = () => {
   const [notesByKey, setNotesByKey] = useState<Map<string, { note_text: string; note_color: string; note_icon: string | null; note_group_id: string | null }>>(new Map());
 
   const [bookableStudents, setBookableStudents] = useState<BookablePackage[]>([]);
+
+  // Time label clicked in the first column — highlights that whole row
+  const [highlightedTime, setHighlightedTime] = useState<string | null>(null);
+
+  // Drag-selection over the grid, for opening or closing many slots at once. The
+  // selection is the rectangle between the cell the drag started on (anchor) and the one
+  // under the pointer (focus), both as { d: day column index, t: SLOT_TIMES index }.
+  const [selAnchor, setSelAnchor] = useState<{ d: number; t: number } | null>(null);
+  const [selFocus, setSelFocus] = useState<{ d: number; t: number } | null>(null);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState<"open" | "close" | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+
+  // True once a press has travelled far enough to count as a drag.
+  const dragMovedRef = useRef(false);
+  // Where the press went down, held in a ref so an ordinary click changes no state and
+  // re-renders nothing — the grid clicks exactly as fast as it did before selection existed.
+  const pressRef = useRef<{ d: number; t: number; x: number; y: number; touch: boolean } | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Mirrors isSelecting for the non-passive touchmove listener, which is registered once
+  // and so cannot see the current render's state.
+  const isSelectingRef = useRef(false);
+  const gridScrollRef = useRef<HTMLDivElement>(null);
+  // True while a finished drag's highlight is still standing, waiting for a bulk action.
+  // The cell click handlers fire after pointerup, so they can't read this off state.
+  const selectionCommittedRef = useRef(false);
+  // Set when a release ends a drag, so the click that follows it doesn't also act on a cell.
+  const suppressClickRef = useRef(false);
 
   // Booking modal
   const [bookingSlot, setBookingSlot] = useState<{ date: string; time: string } | null>(null);
@@ -321,6 +375,222 @@ const AdminCalendarPage = () => {
     }
   }
 
+  // ——— Bulk selection ———
+
+  // The cells inside the rectangle spanned by the anchor and focus cells, minus the ones a
+  // bulk action can't touch: past, booked, and slots carrying a teacher's note (notes are
+  // the teacher's to clear, and an open slot has nowhere to show one). Skipped cells never
+  // highlight, so what you see highlighted is exactly what the action applies to.
+  const selectedCells: { key: string; dateStr: string; time: string }[] = [];
+  if (selAnchor && selFocus) {
+    const d0 = Math.min(selAnchor.d, selFocus.d);
+    const d1 = Math.max(selAnchor.d, selFocus.d);
+    const t0 = Math.min(selAnchor.t, selFocus.t);
+    const t1 = Math.max(selAnchor.t, selFocus.t);
+    for (let d = d0; d <= d1; d++) {
+      const dateStr = format(addDays(weekStart, d), "yyyy-MM-dd");
+      for (let t = t0; t <= t1; t++) {
+        const time = SLOT_TIMES[t];
+        const key = `${dateStr}|${time}`;
+        if (bookingByKey.has(key) || notesByKey.has(key)) continue;
+        if (new Date(`${dateStr}T${time}:00`) < new Date()) continue;
+        selectedCells.push({ key, dateStr, time });
+      }
+    }
+  }
+  const selectedKeys = new Set(selectedCells.map(c => c.key));
+  const selectionSize = selectedCells.length;
+  const selectionDayCount = new Set(selectedCells.map(c => c.dateStr)).size;
+  const closedInSelection = selectedCells.filter(c => !openSlots.has(c.key)).length;
+  const openInSelection = selectionSize - closedInSelection;
+  const selectionLabel = (() => {
+    if (selectionSize === 0) return "";
+    const first = selectedCells[0];
+    const dayLabel = (d: string) => format(new Date(`${d}T00:00:00`), "EEE MMM d");
+    if (selectionSize === 1) return `${dayLabel(first.dateStr)} · ${fmt12(first.time)}`;
+    if (selectionDayCount === 1) {
+      const last = selectedCells[selectionSize - 1];
+      return `${dayLabel(first.dateStr)} · ${fmt12(first.time)} – ${fmt12(addMinutes(last.time, 30))}`;
+    }
+    return `${selectionSize} slots across ${selectionDayCount} days`;
+  })();
+
+  const clearSelection = () => {
+    selectionCommittedRef.current = false;
+    isSelectingRef.current = false;
+    setSelAnchor(null);
+    setSelFocus(null);
+    setIsSelecting(false);
+    setBulkError(null);
+  };
+
+  // A gesture ends wherever the pointer is released, which is often outside the grid, so
+  // the release is caught on the window. Only a drag that actually swept across more than
+  // one usable cell leaves a highlight standing for the action bar to act on.
+  useEffect(() => {
+    const finish = (cancelled: boolean) => {
+      pressRef.current = null;
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+      if (!isSelecting) return;
+      isSelectingRef.current = false; // unlock grid scrolling immediately
+      setIsSelecting(false);
+      suppressClickRef.current = true; // the release must not also book or open a slot
+      if (!cancelled && dragMovedRef.current && selectionSize > 1) {
+        selectionCommittedRef.current = true;
+        return;
+      }
+      selectionCommittedRef.current = false;
+      setSelAnchor(null);
+      setSelFocus(null);
+    };
+    const onUp = () => finish(false);
+    const onCancel = () => finish(true);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    return () => {
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+  }, [isSelecting, selectionSize]);
+
+  // Once a hold has opened a highlight, finger movement must extend it rather than scroll
+  // the grid. Only a non-passive listener may cancel the scroll, so this one is attached
+  // directly instead of through React.
+  useEffect(() => {
+    const el = gridScrollRef.current;
+    if (!el) return;
+    const onTouchMove = (e: TouchEvent) => { if (isSelectingRef.current) e.preventDefault(); };
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => el.removeEventListener("touchmove", onTouchMove);
+    // The grid unmounts while teachers load, so re-attach whenever it can have come back.
+  }, [loadingTeachers, teachers.length]);
+
+  // Changing the week or the teacher would leave the highlight pointing at other slots.
+  useEffect(() => {
+    selectionCommittedRef.current = false;
+    isSelectingRef.current = false;
+    setSelAnchor(null);
+    setSelFocus(null);
+    setIsSelecting(false);
+    setBulkError(null);
+  }, [weekStart, teacher?.id]);
+
+  /** Open a one-cell highlight anchored where the finger is being held. */
+  const beginTouchSelection = () => {
+    longPressTimerRef.current = null;
+    const press = pressRef.current;
+    if (!press) return;
+    dragMovedRef.current = false;
+    selectionCommittedRef.current = false;
+    // Set the ref up front, not via its effect: the very next touchmove has to be
+    // cancelled, and the effect would not have run by then.
+    isSelectingRef.current = true;
+    setSelAnchor({ d: press.d, t: press.t });
+    setSelFocus({ d: press.d, t: press.t });
+    setIsSelecting(true);
+  };
+
+  // A press only records where it started; whether it becomes a click, a hold or a drag is
+  // decided later by what the pointer does. Nothing here touches state, so an ordinary
+  // click re-renders nothing.
+  const handleCellPointerDown = (d: number, t: number, e: React.PointerEvent) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    dragMovedRef.current = false;
+    suppressClickRef.current = false;
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+    const touch = e.pointerType !== "mouse";
+    pressRef.current = { d, t, x: e.clientX, y: e.clientY, touch };
+    if (touch) longPressTimerRef.current = setTimeout(beginTouchSelection, LONG_PRESS_MS);
+  };
+
+  const handleCellPointerMove = (d: number, t: number, e: React.PointerEvent) => {
+    const press = pressRef.current;
+    if (!press) return;
+
+    if (press.touch) {
+      if (isSelecting) {
+        // Touch sends every move to the cell the press began on, so hit-test for the one
+        // actually under the finger.
+        const cell = cellFromPoint(e.clientX, e.clientY);
+        if (cell) {
+          dragMovedRef.current = true;
+          setSelFocus(cell);
+        }
+        return;
+      }
+      // Moving before the hold lands means the user is scrolling the grid, not selecting.
+      if (
+        Math.abs(e.clientX - press.x) > TOUCH_SCROLL_CANCEL_PX ||
+        Math.abs(e.clientY - press.y) > TOUCH_SCROLL_CANCEL_PX
+      ) {
+        if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+        pressRef.current = null;
+      }
+      return;
+    }
+
+    if (isSelecting) return; // pointerenter extends it from here
+    if (
+      Math.abs(e.clientX - press.x) < DRAG_THRESHOLD_PX &&
+      Math.abs(e.clientY - press.y) < DRAG_THRESHOLD_PX
+    ) return;
+    e.preventDefault(); // no text selection dragged across the grid
+    dragMovedRef.current = true;
+    selectionCommittedRef.current = false;
+    setSelAnchor({ d: press.d, t: press.t });
+    setSelFocus({ d, t }); // the cell the pointer has already reached
+    setIsSelecting(true);
+  };
+
+  const handleCellPointerEnter = (d: number, t: number, e: React.PointerEvent) => {
+    if (e.pointerType !== "mouse" || !isSelecting) return;
+    setSelFocus({ d, t });
+  };
+
+  /**
+   * Every cell's click runs through here first. A click that ends a drag does nothing, and
+   * while a highlight is standing a click inside it keeps it (the action bar acts on it)
+   * while a click outside simply dismisses it.
+   */
+  const guardCellClick = (key: string): boolean => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return false;
+    }
+    if (selectionCommittedRef.current) {
+      if (!selectedKeys.has(key)) clearSelection();
+      return false;
+    }
+    return true;
+  };
+
+  /** Open or close every cell in the highlight that isn't already in that state. */
+  const applyBulkSlots = async (action: "open" | "close") => {
+    if (bulkBusy || !teacher) return;
+    const targets = selectedCells.filter(c => (action === "open" ? !openSlots.has(c.key) : openSlots.has(c.key)));
+    if (targets.length === 0) { clearSelection(); return; }
+    setBulkBusy(action);
+    setBulkError(null);
+    try {
+      await axios.post(`${base}/api/admin/teachers/${teacher.id}/weekly-slots/bulk`, {
+        action,
+        slots: targets.map(c => ({ slot_date: c.dateStr, slot_time: `${c.time}:00` })),
+      }, { headers });
+      clearSelection();
+      fetchGrid();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        || `Failed to ${action} the selected slots`;
+      setBulkError(msg);
+      fetchGrid(); // resync in case the week moved under us
+    } finally {
+      setBulkBusy(null);
+    }
+  };
+
   const prevTeacher = () => setTeacherIdx(i => (i - 1 + teachers.length) % teachers.length);
   const nextTeacher = () => setTeacherIdx(i => (i + 1) % teachers.length);
 
@@ -359,6 +629,7 @@ const AdminCalendarPage = () => {
                   </CardTitle>
                   <p className="text-xs text-muted-foreground mt-1">
                     Click a booked slot to cancel, a green slot to book a class, a gray slot to open it.
+                    Drag across slots — or hold and drag on touch — to open or close a whole range at once.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -410,8 +681,16 @@ const AdminCalendarPage = () => {
                   Next <ChevronRight className="h-4 w-4 ml-1" />
                 </Button>
               </div>
-              <div className={`overflow-x-auto ${loadingGrid ? "opacity-50 pointer-events-none" : ""}`}>
-                <table className="w-full text-xs border-collapse">
+              <div
+                ref={gridScrollRef}
+                className={`overflow-x-auto overscroll-contain ${loadingGrid ? "opacity-50 pointer-events-none" : ""}`}
+              >
+                {/* select-none stops a drag across the grid turning into a text selection,
+                    and touch-none keeps a finger extending the highlight instead of scrolling. */}
+                <table
+                  className={`w-full text-xs border-collapse table-fixed select-none ${isSelecting ? "touch-none" : ""}`}
+                  onContextMenu={e => e.preventDefault()}
+                >
                   <thead>
                     <tr>
                       <th className="p-1 text-left w-16">Time</th>
@@ -421,14 +700,33 @@ const AdminCalendarPage = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {SLOT_TIMES.map(time => (
+                    {SLOT_TIMES.map((time, timeIdx) => {
+                      const isRowHighlighted = highlightedTime === time;
+                      return (
                       <tr key={time} className="group">
-                        <td className="p-1 font-medium text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary group-hover:font-semibold transition-colors rounded whitespace-nowrap">
+                        <td
+                          onClick={() => setHighlightedTime(prev => (prev === time ? null : time))}
+                          title={isRowHighlighted ? "Click to clear the highlight" : "Click to highlight this time"}
+                          className={`p-1 font-medium transition-colors rounded whitespace-nowrap cursor-pointer select-none ${
+                            isRowHighlighted
+                              ? `text-primary font-semibold ${ROW_HIGHLIGHT}`
+                              : "text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary group-hover:font-semibold"
+                          }`}
+                        >
                           {fmt12(time)}
                         </td>
                         {[...Array(7)].map((_, j) => {
                           const day = format(addDays(weekStart, j), "yyyy-MM-dd");
                           const key = `${day}|${time}`;
+                          // Marks the cell for the touch hit-test in cellFromPoint, and
+                          // feeds the drag-selection its day/time coordinates.
+                          const dragProps = {
+                            "data-slot-cell": `${j}:${timeIdx}`,
+                            onPointerDown: (e: React.PointerEvent) => handleCellPointerDown(j, timeIdx, e),
+                            onPointerMove: (e: React.PointerEvent) => handleCellPointerMove(j, timeIdx, e),
+                            onPointerEnter: (e: React.PointerEvent) => handleCellPointerEnter(j, timeIdx, e),
+                          };
+                          const selectedRing = selectedKeys.has(key) ? " ring-2 ring-inset ring-primary" : "";
                           // Swallowed by the merged note block starting above it
                           if (noteCovered.has(key)) return null;
                           const noteSpan = noteSpans.get(key) ?? 1;
@@ -448,15 +746,19 @@ const AdminCalendarPage = () => {
                             return (
                               <td
                                 key={j}
-                                onClick={() => !isDone && cancellingId === null && handleBookedClick(booking)}
+                                {...dragProps}
+                                onClick={() => {
+                                  if (!guardCellClick(key)) return;
+                                  if (!isDone && cancellingId === null) handleBookedClick(booking);
+                                }}
                                 title={isDone ? `${tooltip} — completed, cannot cancel` : `${tooltip} — click to cancel`}
                                 className={`p-1 text-center border transition-colors ${
                                   isDone ? "bg-slate-200 text-slate-500 cursor-default"
                                   : isPending ? "bg-yellow-100 text-yellow-800 cursor-pointer hover:bg-yellow-200"
                                   : "bg-blue-100 text-blue-700 cursor-pointer hover:bg-blue-200"
-                                }`}
+                                }${selectedRing} ${isRowHighlighted ? ROW_HIGHLIGHT : ""}`}
                               >
-                                <div className="truncate max-w-22.5 mx-auto font-medium">{label}</div>
+                                <div className="truncate font-medium">{label}</div>
                               </td>
                             );
                           }
@@ -465,7 +767,9 @@ const AdminCalendarPage = () => {
                             <td
                               key={j}
                               rowSpan={noteSpan}
+                              {...dragProps}
                               onClick={() => {
+                                if (!guardCellClick(key)) return;
                                 if (isPast || isToggling) return;
                                 if (isOpen) openBookingModal(day, time);
                                 else toggleSlot(day, time, "open");
@@ -481,10 +785,10 @@ const AdminCalendarPage = () => {
                                 : noteBg ? "hover:brightness-95 cursor-pointer"
                                 : isOpen ? "bg-green-100 text-green-700 hover:bg-green-200 cursor-pointer"
                                 : "bg-gray-100 text-gray-400 hover:bg-gray-200 cursor-pointer"
-                              }`}
+                              }${selectedRing} ${isRowHighlighted ? ROW_HIGHLIGHT : ""}`}
                             >
                               {isToggling ? "..." : isPast ? "" : note ? (
-                                <span className="block max-w-[80px] mx-auto">
+                                <span className="block">
                                   <span className={`text-[10px] font-semibold block ${noteSpan > 1 ? "break-words" : "truncate"}`}>
                                     {note.note_icon ? `${note.note_icon} ` : ""}{note.note_text}
                                   </span>
@@ -499,7 +803,8 @@ const AdminCalendarPage = () => {
                           );
                         })}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -511,11 +816,56 @@ const AdminCalendarPage = () => {
                 <span><span className="inline-block w-3 h-3 bg-slate-200 border rounded mr-1" />Completed</span>
                 <span><span className="inline-block w-3 h-3 bg-gray-50 border rounded mr-1" />Past</span>
                 <span><span className="inline-block w-3 h-3 bg-amber-100 border rounded mr-1" />Teacher note (shared by teacher)</span>
+                <span><span className="inline-block w-3 h-3 border-2 border-primary rounded mr-1" />Selected — drag to pick a range, then open or close it</span>
               </div>
             </CardContent>
           </Card>
         )}
       </div>
+
+      {/* Bulk-selection action bar. Floated over the page rather than placed above the
+          grid: appearing in the flow would shove every cell down mid-drag. */}
+      {selectionSize > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[min(42rem,calc(100vw-2rem))]">
+          <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl border border-primary/30 bg-white shadow-lg">
+            <span className="text-xs font-medium">
+              {selectionSize} slot{selectionSize === 1 ? "" : "s"} selected
+              <span className="text-muted-foreground font-normal"> · {selectionLabel}</span>
+            </span>
+            <span className="text-[11px] text-muted-foreground">
+              ({closedInSelection} closed, {openInSelection} open)
+            </span>
+            <div className="flex items-center gap-2 ml-auto">
+              <Button
+                size="sm" className="h-7 px-2 text-xs"
+                disabled={closedInSelection === 0 || bulkBusy !== null}
+                onClick={() => applyBulkSlots("open")}
+              >
+                {bulkBusy === "open"
+                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                  : `Open ${closedInSelection} slot${closedInSelection === 1 ? "" : "s"}`}
+              </Button>
+              <Button
+                size="sm" variant="outline" className="h-7 px-2 text-xs"
+                disabled={openInSelection === 0 || bulkBusy !== null}
+                onClick={() => applyBulkSlots("close")}
+              >
+                {bulkBusy === "close"
+                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                  : `Close ${openInSelection} slot${openInSelection === 1 ? "" : "s"}`}
+              </Button>
+              <Button
+                size="sm" variant="ghost" className="h-7 px-2 text-xs"
+                disabled={bulkBusy !== null}
+                onClick={clearSelection}
+              >
+                Clear
+              </Button>
+            </div>
+            {bulkError && <p className="w-full text-xs text-red-600">{bulkError}</p>}
+          </div>
+        </div>
+      )}
 
       {/* Booking Modal */}
       {bookingSlot && (

@@ -5,6 +5,7 @@ import NavBar from "../components/Navbar";
 import AuthContext from "@/context/AuthContext";
 import { AdminTour } from "@/components/AdminTour";
 import { useOnboarding } from "@/context/OnboardingContext";
+import BulkImportDialog from "@/components/BulkImportDialog";
 import {
   Table,
   TableBody,
@@ -36,6 +37,7 @@ import {
 import {
   Loader2,
   UserPlus,
+  FileSpreadsheet,
   Eye,
   EyeOff,
   Search,
@@ -99,6 +101,7 @@ const StudentListPage: React.FC = () => {
   const [addError, setAddError] = useState<string | null>(null);
   const [addLoading, setAddLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [search, setSearch] = useState("");
   const [sessionFilter, setSessionFilter] = useState("all");
   const [teacherFilter, setTeacherFilter] = useState("all");
@@ -275,16 +278,25 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-gray-800">Students List</h1>
-          <Button
-            id="btn-add-student"
-            onClick={() => {
-              setAddForm(emptyForm);
-              setAddError(null);
-              setShowAddModal(true);
-            }}
-          >
-            <UserPlus className="h-4 w-4 mr-2" /> Add Student
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              id="btn-bulk-import-students"
+              variant="outline"
+              onClick={() => setShowBulkImport(true)}
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" /> Bulk Add
+            </Button>
+            <Button
+              id="btn-add-student"
+              onClick={() => {
+                setAddForm(emptyForm);
+                setAddError(null);
+                setShowAddModal(true);
+              }}
+            >
+              <UserPlus className="h-4 w-4 mr-2" /> Add Student
+            </Button>
+          </div>
         </div>
 
         {/* Explain the gate up front rather than letting them fill in a whole form
@@ -696,6 +708,13 @@ Please use the email and password to login to https://esl-booking-system.pages.d
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <BulkImportDialog
+        open={showBulkImport}
+        onOpenChange={setShowBulkImport}
+        type="students"
+        onImported={fetchStudents}
+      />
 
       {/* Add Student Modal */}
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>

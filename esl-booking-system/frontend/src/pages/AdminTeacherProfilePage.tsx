@@ -19,15 +19,20 @@ import {
 import {
   ArrowLeft, UserCircle, CalendarDays, Loader2, Pencil, Save, Eye, EyeOff,
   BookOpen, KeyRound, ChevronLeft, ChevronRight, Timer, CheckCircle2,
-  UserX, Users, FileText, Heart, Search, Calculator,
+  UserX, Users, FileText, Heart, Search, Calculator, Copy, Check,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly } from "@/utils/timezone";
 import ReportModal from "@/components/ReportModal";
+
+const LOGIN_URL = "https://brightfolks.pages.dev";
 
 interface TeacherProfile {
   id: number;
   name: string;
   email: string;
+  // Returned by GET /api/admin/teachers/:id so the admin can re-send the login
+  // when a teacher loses the invite email.
+  password: string;
   created_at: string;
 }
 
@@ -244,6 +249,8 @@ const AdminTeacherProfilePage = () => {
   const [showResetPwText, setShowResetPwText] = useState(false);
   const [resetPwLoading, setResetPwLoading] = useState(false);
   const [resetPwMsg, setResetPwMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [credShown, setCredShown] = useState(false);
+  const [credCopied, setCredCopied] = useState(false);
 
   const handleResetPassword = async () => {
     setResetPwLoading(true);
@@ -257,6 +264,30 @@ const AdminTeacherProfilePage = () => {
       setResetPwMsg({ type: "error", text: msg });
     } finally {
       setResetPwLoading(false);
+    }
+  };
+
+  // The same text the invite email sends, so a teacher who lost it gets exactly
+  // what they were originally given.
+  const credentialText = teacher
+    ? [
+        `Hi ${teacher.name}, you've been invited to Brightfolks.`,
+        ``,
+        `Login: ${LOGIN_URL}/login`,
+        `Email: ${teacher.email}`,
+        `Password: ${teacher.password}`,
+        ``,
+        `You can change your password once you're in.`,
+      ].join("\n")
+    : "";
+
+  const handleCopyCredentials = async () => {
+    try {
+      await navigator.clipboard.writeText(credentialText);
+      setCredCopied(true);
+      setTimeout(() => setCredCopied(false), 2000);
+    } catch {
+      setCredCopied(false);
     }
   };
 
@@ -496,6 +527,12 @@ const AdminTeacherProfilePage = () => {
               Teacher Profile
             </CardTitle>
             <div className="flex gap-2">
+              <Button id="teacher-btn-copy-login" size="sm" variant="outline" className="gap-1"
+                onClick={handleCopyCredentials}>
+                {credCopied
+                  ? <><Check className="h-4 w-4 text-green-600" /> Copied!</>
+                  : <><Copy className="h-4 w-4" /> Copy Login</>}
+              </Button>
               <Button id="teacher-btn-reset-pw" size="sm" variant="outline" className="gap-1"
                 onClick={() => { setShowResetPw(true); setResetPw(""); setResetPwMsg(null); }}>
                 <KeyRound className="h-4 w-4" /> Reset Password
@@ -517,6 +554,19 @@ const AdminTeacherProfilePage = () => {
             <div>
               <p className="text-xs text-muted-foreground">Added</p>
               <p className="font-medium">{fmtDateOnly(teacher.created_at)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Password</p>
+              <div className="flex items-center gap-1">
+                <p className="font-medium font-mono">
+                  {credShown ? teacher.password : "••••••••"}
+                </p>
+                <Button variant="ghost" size="icon" className="h-6 w-6"
+                  title={credShown ? "Hide password" : "Show password"}
+                  onClick={() => setCredShown((v) => !v)}>
+                  {credShown ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
