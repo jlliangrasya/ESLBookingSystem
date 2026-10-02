@@ -171,6 +171,11 @@ const BulkImportDialog: React.FC<Props> = ({ open, onOpenChange, type, onImporte
     return d ? `@${d}` : "";
   }, [emailDomainInput]);
 
+  // A half-typed domain ("@e", "@exam") would otherwise make every row that
+  // relies on it report "Invalid email" at once. The domain is one mistake in
+  // one field, so it reports itself and the rows stay quiet.
+  const domainValid = !emailDomain || /^@[^\s@]+\.[^\s@]+$/.test(emailDomain);
+
   /** The address a row will actually be created with. */
   const resolveEmail = useCallback(
     (raw: string) => {
@@ -322,11 +327,18 @@ const BulkImportDialog: React.FC<Props> = ({ open, onOpenChange, type, onImporte
     for (const r of drafts) {
       const raw = r.email.trim();
       const email = resolveEmail(r.email);
+      // When the shared domain is supplying the "@…" part, only the username
+      // the admin typed is theirs to get wrong. Anything wrong with the domain
+      // is reported once, on the domain field itself.
+      const usesSharedDomain = !!emailDomain && !raw.includes("@");
+
       if (!r.name.trim()) map.set(r.key, "Name is required");
-      else if (!email) map.set(r.key, "Email is required");
+      else if (!raw) map.set(r.key, "Email is required");
       else if (!raw.includes("@") && !emailDomain)
         map.set(r.key, "Set a shared domain above, or type the full email");
-      else if (!isValidEmail(email)) map.set(r.key, "Invalid email");
+      else if (usesSharedDomain && /\s/.test(raw))
+        map.set(r.key, "No spaces allowed before the @");
+      else if (!usesSharedDomain && !isValidEmail(email)) map.set(r.key, "Invalid email");
       else if ((counts.get(email) || 0) > 1) map.set(r.key, "Duplicate email in this list");
       else if (!r.password) map.set(r.key, "Password is required");
       else if (r.problem) map.set(r.key, r.problem);
@@ -495,7 +507,11 @@ const BulkImportDialog: React.FC<Props> = ({ open, onOpenChange, type, onImporte
                 <FileSpreadsheet className="h-3 w-3" /> {fileName}
               </Badge>
               <Badge variant="outline">{drafts.length} row{drafts.length === 1 ? "" : "s"}</Badge>
-              {readyCount === drafts.length ? (
+              {!domainValid ? (
+                <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
+                  Finish the shared domain
+                </Badge>
+              ) : readyCount === drafts.length ? (
                 <Badge className="bg-green-100 text-green-700 hover:bg-green-100">All rows ready</Badge>
               ) : (
                 <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
@@ -550,12 +566,19 @@ const BulkImportDialog: React.FC<Props> = ({ open, onOpenChange, type, onImporte
                 value={emailDomainInput}
                 onChange={(e) => setEmailDomainInput(e.target.value)}
                 placeholder="@example.com"
-                className="h-8 text-sm w-52 font-mono"
+                className={`h-8 text-sm w-52 font-mono ${
+                  domainValid ? "" : "border-destructive focus-visible:ring-destructive"
+                }`}
                 autoComplete="off"
                 spellCheck={false}
               />
               <span className="text-xs text-muted-foreground">
-                {emailDomain ? (
+                {!domainValid ? (
+                  <span className="text-destructive">
+                    Finish the domain — it needs a dot, like{" "}
+                    <code className="font-mono">@example.com</code>
+                  </span>
+                ) : emailDomain ? (
                   <>
                     Rows without an <code className="font-mono">@</code> become{" "}
                     <code className="font-mono text-foreground">name{emailDomain}</code>
@@ -833,8 +856,14 @@ const BulkImportDialog: React.FC<Props> = ({ open, onOpenChange, type, onImporte
               </Button>
               <Button
                 onClick={handleCreate}
-                disabled={creating || drafts.length === 0 || rowErrors.size > 0}
-                title={rowErrors.size > 0 ? "Fix the highlighted rows first" : undefined}
+                disabled={creating || drafts.length === 0 || rowErrors.size > 0 || !domainValid}
+                title={
+                  !domainValid
+                    ? "Finish the shared email domain first"
+                    : rowErrors.size > 0
+                      ? "Fix the highlighted rows first"
+                      : undefined
+                }
               >
                 {creating ? (
                   <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating…</>
