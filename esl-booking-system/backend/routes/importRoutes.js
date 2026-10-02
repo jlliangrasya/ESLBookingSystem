@@ -240,7 +240,11 @@ router.post('/students', authenticateToken, requireRole('company_admin'), async 
             if (!name) { failed.push({ row, name, email, reason: 'Name is required' }); continue; }
             if (!email) { failed.push({ row, name, email, reason: 'Email is required' }); continue; }
             if (!isValidEmail(email)) { failed.push({ row, name, email, reason: 'Invalid email format' }); continue; }
-            if (password.length < 6) { failed.push({ row, name, email, reason: 'Password must be at least 6 characters' }); continue; }
+            // No length floor here, unlike the self-service paths: these are
+            // passwords an admin hands to a child, and short ones are a
+            // deliberate choice. It still has to be non-empty — a blank would
+            // otherwise create an account nobody can log into.
+            if (!password) { failed.push({ row, name, email, reason: 'Password is required' }); continue; }
             if (taken.has(email)) { failed.push({ row, name, email, reason: 'Email already registered' }); continue; }
             if (seatsLeft <= 0) {
                 failed.push({ row, name, email, reason: `Plan limit reached (${seats.seat_limit} students on ${seats.plan_name})` });
@@ -338,10 +342,9 @@ router.post('/teachers', authenticateToken, requireRole('company_admin'), async 
             if (!name) { failed.push({ row, name, email, reason: 'Name is required' }); continue; }
             if (!email) { failed.push({ row, name, email, reason: 'Email is required' }); continue; }
             if (!isValidEmail(email)) { failed.push({ row, name, email, reason: 'Invalid email format' }); continue; }
-            if (supplied && supplied.length < 6) {
-                failed.push({ row, name, email, reason: 'Password must be at least 6 characters' });
-                continue;
-            }
+            // No length floor, matching the student path above: a password an
+            // admin types on the review screen is their call. Left empty, one is
+            // generated below.
             if (taken.has(email)) { failed.push({ row, name, email, reason: 'Email already registered' }); continue; }
             if (seatsLeft <= 0) {
                 failed.push({ row, name, email, reason: `Plan limit reached (${seats.seat_limit} teachers on ${seats.plan_name})` });

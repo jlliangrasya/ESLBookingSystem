@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import {
   Upload, Download, Loader2, CheckCircle2, AlertCircle, FileSpreadsheet,
-  Copy, Check, RefreshCw, Trash2, ArrowLeft, Eye, EyeOff, Wand2,
+  Copy, Check, RefreshCw, Trash2, ArrowLeft, Eye, EyeOff, Wand2, AtSign,
 } from "lucide-react";
 
 // Bulk import, in three steps: upload the roster → review it and set the logins
@@ -161,6 +161,27 @@ const BulkImportDialog: React.FC<Props> = ({ open, onOpenChange, type, onImporte
   // there for when someone is screen-sharing.
   const [showPasswords, setShowPasswords] = useState(true);
 
+  // A domain typed once and applied to every row that doesn't carry its own, so
+  // a roster of thirty students needs "maria", "juan"… instead of the same
+  // "@school.com" thirty times. Rows holding a full address keep it.
+  const [emailDomainInput, setEmailDomainInput] = useState("");
+
+  const emailDomain = useMemo(() => {
+    const d = emailDomainInput.trim().toLowerCase().replace(/^@+/, "");
+    return d ? `@${d}` : "";
+  }, [emailDomainInput]);
+
+  /** The address a row will actually be created with. */
+  const resolveEmail = useCallback(
+    (raw: string) => {
+      const e = raw.trim().toLowerCase();
+      if (!e) return "";
+      if (e.includes("@")) return e;
+      return emailDomain ? e + emailDomain : e;
+    },
+    [emailDomain],
+  );
+
   const [result, setResult] = useState<CommitResponse | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -178,6 +199,7 @@ const BulkImportDialog: React.FC<Props> = ({ open, onOpenChange, type, onImporte
     setResult(null);
     setCopiedKey(null);
     setShowPasswords(true);
+    setEmailDomainInput("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
 
@@ -242,7 +264,14 @@ const BulkImportDialog: React.FC<Props> = ({ open, onOpenChange, type, onImporte
             guardian_name: isStudents ? (student.guardian_name || "") : "",
             age: isStudents ? student.age : null,
             nationality: isStudents ? (student.nationality || "") : "",
-            problem: isStudents ? null : (teacher.problem ?? null),
+            // Only "already registered" is kept from the server: it's the one
+            // thing the browser can't re-derive. Empty / malformed / repeated
+            // are recomputed as the admin types, so a row the server called
+            // invalid stops being flagged once a shared domain completes it.
+            problem:
+              !isStudents && teacher.problem === "Email already registered"
+                ? teacher.problem
+                : null,
           };
         }),
       );
@@ -278,26 +307,32 @@ const BulkImportDialog: React.FC<Props> = ({ open, onOpenChange, type, onImporte
     setDrafts((rows) => rows.map((r) => ({ ...r, password: r.password || generatePassword() })));
 
   // Per-row validation, recomputed as the admin types. Duplicate detection runs
-  // across the whole draft set so two rows can't claim the same login.
+  // across the whole draft set so two rows can't claim the same login, and it
+  // compares resolved addresses so "maria" and "maria@school.com" collide.
+  //
+  // No password length rule: an admin setting a child's password may well want
+  // something short. It only has to be non-empty.
   const rowErrors = useMemo(() => {
     const counts = new Map<string, number>();
     for (const r of drafts) {
-      const e = r.email.trim().toLowerCase();
+      const e = resolveEmail(r.email);
       if (e) counts.set(e, (counts.get(e) || 0) + 1);
     }
     const map = new Map<string, string>();
     for (const r of drafts) {
-      const email = r.email.trim().toLowerCase();
+      const raw = r.email.trim();
+      const email = resolveEmail(r.email);
       if (!r.name.trim()) map.set(r.key, "Name is required");
       else if (!email) map.set(r.key, "Email is required");
+      else if (!raw.includes("@") && !emailDomain)
+        map.set(r.key, "Set a shared domain above, or type the full email");
       else if (!isValidEmail(email)) map.set(r.key, "Invalid email");
       else if ((counts.get(email) || 0) > 1) map.set(r.key, "Duplicate email in this list");
       else if (!r.password) map.set(r.key, "Password is required");
-      else if (r.password.length < 6) map.set(r.key, "Min 6 characters");
       else if (r.problem) map.set(r.key, r.problem);
     }
     return map;
-  }, [drafts]);
+  }, [drafts, resolveEmail, emailDomain]);
 
   const readyCount = drafts.length - rowErrors.size;
   const overSeatLimit = !!seats && drafts.length > seats.remaining;
@@ -309,7 +344,7 @@ const BulkImportDialog: React.FC<Props> = ({ open, onOpenChange, type, onImporte
       const payload = drafts.map((r) => ({
         row: r.row,
         name: r.name.trim(),
-        email: r.email.trim().toLowerCase(),
+        email: resolveEmail(r.email),
         password: r.password,
         ...(isStudents
           ? {
@@ -507,6 +542,33 @@ const BulkImportDialog: React.FC<Props> = ({ open, onOpenChange, type, onImporte
               </Alert>
             )}
 
+            {/* Type the domain once; every row without an "@" picks it up. */}
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2">
+              <AtSign className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="text-xs font-medium shrink-0">Shared email domain</span>
+              <Input
+                value={emailDomainInput}
+                onChange={(e) => setEmailDomainInput(e.target.value)}
+                placeholder="@example.com"
+                className="h-8 text-sm w-52 font-mono"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <span className="text-xs text-muted-foreground">
+                {emailDomain ? (
+                  <>
+                    Rows without an <code className="font-mono">@</code> become{" "}
+                    <code className="font-mono text-foreground">name{emailDomain}</code>
+                  </>
+                ) : (
+                  <>
+                    Optional — set it and you can type just <code className="font-mono">maria</code>{" "}
+                    instead of the full address
+                  </>
+                )}
+              </span>
+            </div>
+
             <div className="flex items-center justify-between gap-2">
               <div className="flex gap-2">
                 {isStudents && (
@@ -607,10 +669,18 @@ const BulkImportDialog: React.FC<Props> = ({ open, onOpenChange, type, onImporte
                             <Input
                               value={r.email}
                               onChange={(e) => updateDraft(r.key, { email: e.target.value, problem: null })}
-                              placeholder="name@example.com"
+                              placeholder={emailDomain ? "maria" : "name@example.com"}
                               className="h-8 text-sm"
                               autoComplete="off"
+                              spellCheck={false}
                             />
+                            {/* Show the address this row will actually get, but
+                                only when the domain is doing the work. */}
+                            {emailDomain && r.email.trim() && !r.email.includes("@") && (
+                              <p className="text-[11px] text-muted-foreground mt-1 font-mono truncate">
+                                {resolveEmail(r.email)}
+                              </p>
+                            )}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
@@ -618,7 +688,7 @@ const BulkImportDialog: React.FC<Props> = ({ open, onOpenChange, type, onImporte
                                 value={r.password}
                                 type={showPasswords ? "text" : "password"}
                                 onChange={(e) => updateDraft(r.key, { password: e.target.value })}
-                                placeholder="min 6 characters"
+                                placeholder="any password"
                                 className="h-8 text-sm font-mono"
                                 autoComplete="new-password"
                               />
