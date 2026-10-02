@@ -115,6 +115,10 @@ const SLOT_TIMES: string[] = Array.from({ length: 32 }, (_, i) => {
   return `${h}:${m}`;
 });
 
+// Boundaries for the recurring-schedule range pickers: every slot start plus
+// 23:00 as the closing edge, so the 10:30 PM slot can be included.
+const RANGE_TIMES: string[] = [...SLOT_TIMES, "23:00"];
+
 const fmt12 = (t: string) => {
   const [hh, mm] = t.split(":");
   const h = Number(hh);
@@ -1496,12 +1500,12 @@ const AdminTeacherProfilePage = () => {
                     const v = e.target.value;
                     setRecurringAvailStart(v);
                     if (v >= recurringAvailEnd) {
-                      const next = SLOT_TIMES.find(t => t > v);
+                      const next = RANGE_TIMES.find(t => t > v);
                       if (next) setRecurringAvailEnd(next);
                     }
                   }}
                 >
-                  {SLOT_TIMES.slice(0, -1).map(t => (
+                  {RANGE_TIMES.slice(0, -1).map(t => (
                     <option key={t} value={t}>{fmt12(t)}</option>
                   ))}
                 </select>
@@ -1515,12 +1519,12 @@ const AdminTeacherProfilePage = () => {
                     const v = e.target.value;
                     setRecurringAvailEnd(v);
                     if (v <= recurringAvailStart) {
-                      const prev = [...SLOT_TIMES].reverse().find(t => t < v);
+                      const prev = [...RANGE_TIMES].reverse().find(t => t < v);
                       if (prev) setRecurringAvailStart(prev);
                     }
                   }}
                 >
-                  {SLOT_TIMES.slice(1).map(t => (
+                  {RANGE_TIMES.slice(1).map(t => (
                     <option key={t} value={t}>{fmt12(t)}</option>
                   ))}
                 </select>
