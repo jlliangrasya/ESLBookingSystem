@@ -172,10 +172,9 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
             LEFT JOIN class_reports cr ON cr.booking_id = b.id
             WHERE b.teacher_id = ? AND b.company_id = ? AND b.status = 'done'
             ORDER BY b.appointment_date ASC
-            LIMIT 100
         `, [teacherId, companyId]);
         // Group ASC so earliest slot is representative, then reverse for most-recent-first display
-        const completedBookings = groupMultiSlotBookings(completedRows).reverse().slice(0, 20);
+        const completedBookings = groupMultiSlotBookings(completedRows).reverse();
 
         // Classes this week / month + weekly detail stats — all run in parallel
         const [

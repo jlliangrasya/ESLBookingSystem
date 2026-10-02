@@ -508,13 +508,13 @@ async function runDailyJobsSweep() {
 //
 // The ping is restricted to the hours lessons can run. Pinging around the clock
 // costs ~730 instance hours/month against Render's 750-hour free quota, leaving
-// no headroom; the default 06:00–22:59 PHT window costs ~500. The slot grid runs
-// 07:00–23:00 PHT, and the window opens 30 min early so the 06:30 tick can send
+// no headroom; the default 06:00–23:59 PHT window costs ~540. The slot grid runs
+// 07:00–24:00 PHT, and the window opens 30 min early so the 06:30 tick can send
 // 30-minute reminders for the first lessons of the day.
 //
 // Override with KEEPALIVE_HOURS (a cron hour field, e.g. '5-23' or '0-23' for
 // the old always-on behaviour); set it to 'off' to disable self-pinging.
-const KEEPALIVE_HOURS = (process.env.KEEPALIVE_HOURS || '6-22').trim();
+const KEEPALIVE_HOURS = (process.env.KEEPALIVE_HOURS || '6-23').trim();
 
 async function keepAlive() {
     const baseUrl = process.env.RENDER_EXTERNAL_URL;

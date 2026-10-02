@@ -18,8 +18,8 @@ const AdminTimeslotPage = () => {
   const generateTimeSlots = () => {
     const slots: string[] = [];
     const startTime = new Date(`${date}T07:00:00`);
-    const endTime = new Date(`${date}T23:00:00`);
-    while (startTime < endTime) {
+    const endTime = new Date(`${date}T23:30:00`);
+    while (startTime <= endTime) {
       slots.push(
         startTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true })
       );

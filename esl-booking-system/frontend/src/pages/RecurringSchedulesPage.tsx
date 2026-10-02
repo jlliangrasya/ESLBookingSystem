@@ -117,22 +117,18 @@ const RecurringSchedulesPage: React.FC = () => {
         }
       } else if (user?.role === "company_admin") {
         // Admin fetches all student packages in the company
-        const res = await axios.get(`${API}/api/admin/students?limit=200`, { headers });
-        const students = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : []);
-        const pkgs: StudentPackage[] = [];
-        for (const s of students) {
-          if (s.student_package_id && s.payment_status === "paid" && (s.sessions_remaining > 0 || s.unused_sessions > 0)) {
-            pkgs.push({
-              id: s.student_package_id,
-              student_name: s.name,
-              package_name: s.package_name || s.subject || "Package",
-              sessions_remaining: s.sessions_remaining || s.unused_sessions || 0,
-              duration_minutes: s.duration_minutes || 25,
-              teacher_id: s.teacher_id || null,
-              teacher_name: s.teacher_name || null,
-            });
-          }
-        }
+        // One row per paid package with sessions left, across every student
+        const res = await axios.get(`${API}/api/admin/bookable-students`, { headers });
+        const rows = Array.isArray(res.data) ? res.data : [];
+        const pkgs: StudentPackage[] = rows.map((s: any) => ({
+          id: s.student_package_id,
+          student_name: s.student_name,
+          package_name: s.package_name || s.subject || "Package",
+          sessions_remaining: s.sessions_remaining || 0,
+          duration_minutes: s.duration_minutes || 25,
+          teacher_id: s.teacher_id || null,
+          teacher_name: s.teacher_name || null,
+        }));
         setPackages(pkgs);
       }
     } catch { /* */ }

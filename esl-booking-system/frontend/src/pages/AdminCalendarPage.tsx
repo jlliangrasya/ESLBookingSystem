@@ -47,7 +47,7 @@ interface BookablePackage {
   duration_minutes: number | null;
 }
 
-const SLOT_TIMES: string[] = Array.from({ length: 32 }, (_, i) => {
+const SLOT_TIMES: string[] = Array.from({ length: 34 }, (_, i) => {
   const totalMins = 7 * 60 + i * 30;
   const h = Math.floor(totalMins / 60).toString().padStart(2, "0");
   const m = (totalMins % 60).toString().padStart(2, "0");
@@ -56,7 +56,7 @@ const SLOT_TIMES: string[] = Array.from({ length: 32 }, (_, i) => {
 
 const fmt12 = (t: string) => {
   const [hh, mm] = t.split(":");
-  const h = Number(hh);
+  const h = Number(hh) % 24; // "24:00" is the midnight range edge
   return `${h % 12 === 0 ? 12 : h % 12}:${mm} ${h >= 12 ? "PM" : "AM"}`;
 };
 

@@ -130,13 +130,12 @@ interface AvailablePackage {
   currency: string;
 }
 
-// Generate 30-min slots from 7:00 AM to 10:30 PM
+// Generate 30-min slots from 7:00 AM to 11:30 PM
 const TIME_SLOTS: string[] = [];
-for (let h = 7; h <= 22; h++) {
+for (let h = 7; h <= 23; h++) {
   TIME_SLOTS.push(`${String(h).padStart(2, "0")}:00`);
-  if (h < 22) TIME_SLOTS.push(`${String(h).padStart(2, "0")}:30`);
+  TIME_SLOTS.push(`${String(h).padStart(2, "0")}:30`);
 }
-TIME_SLOTS.push("22:30");
 
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 

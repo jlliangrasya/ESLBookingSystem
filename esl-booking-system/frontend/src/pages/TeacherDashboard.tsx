@@ -193,7 +193,7 @@ const cellFromPoint = (x: number, y: number): { d: number; t: number } | null =>
   return Number.isInteger(d) && Number.isInteger(t) ? { d, t } : null;
 };
 
-const SLOT_TIMES: string[] = Array.from({ length: 32 }, (_, i) => {
+const SLOT_TIMES: string[] = Array.from({ length: 34 }, (_, i) => {
   const totalMins = 7 * 60 + i * 30;
   const h = Math.floor(totalMins / 60)
     .toString()
@@ -203,8 +203,8 @@ const SLOT_TIMES: string[] = Array.from({ length: 32 }, (_, i) => {
 });
 
 // Boundaries for the recurring-schedule range pickers: every slot start plus
-// 23:00 as the closing edge, so the 10:30 PM slot can be included.
-const RANGE_TIMES: string[] = [...SLOT_TIMES, "23:00"];
+// 24:00 (midnight) as the closing edge, so the 11:30 PM slot can be included.
+const RANGE_TIMES: string[] = [...SLOT_TIMES, "24:00"];
 
 /** A single 30-min cell in the weekly availability grid. */
 type SlotRef = { dateStr: string; time: string };
@@ -260,7 +260,7 @@ const getWeekStart = (d: Date): Date => {
 
 const fmt12 = (time: string): string => {
   const [hStr, mStr] = time.split(":");
-  let h = parseInt(hStr);
+  let h = parseInt(hStr) % 24; // "24:00" is the midnight range edge
   const ampm = h >= 12 ? "PM" : "AM";
   if (h > 12) h -= 12;
   if (h === 0) h = 12;

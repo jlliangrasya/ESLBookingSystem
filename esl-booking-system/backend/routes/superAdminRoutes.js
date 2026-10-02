@@ -417,7 +417,12 @@ router.get('/audit-logs', authenticateToken, requireRole('super_admin'), async (
             params
         );
 
-        res.json({ logs: rows });
+        const [[{ total }]] = await pool.query(
+            `SELECT COUNT(*) AS total FROM audit_logs al ${whereClause}`,
+            companyFilter ? [companyFilter] : []
+        );
+
+        res.json({ logs: rows, total });
     } catch (err) {
         res.status(500).json({ message: 'Server error' });
     }
@@ -437,7 +442,7 @@ router.get('/users', authenticateToken, requireRole('super_admin'), async (req, 
         if (role) { query += ' AND u.role = ?'; params.push(role); }
         if (company_id) { query += ' AND u.company_id = ?'; params.push(company_id); }
         if (is_active !== undefined) { query += ' AND u.is_active = ?'; params.push(is_active === 'true' ? 1 : 0); }
-        query += ' ORDER BY u.created_at DESC LIMIT 100';
+        query += ' ORDER BY u.created_at DESC';
         const [rows] = await pool.query(query, params);
         res.json(rows);
     } catch (err) {

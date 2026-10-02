@@ -283,6 +283,8 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
 router.get("/api/student-bookings", authenticateToken, requireRole('company_admin'), async (req, res) => {
     try {
         const companyId = req.user.company_id;
+        // Return everything unless the caller explicitly asks for a page.
+        const paginate = req.query.page !== undefined || req.query.limit !== undefined;
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
         const offset = (page - 1) * limit;
@@ -304,8 +306,8 @@ router.get("/api/student-bookings", authenticateToken, requireRole('company_admi
             WHERE b.appointment_date >= NOW() AND b.company_id = ?
               AND b.status NOT IN ('cancelled')
             ORDER BY b.appointment_date ASC
-            LIMIT ? OFFSET ?
-        `, [companyId, limit, offset]);
+            ${paginate ? 'LIMIT ? OFFSET ?' : ''}
+        `, paginate ? [companyId, limit, offset] : [companyId]);
 
         const [[{ total }]] = await pool.query(
             `SELECT COUNT(*) AS total FROM bookings
@@ -313,7 +315,12 @@ router.get("/api/student-bookings", authenticateToken, requireRole('company_admi
             [companyId]
         );
 
-        res.json({ data: rows, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+        res.json({
+            data: rows,
+            pagination: paginate
+                ? { page, limit, total, totalPages: Math.ceil(total / limit) }
+                : { page: 1, limit: total, total, totalPages: 1 },
+        });
     } catch (err) {
         console.error("Error fetching bookings:", err);
         res.status(500).json({ message: "Server error" });
@@ -349,6 +356,8 @@ router.get("/api/student/bookings", authenticateToken, requireRole('student'), a
 router.get("/api/completed-bookings", authenticateToken, requireRole('company_admin'), async (req, res) => {
     try {
         const companyId = req.user.company_id;
+        // Return everything unless the caller explicitly asks for a page.
+        const paginate = req.query.page !== undefined || req.query.limit !== undefined;
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
         const offset = (page - 1) * limit;
@@ -377,15 +386,20 @@ router.get("/api/completed-bookings", authenticateToken, requireRole('company_ad
             LEFT JOIN class_reports cr ON cr.booking_id = b.id
             WHERE b.status = 'done' AND b.company_id = ?
             ORDER BY b.appointment_date DESC
-            LIMIT ? OFFSET ?
-        `, [companyId, limit, offset]);
+            ${paginate ? 'LIMIT ? OFFSET ?' : ''}
+        `, paginate ? [companyId, limit, offset] : [companyId]);
 
         const [[{ total }]] = await pool.query(
             "SELECT COUNT(*) AS total FROM bookings WHERE status = 'done' AND company_id = ?",
             [companyId]
         );
 
-        res.json({ data: rows, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+        res.json({
+            data: rows,
+            pagination: paginate
+                ? { page, limit, total, totalPages: Math.ceil(total / limit) }
+                : { page: 1, limit: total, total, totalPages: 1 },
+        });
     } catch (err) {
         console.error("Error fetching completed bookings:", err);
         res.status(500).json({ message: "Server error" });

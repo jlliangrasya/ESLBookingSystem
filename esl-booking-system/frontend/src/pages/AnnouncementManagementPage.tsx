@@ -53,7 +53,7 @@ const AnnouncementManagementPage: React.FC = () => {
   const fetchAnnouncements = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await axios.get(`${API}/api/announcements?limit=50`, { headers });
+      const res = await axios.get(`${API}/api/announcements`, { headers });
       setAnnouncements(Array.isArray(res.data?.data) ? res.data.data : []);
     } catch {
       // silently fail

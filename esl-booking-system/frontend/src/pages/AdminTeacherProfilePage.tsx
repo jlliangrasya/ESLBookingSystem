@@ -108,7 +108,7 @@ type DrilldownKey =
   | "total_present"
   | "classes_this_month";
 
-const SLOT_TIMES: string[] = Array.from({ length: 32 }, (_, i) => {
+const SLOT_TIMES: string[] = Array.from({ length: 34 }, (_, i) => {
   const totalMins = 7 * 60 + i * 30;
   const h = Math.floor(totalMins / 60).toString().padStart(2, "0");
   const m = (totalMins % 60).toString().padStart(2, "0");
@@ -116,12 +116,12 @@ const SLOT_TIMES: string[] = Array.from({ length: 32 }, (_, i) => {
 });
 
 // Boundaries for the recurring-schedule range pickers: every slot start plus
-// 23:00 as the closing edge, so the 10:30 PM slot can be included.
-const RANGE_TIMES: string[] = [...SLOT_TIMES, "23:00"];
+// 24:00 (midnight) as the closing edge, so the 11:30 PM slot can be included.
+const RANGE_TIMES: string[] = [...SLOT_TIMES, "24:00"];
 
 const fmt12 = (t: string) => {
   const [hh, mm] = t.split(":");
-  const h = Number(hh);
+  const h = Number(hh) % 24; // "24:00" is the midnight range edge
   return `${h % 12 === 0 ? 12 : h % 12}:${mm} ${h >= 12 ? "PM" : "AM"}`;
 };
 

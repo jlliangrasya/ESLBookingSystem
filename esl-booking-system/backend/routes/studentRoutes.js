@@ -599,6 +599,9 @@ router.get('/available-teachers', authenticateToken, requireRole('student'), asy
 router.get("/students", authenticateToken, requireRole('company_admin'), async (req, res) => {
     try {
         const companyId = req.user.company_id;
+        // The admin pages filter and paginate client-side, so they need every
+        // student. Only page server-side when a caller explicitly asks to.
+        const paginate = req.query.page !== undefined || req.query.limit !== undefined;
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
         const offset = (page - 1) * limit;
@@ -610,7 +613,7 @@ router.get("/students", authenticateToken, requireRole('company_admin'), async (
             searchClause = 'AND (u.name LIKE ? OR u.email LIKE ?)';
             params.push(`%${search}%`, `%${search}%`);
         }
-        params.push(limit, offset);
+        if (paginate) params.push(limit, offset);
 
         const [rows] = await pool.query(`
             SELECT
@@ -641,7 +644,7 @@ router.get("/students", authenticateToken, requireRole('company_admin'), async (
             WHERE u.role = 'student' AND u.company_id = ?
             ${searchClause}
             ORDER BY u.id
-            LIMIT ? OFFSET ?
+            ${paginate ? 'LIMIT ? OFFSET ?' : ''}
         `, params);
 
         // Get total count for pagination metadata
@@ -656,7 +659,12 @@ router.get("/students", authenticateToken, requireRole('company_admin'), async (
             countParams
         );
 
-        res.json({ data: rows, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
+        res.json({
+            data: rows,
+            pagination: paginate
+                ? { page, limit, total, totalPages: Math.ceil(total / limit) }
+                : { page: 1, limit: total, total, totalPages: 1 },
+        });
     } catch (err) {
         console.error("Error fetching students:", err);
         res.status(500).json({ message: "Server error" });

@@ -327,7 +327,7 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
     `, [id, companyId]);
 
     const [leaves] = await pool.query(
-      'SELECT * FROM teacher_leaves WHERE teacher_id = ? AND company_id = ? ORDER BY leave_date DESC LIMIT 20',
+      'SELECT * FROM teacher_leaves WHERE teacher_id = ? AND company_id = ? ORDER BY leave_date DESC',
       [id, companyId]
     );
 
@@ -1084,6 +1084,7 @@ router.post("/teacher-leaves/:id/approve", authenticateToken, requireRole('compa
          UNION SELECT '17:00' UNION SELECT '17:30' UNION SELECT '18:00' UNION SELECT '18:30'
          UNION SELECT '19:00' UNION SELECT '19:30' UNION SELECT '20:00' UNION SELECT '20:30'
          UNION SELECT '21:00' UNION SELECT '21:30' UNION SELECT '22:00' UNION SELECT '22:30'
+         UNION SELECT '23:00' UNION SELECT '23:30'
        ) AS times`,
       [companyId, leave.teacher_id, leave.leave_date]
     );

@@ -416,8 +416,7 @@ router.get('/logs', authenticateToken, requireRole('company_admin'), async (req,
              FROM bulk_import_logs bil
              JOIN users u ON bil.imported_by = u.id
              WHERE bil.company_id = ?
-             ORDER BY bil.created_at DESC
-             LIMIT 50`,
+             ORDER BY bil.created_at DESC`,
             [companyId]
         );
         res.json(rows);

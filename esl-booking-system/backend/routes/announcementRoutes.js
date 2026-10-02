@@ -10,6 +10,8 @@ const { logAction } = require('../utils/audit');
 router.get('/', authenticateToken, async (req, res) => {
     try {
         const { role, company_id: companyId, id: userId } = req.user;
+        // Return everything unless the caller explicitly asks for a page.
+        const paginate = req.query.page !== undefined || req.query.limit !== undefined;
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
         const offset = (page - 1) * limit;
@@ -50,13 +52,15 @@ router.get('/', authenticateToken, async (req, res) => {
              LEFT JOIN announcement_reads ar ON ar.announcement_id = a.id AND ar.user_id = ?
              ${whereClause}
              ORDER BY a.is_pinned DESC, a.created_at DESC
-             LIMIT ? OFFSET ?`,
-            [userId, ...params, limit, offset]
+             ${paginate ? 'LIMIT ? OFFSET ?' : ''}`,
+            paginate ? [userId, ...params, limit, offset] : [userId, ...params]
         );
 
         res.json({
             data: rows,
-            pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+            pagination: paginate
+                ? { page, limit, total, totalPages: Math.ceil(total / limit) }
+                : { page: 1, limit: total, total, totalPages: 1 }
         });
     } catch (err) {
         console.error('Fetch announcements error:', err);
