@@ -1244,17 +1244,23 @@ router.get('/bookable-students', authenticateToken, requireRole('company_admin')
               sp.teacher_id, t.name AS teacher_name,
               tp.package_name, tp.duration_minutes
        FROM student_packages sp
-       JOIN users u ON u.id = sp.student_id
-         OR u.id IN (SELECT spm.student_id FROM student_package_members spm WHERE spm.student_package_id = sp.id)
+       -- Owner plus anyone the package is shared with, one row per student
+       JOIN (
+         SELECT id AS student_package_id, student_id FROM student_packages WHERE company_id = ?
+         UNION
+         SELECT student_package_id, student_id FROM student_package_members WHERE company_id = ?
+       ) pu ON pu.student_package_id = sp.id
+       JOIN users u ON u.id = pu.student_id
        JOIN tutorial_packages tp ON sp.package_id = tp.id
        LEFT JOIN users t ON t.id = sp.teacher_id
        WHERE sp.company_id = ? AND sp.payment_status = 'paid'
          AND sp.sessions_remaining > 0 AND u.role = 'student' AND u.is_active = TRUE
        ORDER BY u.name ASC, sp.purchased_at DESC`,
-      [req.user.company_id]
+      [req.user.company_id, req.user.company_id, req.user.company_id]
     );
     res.json(rows);
   } catch (err) {
+    console.error('bookable-students error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });

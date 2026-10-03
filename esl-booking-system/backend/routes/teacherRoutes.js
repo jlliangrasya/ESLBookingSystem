@@ -115,7 +115,12 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
                 sp.subject,
                 sp.payment_status
             FROM student_packages sp
-            JOIN users u ON u.id = sp.student_id OR u.id IN (SELECT spm.student_id FROM student_package_members spm WHERE spm.student_package_id = sp.id)
+            JOIN (
+                SELECT id AS student_package_id, student_id FROM student_packages
+                UNION
+                SELECT student_package_id, student_id FROM student_package_members
+            ) pu ON pu.student_package_id = sp.id
+            JOIN users u ON u.id = pu.student_id
             JOIN tutorial_packages tp ON sp.package_id = tp.id
             WHERE sp.teacher_id = ? AND sp.company_id = ?
             ORDER BY u.name ASC
