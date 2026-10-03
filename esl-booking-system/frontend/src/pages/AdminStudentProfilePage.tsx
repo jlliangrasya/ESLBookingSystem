@@ -24,6 +24,7 @@ import {
 import { fmtDate, fmtDateOnly, localToMysql } from "@/utils/timezone";
 import TablePagination from "@/components/TablePagination";
 import SessionAdjustDialog from "@/components/SessionAdjustDialog";
+import { StudentPackagePicker } from "@/components/StudentPackagePicker";
 
 interface PackageHistory {
   id: number;
@@ -1713,14 +1714,14 @@ const AdminStudentProfilePage = () => {
             </p>
             <div>
               <Label>Student</Label>
-              <Select value={shareStudentId} onValueChange={setShareStudentId}>
-                <SelectTrigger><SelectValue placeholder="Select a student" /></SelectTrigger>
-                <SelectContent>
-                  {shareCandidates.map(s => (
-                    <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <StudentPackagePicker
+                items={shareCandidates.map(s => ({ id: String(s.id), name: s.name }))}
+                value={shareStudentId}
+                onChange={setShareStudentId}
+                placeholder="Select a student"
+                emptyMessage="No other active students."
+                fixedBelow
+              />
             </div>
             {shareError && <p className="text-xs text-destructive">{shareError}</p>}
           </div>

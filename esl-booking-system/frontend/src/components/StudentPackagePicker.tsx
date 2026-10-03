@@ -23,6 +23,12 @@ interface StudentPackagePickerProps {
   /** Duration values (e.g. ["25", "50"]) to offer as quick filter pills. Omit to hide the filter row. */
   durationOptions?: string[];
   disabled?: boolean;
+  /**
+   * Always open below the trigger with a fixed-height scrolling list, so the
+   * dropdown doesn't jump above the field or resize while typing a search.
+   * Also makes the popover modal so the list scrolls inside a Dialog.
+   */
+  fixedBelow?: boolean;
 }
 
 /** Searchable, filterable combobox for picking a student (optionally with package duration/sessions info). */
@@ -35,6 +41,7 @@ export function StudentPackagePicker({
   noMatchMessage = "No matching students.",
   durationOptions,
   disabled,
+  fixedBelow,
 }: StudentPackagePickerProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -55,6 +62,7 @@ export function StudentPackagePicker({
 
   return (
     <Popover
+      modal={fixedBelow}
       open={open}
       onOpenChange={o => {
         setOpen(o);
@@ -76,7 +84,11 @@ export function StudentPackagePicker({
           <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)]" align="start">
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)]"
+        align="start"
+        {...(fixedBelow ? { side: "bottom" as const, avoidCollisions: false } : {})}
+      >
         <div className="p-2 border-b space-y-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -107,7 +119,7 @@ export function StudentPackagePicker({
             </div>
           )}
         </div>
-        <div className="max-h-64 overflow-y-auto p-1">
+        <div className={`${fixedBelow ? "h-56" : "max-h-64"} overflow-y-auto overscroll-contain p-1`}>
           {items.length === 0 ? (
             <div className="px-3 py-4 text-sm text-muted-foreground text-center">{emptyMessage}</div>
           ) : filtered.length === 0 ? (
