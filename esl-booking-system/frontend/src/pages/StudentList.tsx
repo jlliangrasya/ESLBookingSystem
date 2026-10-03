@@ -36,6 +36,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Loader2,
   UserPlus,
   FileSpreadsheet,
@@ -51,6 +59,7 @@ import {
   AlertTriangle,
   Plus,
   Minus,
+  Columns3,
 } from "lucide-react";
 import {
   Tooltip,
@@ -99,6 +108,23 @@ const isActive = (s: Student) => s.is_active === undefined || !!s.is_active;
 const LOW_SESSIONS = 3;
 const remainingCount = (s: Student) => s.unused_sessions ?? s.sessions_remaining ?? 0;
 
+// Columns the admin can hide. The choice is a per-browser preference, so it
+// lives in localStorage; storage can throw (private mode, blocked site data),
+// in which case both columns simply show.
+type OptionalColumn = "package" | "subject";
+const HIDDEN_COLUMNS_KEY = "studentList.hiddenColumns";
+const loadHiddenColumns = (): OptionalColumn[] => {
+  try {
+    const raw = localStorage.getItem(HIDDEN_COLUMNS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((c): c is OptionalColumn => c === "package" || c === "subject")
+      : [];
+  } catch {
+    return [];
+  }
+};
+
 const StudentListPage: React.FC = () => {
   const navigate = useNavigate();
   const authContext = useContext(AuthContext);
@@ -127,6 +153,22 @@ const StudentListPage: React.FC = () => {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   // Student whose sessions are being added/deducted via the +/- buttons.
   const [adjustTarget, setAdjustTarget] = useState<{ student: Student; mode: AdjustMode } | null>(null);
+  const [hiddenColumns, setHiddenColumns] = useState<OptionalColumn[]>(loadHiddenColumns);
+  const showPackage = !hiddenColumns.includes("package");
+  const showSubject = !hiddenColumns.includes("subject");
+  const columnCount = 5 + (showPackage ? 1 : 0) + (showSubject ? 1 : 0);
+
+  const toggleColumn = (col: OptionalColumn, visible: boolean) => {
+    setHiddenColumns((prev) => {
+      const next = visible ? prev.filter((c) => c !== col) : [...prev, col];
+      try {
+        localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify(next));
+      } catch {
+        // Not saved; the choice still applies until the page reloads.
+      }
+      return next;
+    });
+  };
 
   // The server checks this too — this only decides when the button lights up.
   const deleteConfirmed =
@@ -412,6 +454,31 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
               <SelectItem value="all">Active + Archived</SelectItem>
             </SelectContent>
           </Select>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="shrink-0">
+                <Columns3 className="h-4 w-4 mr-2" /> Columns
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Show columns</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={showPackage}
+                onCheckedChange={(v) => toggleColumn("package", !!v)}
+                onSelect={(e) => e.preventDefault()}
+              >
+                Package
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={showSubject}
+                onCheckedChange={(v) => toggleColumn("subject", !!v)}
+                onSelect={(e) => e.preventDefault()}
+              >
+                Subject
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
@@ -425,8 +492,8 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                 <TableHeader>
                   <TableRow className="brand-gradient-subtle">
                     <TableHead>Student Name</TableHead>
-                    <TableHead>Package</TableHead>
-                    <TableHead>Subject</TableHead>
+                    {showPackage && <TableHead>Package</TableHead>}
+                    {showSubject && <TableHead>Subject</TableHead>}
                     <TableHead>Sessions</TableHead>
                     <TableHead>Assigned Teacher</TableHead>
                     <TableHead>Nationality</TableHead>
@@ -437,7 +504,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                   {paginated.length === 0 ? (
                     <TableRow>
                       <TableCell
-                        colSpan={7}
+                        colSpan={columnCount}
                         className="text-center text-muted-foreground py-10"
                       >
                         No students found.
@@ -464,14 +531,18 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>{student.package_name || "—"}</TableCell>
-                        <TableCell>
-                          {student.subject ? (
-                            <Badge variant="secondary">{student.subject}</Badge>
-                          ) : (
-                            "—"
-                          )}
-                        </TableCell>
+                        {showPackage && (
+                          <TableCell>{student.package_name || "—"}</TableCell>
+                        )}
+                        {showSubject && (
+                          <TableCell>
+                            {student.subject ? (
+                              <Badge variant="secondary">{student.subject}</Badge>
+                            ) : (
+                              "—"
+                            )}
+                          </TableCell>
+                        )}
                         <TableCell>
                           <div className="flex items-center gap-1.5">
                             <Button
