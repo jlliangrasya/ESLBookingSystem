@@ -72,6 +72,31 @@ const addMinutes = (time: string, mins: number) => {
 const ROW_HIGHLIGHT =
   "relative after:content-[''] after:absolute after:inset-0 after:pointer-events-none after:bg-primary/15 after:border-y-2 after:border-primary";
 
+// Strong, white-text-legible colors for booked cells. Greens and yellows are left
+// out so a booking never reads as an open (green) or pending (yellow) slot.
+const STUDENT_COLORS = [
+  "#2563eb", // blue
+  "#7c3aed", // violet
+  "#db2777", // pink
+  "#dc2626", // red
+  "#ea580c", // orange
+  "#0891b2", // cyan
+  "#4f46e5", // indigo
+  "#c026d3", // fuchsia
+  "#9f1239", // rose-dark
+  "#0369a1", // sky-dark
+  "#92400e", // brown
+  "#475569", // slate-blue
+  "#be123c", // rose
+  "#6d28d9", // purple
+  "#1e40af", // navy
+  "#b45309", // amber-dark
+];
+
+/** Same student → same color on every load; spreads consecutive ids apart. */
+const studentColor = (studentId: number) =>
+  STUDENT_COLORS[(studentId * 7) % STUDENT_COLORS.length];
+
 /** How far the pointer must travel before a press counts as a drag rather than a click. */
 const DRAG_THRESHOLD_PX = 8;
 /** Touch has no drag-to-select, so a hold starts one. */
@@ -752,13 +777,14 @@ const AdminCalendarPage = () => {
                                   if (!isDone && cancellingId === null) handleBookedClick(booking);
                                 }}
                                 title={isDone ? `${tooltip} — completed, cannot cancel` : `${tooltip} — click to cancel`}
-                                className={`p-1 text-center border transition-colors ${
+                                style={isDone ? undefined : { backgroundColor: studentColor(booking.student_id), color: "#fff" }}
+                                className={`p-1 text-center border transition-[filter] ${
                                   isDone ? "bg-slate-200 text-slate-500 cursor-default"
-                                  : isPending ? "bg-yellow-100 text-yellow-800 cursor-pointer hover:bg-yellow-200"
-                                  : "bg-blue-100 text-blue-700 cursor-pointer hover:bg-blue-200"
+                                  : isPending ? "cursor-pointer hover:brightness-110 bg-[repeating-linear-gradient(45deg,transparent_0_6px,rgba(255,255,255,0.35)_6px_12px)]"
+                                  : "cursor-pointer hover:brightness-110"
                                 }${selectedRing} ${isRowHighlighted ? ROW_HIGHLIGHT : ""}`}
                               >
-                                <div className="truncate font-medium">{label}</div>
+                                <div className="truncate font-medium">{isPending ? `⏳ ${label}` : label}</div>
                               </td>
                             );
                           }
@@ -811,8 +837,13 @@ const AdminCalendarPage = () => {
               <div className="flex flex-wrap gap-4 mt-3 text-xs text-muted-foreground">
                 <span><span className="inline-block w-3 h-3 bg-green-100 border rounded mr-1" />Open (✓) — click to book</span>
                 <span><span className="inline-block w-3 h-3 bg-gray-100 border rounded mr-1" />Closed (+) — click to open</span>
-                <span><span className="inline-block w-3 h-3 bg-blue-100 border rounded mr-1" />Booked — click to cancel</span>
-                <span><span className="inline-block w-3 h-3 bg-yellow-100 border rounded mr-1" />Pending</span>
+                <span>
+                  <span className="inline-block w-3 h-3 border rounded-l" style={{ backgroundColor: STUDENT_COLORS[0] }} />
+                  <span className="inline-block w-3 h-3 border" style={{ backgroundColor: STUDENT_COLORS[2] }} />
+                  <span className="inline-block w-3 h-3 border rounded-r mr-1" style={{ backgroundColor: STUDENT_COLORS[4] }} />
+                  Booked (one color per student) — click to cancel
+                </span>
+                <span>⏳ Pending (striped)</span>
                 <span><span className="inline-block w-3 h-3 bg-slate-200 border rounded mr-1" />Completed</span>
                 <span><span className="inline-block w-3 h-3 bg-gray-50 border rounded mr-1" />Past</span>
                 <span><span className="inline-block w-3 h-3 bg-amber-100 border rounded mr-1" />Teacher note (shared by teacher)</span>
