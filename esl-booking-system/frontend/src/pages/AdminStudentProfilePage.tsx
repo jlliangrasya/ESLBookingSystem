@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
 import AuthContext from "@/context/AuthContext";
+import { usePermissions } from "@/context/PermissionsContext";
 import { AdminTour } from "@/components/AdminTour";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -155,6 +156,7 @@ const AdminStudentProfilePage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const authContext = useContext(AuthContext);
+  const { can } = usePermissions();
   const currentUser = authContext?.user ?? null;
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
@@ -714,14 +716,18 @@ const AdminStudentProfilePage = () => {
                     Student Profile
                   </CardTitle>
                   <div className="flex gap-2">
-                    <Button id="student-btn-edit" size="sm" variant="outline" className="gap-1" onClick={openEdit}>
-                      <Pencil className="h-4 w-4" /> Edit
-                    </Button>
-                    <Button id="student-btn-reset-pw" size="sm" variant="outline" className="gap-1"
-                      onClick={() => { setShowResetPw(true); setResetPw(""); setResetPwMsg(null); }}>
-                      <KeyRound className="h-4 w-4" /> Reset Password
-                    </Button>
-                    <Button
+                    {can("students.edit") && (
+                      <Button id="student-btn-edit" size="sm" variant="outline" className="gap-1" onClick={openEdit}>
+                        <Pencil className="h-4 w-4" /> Edit
+                      </Button>
+                    )}
+                    {can("students.reset_password") && (
+                      <Button id="student-btn-reset-pw" size="sm" variant="outline" className="gap-1"
+                        onClick={() => { setShowResetPw(true); setResetPw(""); setResetPwMsg(null); }}>
+                        <KeyRound className="h-4 w-4" /> Reset Password
+                      </Button>
+                    )}
+                    {can("students.deactivate") && <Button
                       id="student-btn-deactivate"
                       size="sm"
                       variant={student.is_active ? "destructive" : "default"}
@@ -732,7 +738,7 @@ const AdminStudentProfilePage = () => {
                       {deactivateLoading
                         ? <Loader2 className="h-4 w-4 animate-spin" />
                         : student.is_active ? "Deactivate" : "Reactivate"}
-                    </Button>
+                    </Button>}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4 text-sm">
@@ -952,9 +958,11 @@ const AdminStudentProfilePage = () => {
                 Active Package
               </CardTitle>
               <div className="flex gap-2">
-                <Button id="student-btn-assign-package" size="sm" variant="outline" className="gap-1 text-xs" onClick={openAssignPackage}>
-                  <Plus className="h-3.5 w-3.5" /> Assign New Package
-                </Button>
+                {can("students.assign_package") && (
+                  <Button id="student-btn-assign-package" size="sm" variant="outline" className="gap-1 text-xs" onClick={openAssignPackage}>
+                    <Plus className="h-3.5 w-3.5" /> Assign New Package
+                  </Button>
+                )}
                 <Button id="student-btn-adj-history" size="sm" variant="ghost" className="gap-1 text-xs" onClick={fetchAdjustmentHistory} disabled={historyLoading}>
                   <History className="h-3.5 w-3.5" /> Adjustment History
                 </Button>
@@ -981,7 +989,7 @@ const AdminStudentProfilePage = () => {
                         {activePackage.sessions_remaining} available to book
                       </Badge>
                     )}
-                    <Button
+                    {can("students.add_sessions") && <Button
                       id="student-btn-add-sessions"
                       size="icon"
                       variant="ghost"
@@ -990,8 +998,8 @@ const AdminStudentProfilePage = () => {
                       onClick={() => setShowAdjust("add")}
                     >
                       <PlusCircle className="h-4 w-4" />
-                    </Button>
-                    <Button
+                    </Button>}
+                    {can("students.deduct_sessions") && <Button
                       id="student-btn-deduct-sessions"
                       size="icon"
                       variant="ghost"
@@ -1000,7 +1008,7 @@ const AdminStudentProfilePage = () => {
                       onClick={() => setShowAdjust("deduct")}
                     >
                       <MinusCircle className="h-4 w-4" />
-                    </Button>
+                    </Button>}
                   </div>
                 </div>
                 <div>
@@ -1025,7 +1033,7 @@ const AdminStudentProfilePage = () => {
                     <span className="text-muted-foreground italic text-xs">None — student sees general schedule</span>
                   )}
                 </div>
-                <div className="flex gap-2">
+                {can("students.edit") && <div className="flex gap-2">
                   <Button
                     id="student-btn-assign-teacher"
                     size="sm"
@@ -1048,7 +1056,7 @@ const AdminStudentProfilePage = () => {
                       Remove
                     </Button>
                   )}
-                </div>
+                </div>}
               </div>
 
               {/* Shared package row — siblings booking from one package */}
@@ -1060,17 +1068,21 @@ const AdminStudentProfilePage = () => {
                     {activePackage.members.length > 0 ? activePackage.members.map(m => (
                       <Badge key={m.id} variant="outline" className="gap-1">
                         {m.name}
-                        <button type="button" title={`Stop sharing with ${m.name}`} className="hover:text-destructive" onClick={() => handleUnshare(m.id, m.name)}>
-                          <X className="h-3 w-3" />
-                        </button>
+                        {can("students.assign_package") && (
+                          <button type="button" title={`Stop sharing with ${m.name}`} className="hover:text-destructive" onClick={() => handleUnshare(m.id, m.name)}>
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
                       </Badge>
                     )) : (
                       <span className="text-muted-foreground italic text-xs">Not shared</span>
                     )}
                   </div>
-                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={openShare}>
-                    <Plus className="h-3.5 w-3.5" /> Share with sibling
-                  </Button>
+                  {can("students.assign_package") && (
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={openShare}>
+                      <Plus className="h-3.5 w-3.5" /> Share with sibling
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="flex items-center justify-between gap-2 pt-1 border-t">
@@ -1097,9 +1109,11 @@ const AdminStudentProfilePage = () => {
             <CardContent className="py-6 text-center text-sm text-muted-foreground">
               <Package className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
               <p className="mb-3">No active package</p>
-              <Button size="sm" className="gap-1" onClick={openAssignPackage}>
-                <Plus className="h-4 w-4" /> Assign Package
-              </Button>
+              {can("students.assign_package") && (
+                <Button size="sm" className="gap-1" onClick={openAssignPackage}>
+                  <Plus className="h-4 w-4" /> Assign Package
+                </Button>
+              )}
             </CardContent>
           </Card>
         )}
@@ -1182,14 +1196,16 @@ const AdminStudentProfilePage = () => {
               </Select>
               {activePackage && (
                 <>
-                  {!activePackage.teacher_id && (
+                  {!activePackage.teacher_id && can("students.edit") && (
                     <Button id="student-btn-bulk-assign" size="sm" variant="outline" className="gap-1" onClick={() => { setBulkTeacherId(""); setBulkMsg(null); setShowBulkAssign(true); }}>
                       <Users className="h-4 w-4" /> Bulk Assign Classes
                     </Button>
                   )}
-                  <Button id="student-btn-add-class" size="sm" className="gap-1" onClick={() => { setSelectedSlots({}); resetAddClassDialog(); setShowAddClass(true); }}>
-                    <Plus className="h-4 w-4" /> Add Class
-                  </Button>
+                  {can("students.book_classes") && (
+                    <Button id="student-btn-add-class" size="sm" className="gap-1" onClick={() => { setSelectedSlots({}); resetAddClassDialog(); setShowAddClass(true); }}>
+                      <Plus className="h-4 w-4" /> Add Class
+                    </Button>
+                  )}
                 </>
               )}
             </div>
@@ -1227,7 +1243,7 @@ const AdminStudentProfilePage = () => {
                           <Select
                             value={b.teacher_id ? String(b.teacher_id) : "unassigned"}
                             onValueChange={(v) => handleAssignTeacherToBooking(b.id, v === "unassigned" ? "" : v)}
-                            disabled={assigningBookingId === b.id}
+                            disabled={assigningBookingId === b.id || !can("students.edit")}
                           >
                             <SelectTrigger className={`h-7 text-xs w-32 ${!b.teacher_name ? "border-amber-300 bg-amber-50" : ""}`}>
                               <SelectValue />
@@ -1286,7 +1302,7 @@ const AdminStudentProfilePage = () => {
                         )}
                       </TableCell>
                       <TableCell>
-                        {(b.status === "pending" || b.status === "confirmed") && (
+                        {(b.status === "pending" || b.status === "confirmed") && can("students.cancel_classes") && (
                           <Button
                             size="sm"
                             variant="ghost"

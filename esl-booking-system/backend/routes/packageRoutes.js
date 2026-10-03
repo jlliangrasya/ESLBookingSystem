@@ -2,6 +2,7 @@ const express = require("express");
 const pool = require("../db");
 const authenticateToken = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
+const { requirePermission } = require("../utils/permissions");
 const { logAction } = require("../utils/audit");
 const { canUsePackageSql } = require("../utils/sharedPackages");
 
@@ -37,7 +38,7 @@ router.get("/packages", authenticateToken, async (req, res) => {
 });
 
 // Create a tutorial package (company_admin only)
-router.post("/packages", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post("/packages", authenticateToken, requireRole('company_admin'), requirePermission('packages.add'), async (req, res) => {
     try {
         const companyId = req.user.company_id;
         const { package_name, session_limit, price, subject, duration_minutes, description, currency } = req.body;
@@ -76,7 +77,7 @@ router.post("/packages", authenticateToken, requireRole('company_admin'), async 
 });
 
 // Update a tutorial package (company_admin only)
-router.put("/packages/:id", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.put("/packages/:id", authenticateToken, requireRole('company_admin'), requirePermission('packages.edit'), async (req, res) => {
     try {
         const companyId = req.user.company_id;
         const { id } = req.params;
@@ -100,7 +101,7 @@ router.put("/packages/:id", authenticateToken, requireRole('company_admin'), asy
 });
 
 // Soft-delete (deactivate) a tutorial package (company_admin only)
-router.delete("/packages/:id", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.delete("/packages/:id", authenticateToken, requireRole('company_admin'), requirePermission('packages.delete'), async (req, res) => {
     try {
         const companyId = req.user.company_id;
         const { id } = req.params;
@@ -195,7 +196,7 @@ router.get("/avail", authenticateToken, requireRole('student'), async (req, res)
 // Confirm payment (company_admin only)
 // If the student already has a paid package, append sessions to it instead of creating a second active package.
 // Wrapped in transaction with FOR UPDATE to prevent race conditions (double-confirm).
-router.post("/package/confirm/:id", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post("/package/confirm/:id", authenticateToken, requireRole('company_admin'), requirePermission('dashboard.confirm_payments'), async (req, res) => {
     const { id } = req.params;
     const companyId = req.user.company_id;
     const connection = await pool.getConnection();
@@ -299,7 +300,7 @@ router.post("/package/confirm/:id", authenticateToken, requireRole('company_admi
 });
 
 // Reject enrollment (company_admin only)
-router.post("/package/reject/:id", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post("/package/reject/:id", authenticateToken, requireRole('company_admin'), requirePermission('dashboard.confirm_payments'), async (req, res) => {
     const { id } = req.params;
     const companyId = req.user.company_id;
     try {

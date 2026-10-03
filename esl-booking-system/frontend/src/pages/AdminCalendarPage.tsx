@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
+import { usePermissions } from "@/context/PermissionsContext";
 import { format, addDays, startOfWeek } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -179,6 +180,11 @@ const AdminCalendarPage = () => {
   const selectionCommittedRef = useRef(false);
   // Set when a release ends a drag, so the click that follows it doesn't also act on a cell.
   const suppressClickRef = useRef(false);
+
+  const { can } = usePermissions();
+  const canSlots = can("calendar.manage_slots");
+  const canBook = can("calendar.book_classes");
+  const canCancel = can("calendar.cancel_classes");
 
   // Booking modal
   const [bookingSlot, setBookingSlot] = useState<{ date: string; time: string } | null>(null);
@@ -598,6 +604,8 @@ const AdminCalendarPage = () => {
   // click re-renders nothing.
   const handleCellPointerDown = (d: number, t: number, e: React.PointerEvent) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    // Drag-selection only exists to bulk open/close slots
+    if (!canSlots) return;
     dragMovedRef.current = false;
     suppressClickRef.current = false;
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
@@ -855,7 +863,7 @@ const AdminCalendarPage = () => {
                                 {...dragProps}
                                 onClick={() => {
                                   if (!guardCellClick(key)) return;
-                                  if (!isDone && cancellingId === null) handleBookedClick(booking);
+                                  if (!isDone && cancellingId === null && canCancel) handleBookedClick(booking);
                                 }}
                                 title={isDone ? `${tooltip} — completed, cannot cancel` : `${tooltip} — click to cancel`}
                                 style={isDone ? undefined : { backgroundColor: colorByStudent.get(booking.student_id), color: "#fff" }}
@@ -878,8 +886,8 @@ const AdminCalendarPage = () => {
                               onClick={() => {
                                 if (!guardCellClick(key)) return;
                                 if (isPast || isToggling) return;
-                                if (isOpen) openBookingModal(day, time);
-                                else toggleSlot(day, time, "open");
+                                if (isOpen) { if (canBook) openBookingModal(day, time); }
+                                else if (canSlots) toggleSlot(day, time, "open");
                               }}
                               title={
                                 note
@@ -1006,9 +1014,11 @@ const AdminCalendarPage = () => {
               {bookingError && <p className="text-sm text-red-600">{bookingError}</p>}
             </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Button variant="outline" size="sm" onClick={handleCloseSlotInstead} disabled={bookingSaving}>
-                Close this slot instead
-              </Button>
+              {canSlots && (
+                <Button variant="outline" size="sm" onClick={handleCloseSlotInstead} disabled={bookingSaving}>
+                  Close this slot instead
+                </Button>
+              )}
               <Button variant="ghost" size="sm" onClick={() => setBookingSlot(null)} disabled={bookingSaving}>
                 Cancel
               </Button>

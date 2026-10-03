@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { StudentPackagePicker } from "@/components/StudentPackagePicker";
 import AuthContext from "@/context/AuthContext";
+import { usePermissions } from "@/context/PermissionsContext";
 import NavBar from "@/components/Navbar";
 import { fmtDate as fmtDateTz } from "@/utils/timezone";
 
@@ -74,6 +75,10 @@ const RecurringSchedulesPage: React.FC = () => {
   const authContext = useContext(AuthContext);
   const token = authContext?.token ?? null;
   const user = authContext?.user ?? null;
+  const { can } = usePermissions();
+  // Students manage their own series; admins need the matching Students-page permission
+  const canCreate = user?.role === "student" || (user?.role === "company_admin" && can("students.book_classes"));
+  const canCancel = user?.role === "student" || (user?.role === "company_admin" && can("students.cancel_classes"));
   const API = import.meta.env.VITE_API_URL;
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -236,7 +241,7 @@ const RecurringSchedulesPage: React.FC = () => {
             <CalendarDays className="h-6 w-6 text-blue-600" />
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Recurring Schedules</h1>
           </div>
-          {user?.role !== "teacher" && (
+          {canCreate && (
             <Button onClick={() => { setCreateOpen(true); setCreateResult(null); }} className="gap-1">
               <Plus className="h-4 w-4" /> New Schedule
             </Button>
@@ -281,7 +286,7 @@ const RecurringSchedulesPage: React.FC = () => {
                       <TableCell>
                         <div className="flex gap-1">
                           <Button variant="ghost" size="sm" onClick={() => openDetail(s.id)}>Details</Button>
-                          {s.status === "active" && user?.role !== "teacher" && (
+                          {s.status === "active" && canCancel && (
                             <Button variant="ghost" size="sm" className="text-red-500" onClick={() => setCancelSeriesId(s.id)}>Cancel</Button>
                           )}
                         </div>
@@ -450,7 +455,7 @@ const RecurringSchedulesPage: React.FC = () => {
                             <TableCell className="text-sm">{b.slot_count}</TableCell>
                             <TableCell>{bookingStatusBadge(b.status)}</TableCell>
                             <TableCell>
-                              {b.status !== 'done' && b.status !== 'cancelled' && user?.role !== "teacher" && (
+                              {b.status !== 'done' && b.status !== 'cancelled' && canCancel && (
                                 <Button variant="ghost" size="sm" className="text-red-500 text-xs h-7"
                                   onClick={() => handleCancelBooking(selectedDetail.id, b.id)}>
                                   Cancel
@@ -464,7 +469,7 @@ const RecurringSchedulesPage: React.FC = () => {
                   </div>
                 </div>
 
-                {selectedDetail.status === "active" && user?.role !== "teacher" && (
+                {selectedDetail.status === "active" && canCancel && (
                   <Button variant="destructive" onClick={() => setCancelSeriesId(selectedDetail.id)} className="w-full">
                     <XCircle className="h-4 w-4 mr-1" /> Cancel Entire Series
                   </Button>

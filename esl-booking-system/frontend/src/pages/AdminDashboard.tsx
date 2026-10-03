@@ -47,6 +47,7 @@ import {
 import { fmtDate } from "@/utils/timezone";
 import AnnouncementPanel from "@/components/AnnouncementPanel";
 import AuthContext from "@/context/AuthContext";
+import { usePermissions } from "@/context/PermissionsContext";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
 import { AdminTour, useStartTour } from "@/components/AdminTour";
 import { Map as MapIcon } from "lucide-react";
@@ -120,6 +121,7 @@ const AdminDashboard = () => {
   const [studentPackages, setStudentPackages] = useState<StudentPackage[]>([]);
   const navigate = useNavigate();
   const authContext = useContext(AuthContext);
+  const { can } = usePermissions();
   const currentUser = authContext?.user ?? null;
   const startTour = useStartTour(currentUser?.company_id ?? 0);
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
@@ -593,22 +595,28 @@ const AdminDashboard = () => {
                             {fmtDate(enrollee.purchased_at, "MMM d, h:mm a")}
                           </span>
                         )}
-                        <Button
-                          size="sm"
-                          variant="default"
-                          className="bg-green-600 hover:bg-green-700 h-7 px-2 text-xs"
-                          onClick={() => handleConfirm(enrollee.id)}
-                        >
-                          Confirm
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          className="h-7 px-2 text-xs"
-                          onClick={() => handleReject(enrollee.id)}
-                        >
-                          Reject
-                        </Button>
+                        {can("dashboard.confirm_payments") ? (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="bg-green-600 hover:bg-green-700 h-7 px-2 text-xs"
+                              onClick={() => handleConfirm(enrollee.id)}
+                            >
+                              Confirm
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => handleReject(enrollee.id)}
+                            >
+                              Reject
+                            </Button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))
@@ -734,14 +742,16 @@ const AdminDashboard = () => {
                           >
                             View Student
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            className="h-7 px-2 text-xs"
-                            onClick={() => handleCancelBooking(b)}
-                          >
-                            Cancel
-                          </Button>
+                          {can("dashboard.cancel_classes") && (
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => handleCancelBooking(b)}
+                            >
+                              Cancel
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))

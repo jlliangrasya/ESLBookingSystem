@@ -15,6 +15,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, GraduationCap, CalendarDays, CheckCircle, XCircle, Clock, Plus, Pencil, Trash2, AlertCircle, UserCircle, Search, ChevronLeft, ChevronRight, FileSpreadsheet, Copy, Check } from "lucide-react";
 import AuthContext from "@/context/AuthContext";
+import { usePermissions } from "@/context/PermissionsContext";
 import { AdminTour } from "@/components/AdminTour";
 import BulkImportDialog from "@/components/BulkImportDialog";
 import { useTourEngine } from "@/context/TourEngine";
@@ -35,13 +36,6 @@ interface Teacher {
   absent_count: number;
   total_done: number;
   created_at: string;
-}
-
-interface AdminPermissions {
-  is_owner: boolean;
-  can_add_teacher: boolean;
-  can_edit_teacher: boolean;
-  can_delete_teacher: boolean;
 }
 
 interface ScheduleBooking {
@@ -100,7 +94,7 @@ const TeacherManagementPage = () => {
 
   const teacherTotalPages = Math.max(1, Math.ceil(filteredTeachers.length / TEACHER_PAGE_SIZE));
   const paginatedTeachers = filteredTeachers.slice((teacherPage - 1) * TEACHER_PAGE_SIZE, teacherPage * TEACHER_PAGE_SIZE);
-  const [myPermissions, setMyPermissions] = useState<AdminPermissions>({ is_owner: false, can_add_teacher: false, can_edit_teacher: false, can_delete_teacher: false });
+  const { can } = usePermissions();
   const [loading, setLoading] = useState(true);
 
   // Add teacher modal. Password is intentionally absent from the form — the
@@ -168,13 +162,8 @@ const TeacherManagementPage = () => {
 
   const fetchData = async () => {
     try {
-      const [teachersRes, adminsRes] = await Promise.all([
-        axios.get(`${import.meta.env.VITE_API_URL}/api/admin/teachers?month=${pickerMonth}&year=${pickerYear}`, { headers }),
-        axios.get(`${import.meta.env.VITE_API_URL}/api/admin/admins`, { headers }),
-      ]);
+      const teachersRes = await axios.get(`${import.meta.env.VITE_API_URL}/api/admin/teachers?month=${pickerMonth}&year=${pickerYear}`, { headers });
       setTeachers(teachersRes.data);
-      const me = adminsRes.data.find((a: AdminPermissions & { id: number }) => a.id === authContext?.user?.id);
-      if (me) setMyPermissions(me);
     } catch (err) {
       console.error(err);
     } finally {
@@ -350,7 +339,7 @@ const TeacherManagementPage = () => {
               <GraduationCap className="h-5 w-5 text-primary" />
               Teachers
             </CardTitle>
-            {(myPermissions.is_owner || myPermissions.can_add_teacher) && (
+            {can("teachers.add") && (
               <div className="flex gap-2">
                 <Button id="btn-bulk-import-teachers" size="sm" variant="outline"
                   onClick={() => setShowBulkImport(true)} className="gap-1">
@@ -484,20 +473,22 @@ const TeacherManagementPage = () => {
                             onClick={() => openLeaves(t)}>
                             <Clock className="h-3 w-3 mr-1" /> Leaves
                           </Button>
-                          <Button size="sm" variant="outline" className="text-xs h-7"
-                            title="Copy this teacher's login credentials"
-                            onClick={() => copyTeacherLogin(t)}>
-                            {copiedTeacherId === t.id
-                              ? <><Check className="h-3 w-3 mr-1 text-green-600" /> Copied</>
-                              : <><Copy className="h-3 w-3 mr-1" /> Login</>}
-                          </Button>
-                          {(myPermissions.is_owner || myPermissions.can_edit_teacher) && (
+                          {can("teachers.reset_password") && (
+                            <Button size="sm" variant="outline" className="text-xs h-7"
+                              title="Copy this teacher's login credentials"
+                              onClick={() => copyTeacherLogin(t)}>
+                              {copiedTeacherId === t.id
+                                ? <><Check className="h-3 w-3 mr-1 text-green-600" /> Copied</>
+                                : <><Copy className="h-3 w-3 mr-1" /> Login</>}
+                            </Button>
+                          )}
+                          {can("teachers.edit") && (
                             <Button size="sm" variant="outline" className="text-xs h-7"
                               onClick={() => { setEditTeacher(t); setEditForm({ name: t.name, email: t.email }); }}>
                               <Pencil className="h-3 w-3 mr-1" /> Edit
                             </Button>
                           )}
-                          {(myPermissions.is_owner || myPermissions.can_delete_teacher) && (
+                          {can("teachers.delete") && (
                             <Button size="sm" variant="destructive" className="text-xs h-7"
                               onClick={() => setDeleteTeacher(t)}>
                               <Trash2 className="h-3 w-3 mr-1" /> Delete
@@ -726,7 +717,7 @@ const TeacherManagementPage = () => {
                   </div>
                   <p className="text-xs text-muted-foreground capitalize">Reason: {l.reason_type}</p>
                   {l.notes && <p className="text-xs text-muted-foreground">{l.notes}</p>}
-                  {l.status === "pending" && (
+                  {l.status === "pending" && can("teachers.manage_leaves") && (
                     <div className="flex gap-2 pt-1">
                       <Button size="sm" className="h-7 text-xs gap-1 bg-green-600 hover:bg-green-700"
                         onClick={() => handleLeaveAction(l.id, "approve")}>

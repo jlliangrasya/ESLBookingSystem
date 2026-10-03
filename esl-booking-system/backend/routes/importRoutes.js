@@ -4,6 +4,7 @@ const multer = require('multer');
 const pool = require('../db');
 const authenticateToken = require('../middleware/authMiddleware');
 const requireRole = require('../middleware/requireRole');
+const { requirePermission } = require('../utils/permissions');
 const notify = require('../utils/notify');
 const { logAction } = require('../utils/audit');
 const { sendMail } = require('../utils/mailer');
@@ -67,7 +68,7 @@ const APPROVAL_GATE = {
 
 // ── POST /parse ─────────────────────────────────────────────────────────────
 // Reads the uploaded roster and returns it for on-screen review. No writes.
-router.post('/parse', authenticateToken, requireRole('company_admin'), upload.single('file'), async (req, res) => {
+router.post('/parse', authenticateToken, requireRole('company_admin'), requirePermission('students.add', 'teachers.add'), upload.single('file'), async (req, res) => {
     try {
         const companyId = req.user.company_id;
         const type = req.body.type === 'teachers' ? 'teachers' : 'students';
@@ -196,7 +197,7 @@ async function recordImport({ companyId, userId, type, total, created, failed })
 // ── POST /students ──────────────────────────────────────────────────────────
 // Creates reviewed student accounts. Body: { students: [{ name, email,
 // password, guardian_name, age, nationality }] }
-router.post('/students', authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post('/students', authenticateToken, requireRole('company_admin'), requirePermission('students.add'), async (req, res) => {
     try {
         const companyId = req.user.company_id;
         const userId = req.user.id;
@@ -299,7 +300,7 @@ router.post('/students', authenticateToken, requireRole('company_admin'), async 
 // ── POST /teachers ──────────────────────────────────────────────────────────
 // Creates reviewed teacher accounts. Body: { teachers: [{ name, email,
 // password? }] } — a missing password is generated, same as adding one by hand.
-router.post('/teachers', authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post('/teachers', authenticateToken, requireRole('company_admin'), requirePermission('teachers.add'), async (req, res) => {
     try {
         const companyId = req.user.company_id;
         const userId = req.user.id;
@@ -408,7 +409,7 @@ router.post('/teachers', authenticateToken, requireRole('company_admin'), async 
 });
 
 // GET /logs — Import history
-router.get('/logs', authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.get('/logs', authenticateToken, requireRole('company_admin'), requirePermission('students.add', 'teachers.add'), async (req, res) => {
     try {
         const companyId = req.user.company_id;
         const [rows] = await pool.query(
@@ -428,7 +429,7 @@ router.get('/logs', authenticateToken, requireRole('company_admin'), async (req,
 
 // GET /template/:type — Download a CSV template with the expected columns.
 // No password column by design: logins are set on the preview screen.
-router.get('/template/:type', authenticateToken, requireRole('company_admin'), (req, res) => {
+router.get('/template/:type', authenticateToken, requireRole('company_admin'), requirePermission('students.add', 'teachers.add'), (req, res) => {
     const { type } = req.params;
     const templates = {
         students: {

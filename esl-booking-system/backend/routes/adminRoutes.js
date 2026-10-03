@@ -4,6 +4,7 @@ const pool = require("../db");
 const authenticateToken = require("../middleware/authMiddleware");
 const { invalidateAuthCache } = authenticateToken;
 const requireRole = require("../middleware/requireRole");
+const { requirePermission, getAdminAccess, hasAnyPermission, sanitizePermissions, parsePermissions, legacyPermissions } = require("../utils/permissions");
 const notify = require("../utils/notify");
 const { logAction } = require("../utils/audit");
 const { sendMail } = require("../utils/mailer");
@@ -59,15 +60,15 @@ function isPastSlot(date, time) {
     return new Date(`${date}T${time.slice(0, 5)}:00+08:00`) < new Date();
 }
 
-// Helper: check if admin user has a specific permission or is_owner
-const ALLOWED_PERMISSIONS = ['can_add_teacher', 'can_edit_teacher', 'can_delete_teacher'];
-async function canDo(userId, permission) {
-    if (!ALLOWED_PERMISSIONS.includes(permission)) return false;
-    const [[user]] = await pool.query('SELECT is_owner FROM users WHERE id = ?', [userId]);
-    if (user?.is_owner) return true;
-    const [[perm]] = await pool.query('SELECT * FROM admin_permissions WHERE user_id = ?', [userId]);
-    return !!perm?.[permission];
-}
+// The signed-in admin's own effective permissions (owner → every key).
+router.get("/me/permissions", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    res.json(await getAdminAccess(req.user.id));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 
 // Fetch closed slots for this company
 router.get("/closed-slots", authenticateToken, requireRole('company_admin', 'teacher', 'student'), async (req, res) => {
@@ -92,7 +93,7 @@ router.get("/closed-slots", authenticateToken, requireRole('company_admin', 'tea
 });
 
 // Open/close slots (company_admin only)
-router.post("/update-slots", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post("/update-slots", authenticateToken, requireRole('company_admin'), requirePermission('calendar.manage_slots'), async (req, res) => {
   const { slots, action } = req.body;
   const companyId = req.user.company_id;
 
@@ -203,20 +204,19 @@ router.get("/teachers", authenticateToken, requireRole('company_admin'), async (
       GROUP BY u.id
       ORDER BY u.name ASC
     `, [year, month, companyId]);
+    // Passwords back the "Copy Login" button — only for admins who manage credentials
+    if (!await hasAnyPermission(req.user.id, 'teachers.reset_password')) rows.forEach(r => delete r.password);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// Add a teacher directly (permission: can_add_teacher)
-router.post("/teachers", authenticateToken, requireRole('company_admin'), async (req, res) => {
+// Add a teacher directly (permission: teachers.add)
+router.post("/teachers", authenticateToken, requireRole('company_admin'), requirePermission('teachers.add'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const adminId = req.user.id;
-    if (!await canDo(adminId, 'can_add_teacher')) {
-      return res.status(403).json({ message: 'You do not have permission to add teachers' });
-    }
     // Password is optional: onboarding asks for nothing but a name and an email,
     // so when it's omitted we generate a temporary one and send an invite. An
     // explicitly supplied password still works exactly as before.
@@ -314,6 +314,7 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
       [id, companyId]
     );
     if (!teacher) return res.status(404).json({ message: 'Teacher not found' });
+    if (!await hasAnyPermission(req.user.id, 'teachers.reset_password')) delete teacher.password;
 
     const [schedule] = await pool.query(`
       SELECT b.id, b.appointment_date, b.status, b.class_mode, b.meeting_link,
@@ -421,14 +422,11 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
   }
 });
 
-// Edit a teacher (permission: can_edit_teacher)
-router.put("/teachers/:id", authenticateToken, requireRole('company_admin'), async (req, res) => {
+// Edit a teacher (permission: teachers.edit)
+router.put("/teachers/:id", authenticateToken, requireRole('company_admin'), requirePermission('teachers.edit'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const adminId = req.user.id;
-    if (!await canDo(adminId, 'can_edit_teacher')) {
-      return res.status(403).json({ message: 'You do not have permission to edit teachers' });
-    }
     const { name, email, password } = req.body;
     const { id } = req.params;
     if (password) {
@@ -449,14 +447,11 @@ router.put("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
   }
 });
 
-// Deactivate a teacher (permission: can_delete_teacher) — soft-delete to preserve history
-router.delete("/teachers/:id", authenticateToken, requireRole('company_admin'), async (req, res) => {
+// Deactivate a teacher (permission: teachers.delete) — soft-delete to preserve history
+router.delete("/teachers/:id", authenticateToken, requireRole('company_admin'), requirePermission('teachers.delete'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const adminId = req.user.id;
-    if (!await canDo(adminId, 'can_delete_teacher')) {
-      return res.status(403).json({ message: 'You do not have permission to remove teachers' });
-    }
     const { id } = req.params;
     const [result] = await pool.query(
       "UPDATE users SET is_active = FALSE WHERE id = ? AND company_id = ? AND role = 'teacher'",
@@ -601,7 +596,7 @@ router.get("/teachers/:id/availability", authenticateToken, requireRole('company
 });
 
 // POST bulk close/open a teacher's slots (admin)
-router.post("/teachers/:id/availability", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post("/teachers/:id/availability", authenticateToken, requireRole('company_admin'), requirePermission('calendar.manage_slots', 'teachers.manage_schedule'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const { id } = req.params;
@@ -713,7 +708,7 @@ router.get("/teachers/:id/week-bookings", authenticateToken, requireRole('compan
 });
 
 // POST toggle teacher's open slots (admin — mirrors teacher's weekly-slots)
-router.post("/teachers/:id/weekly-slots", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post("/teachers/:id/weekly-slots", authenticateToken, requireRole('company_admin'), requirePermission('calendar.manage_slots', 'teachers.manage_schedule'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const { id } = req.params;
@@ -744,7 +739,7 @@ router.post("/teachers/:id/weekly-slots", authenticateToken, requireRole('compan
 // selection dragged across "now" still applies to its future half, and slots carrying a
 // teacher's note are left alone: the note is the teacher's, and opening the slot under it
 // would leave the grid showing a note on an open slot.
-router.post("/teachers/:id/weekly-slots/bulk", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post("/teachers/:id/weekly-slots/bulk", authenticateToken, requireRole('company_admin'), requirePermission('calendar.manage_slots', 'teachers.manage_schedule'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const teacherId = req.params.id;
@@ -810,7 +805,7 @@ router.post("/teachers/:id/weekly-slots/bulk", authenticateToken, requireRole('c
 });
 
 // POST bulk recurring availability for a teacher (admin)
-router.post("/teachers/:id/weekly-slots/recurring", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post("/teachers/:id/weekly-slots/recurring", authenticateToken, requireRole('company_admin'), requirePermission('calendar.manage_slots', 'teachers.manage_schedule'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const teacherId = req.params.id;
@@ -868,7 +863,7 @@ router.post("/teachers/:id/weekly-slots/recurring", authenticateToken, requireRo
 });
 
 // DELETE clear a week of open slots for a teacher (admin)
-router.delete("/teachers/:id/weekly-slots/week", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.delete("/teachers/:id/weekly-slots/week", authenticateToken, requireRole('company_admin'), requirePermission('calendar.manage_slots', 'teachers.manage_schedule'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const teacherId = req.params.id;
@@ -916,35 +911,52 @@ router.get("/teachers/:id/schedule", authenticateToken, requireRole('company_adm
 
 // ——— Admin (sub-admin) Management ———
 
+/**
+ * Resolve the permission list an admin is allowed to save for another admin.
+ * The owner can grant anything. A sub-admin holding admins.add/edit_permissions
+ * can only hand out permissions they hold themselves — otherwise they could
+ * create an account with more access than their own and log into it. Keys the
+ * editor doesn't hold are left exactly as they were on the target.
+ */
+function resolveGrantable(requested, editorAccess, currentTargetPerms = []) {
+  const wanted = sanitizePermissions(requested);
+  if (editorAccess.is_owner) return wanted;
+  const own = new Set(editorAccess.permissions);
+  const kept = currentTargetPerms.filter(p => !own.has(p));
+  return sanitizePermissions([...wanted.filter(p => own.has(p)), ...kept]);
+}
+
 // List all company_admin users + permissions
-router.get("/admins", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.get("/admins", authenticateToken, requireRole('company_admin'), requirePermission('admins.view'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const [rows] = await pool.query(`
       SELECT u.id, u.name, u.email, u.is_owner,
-             COALESCE(ap.can_add_teacher, FALSE)    AS can_add_teacher,
-             COALESCE(ap.can_edit_teacher, FALSE)   AS can_edit_teacher,
-             COALESCE(ap.can_delete_teacher, FALSE) AS can_delete_teacher
+             ap.permissions, ap.can_add_teacher, ap.can_edit_teacher, ap.can_delete_teacher
       FROM users u
       LEFT JOIN admin_permissions ap ON ap.user_id = u.id
       WHERE u.company_id = ? AND u.role = 'company_admin' AND u.is_active = TRUE
       ORDER BY u.is_owner DESC, u.name ASC
     `, [companyId]);
-    res.json(rows);
+    res.json(rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      is_owner: !!r.is_owner,
+      permissions: r.is_owner ? null : (parsePermissions(r.permissions) ?? legacyPermissions(r)),
+    })));
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Create sub-admin (owner only)
-router.post("/admins", authenticateToken, requireRole('company_admin'), async (req, res) => {
+// Create sub-admin (permission: admins.add)
+router.post("/admins", authenticateToken, requireRole('company_admin'), requirePermission('admins.add'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
-    const [[requester]] = await pool.query('SELECT is_owner FROM users WHERE id = ?', [req.user.id]);
-    if (!requester?.is_owner) return res.status(403).json({ message: 'Only the company owner can create admins' });
-
-    const { name, email, password, can_add_teacher = false, can_edit_teacher = false, can_delete_teacher = false } = req.body;
+    const { name, email, password } = req.body;
     if (!name || !email || !password) return res.status(400).json({ message: 'name, email, and password are required' });
+    const permissions = resolveGrantable(req.body.permissions, req.adminAccess);
 
     // Enforce max_admins plan limit
     const [[planLimit]] = await pool.query(
@@ -970,63 +982,61 @@ router.post("/admins", authenticateToken, requireRole('company_admin'), async (r
       [companyId, name, email, password]
     );
     await pool.query(
-      `INSERT INTO admin_permissions (user_id, can_add_teacher, can_edit_teacher, can_delete_teacher)
-       VALUES (?, ?, ?, ?)`,
-      [result.insertId, can_add_teacher, can_edit_teacher, can_delete_teacher]
+      'INSERT INTO admin_permissions (user_id, permissions) VALUES (?, ?)',
+      [result.insertId, JSON.stringify(permissions)]
     );
-    await logAction(companyId, req.user.id, 'admin_created', 'user', result.insertId, { name, email });
+    await logAction(companyId, req.user.id, 'admin_created', 'user', result.insertId, { name, email, permissions });
     res.status(201).json({ message: 'Admin created successfully' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Update sub-admin permissions (owner only)
-router.put("/admins/:id/permissions", authenticateToken, requireRole('company_admin'), async (req, res) => {
+// Update sub-admin permissions (permission: admins.edit_permissions)
+router.put("/admins/:id/permissions", authenticateToken, requireRole('company_admin'), requirePermission('admins.edit_permissions'), async (req, res) => {
   try {
-    const [[requester]] = await pool.query('SELECT is_owner FROM users WHERE id = ?', [req.user.id]);
-    if (!requester?.is_owner) return res.status(403).json({ message: 'Only the company owner can edit permissions' });
-
     const { id } = req.params;
     const companyId = req.user.company_id;
+    if (Number(id) === req.user.id) return res.status(400).json({ message: 'You cannot change your own permissions' });
 
-    // Verify target user belongs to the same company
-    const [[targetUser]] = await pool.query(
-      'SELECT id FROM users WHERE id = ? AND company_id = ?',
+    // Verify target is a sub-admin in the same company
+    const [[target]] = await pool.query(
+      "SELECT id, is_owner FROM users WHERE id = ? AND company_id = ? AND role = 'company_admin'",
       [id, companyId]
     );
-    if (!targetUser) return res.status(404).json({ message: 'Admin not found in your company' });
+    if (!target) return res.status(404).json({ message: 'Admin not found in your company' });
+    if (target.is_owner) return res.status(400).json({ message: "The owner's permissions cannot be changed" });
 
-    const { can_add_teacher = false, can_edit_teacher = false, can_delete_teacher = false } = req.body;
+    const current = await getAdminAccess(Number(id));
+    const permissions = resolveGrantable(req.body.permissions, req.adminAccess, current.permissions);
     await pool.query(
-      `INSERT INTO admin_permissions (user_id, can_add_teacher, can_edit_teacher, can_delete_teacher)
-       VALUES (?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE can_add_teacher = ?, can_edit_teacher = ?, can_delete_teacher = ?`,
-      [id, can_add_teacher, can_edit_teacher, can_delete_teacher,
-           can_add_teacher, can_edit_teacher, can_delete_teacher]
+      `INSERT INTO admin_permissions (user_id, permissions) VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE permissions = VALUES(permissions)`,
+      [id, JSON.stringify(permissions)]
     );
-    await logAction(companyId, req.user.id, 'admin_permissions_updated', 'user', Number(id), { can_add_teacher, can_edit_teacher, can_delete_teacher });
-    res.json({ message: 'Permissions updated' });
+    await logAction(companyId, req.user.id, 'admin_permissions_updated', 'user', Number(id), { permissions });
+    res.json({ message: 'Permissions updated', permissions });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Delete sub-admin (owner only, cannot delete self or another owner)
-router.delete("/admins/:id", authenticateToken, requireRole('company_admin'), async (req, res) => {
+// Delete sub-admin (permission: admins.delete; cannot delete self or the owner)
+router.delete("/admins/:id", authenticateToken, requireRole('company_admin'), requirePermission('admins.delete'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
-    const [[requester]] = await pool.query('SELECT is_owner FROM users WHERE id = ?', [req.user.id]);
-    if (!requester?.is_owner) return res.status(403).json({ message: 'Only the company owner can delete admins' });
-
     const { id } = req.params;
     if (Number(id) === req.user.id) return res.status(400).json({ message: 'Cannot delete yourself' });
 
-    const [[target]] = await pool.query('SELECT is_owner FROM users WHERE id = ? AND company_id = ?', [id, companyId]);
+    const [[target]] = await pool.query(
+      "SELECT is_owner FROM users WHERE id = ? AND company_id = ? AND role = 'company_admin'",
+      [id, companyId]
+    );
     if (!target) return res.status(404).json({ message: 'Admin not found' });
     if (target.is_owner) return res.status(400).json({ message: 'Cannot delete the company owner' });
 
     await pool.query("UPDATE users SET is_active = FALSE WHERE id = ? AND company_id = ?", [id, companyId]);
+    invalidateAuthCache(Number(id), null);
     await logAction(companyId, req.user.id, 'admin_deleted', 'user', Number(id), {});
     res.json({ message: 'Admin deleted successfully' });
   } catch (err) {
@@ -1054,7 +1064,7 @@ router.get("/teacher-leaves", authenticateToken, requireRole('company_admin'), a
 });
 
 // Approve teacher leave
-router.post("/teacher-leaves/:id/approve", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post("/teacher-leaves/:id/approve", authenticateToken, requireRole('company_admin'), requirePermission('teachers.manage_leaves'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const { id } = req.params;
@@ -1156,7 +1166,7 @@ router.post("/teacher-leaves/:id/approve", authenticateToken, requireRole('compa
 });
 
 // Reject teacher leave
-router.post("/teacher-leaves/:id/reject", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post("/teacher-leaves/:id/reject", authenticateToken, requireRole('company_admin'), requirePermission('teachers.manage_leaves'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const { id } = req.params;
@@ -1185,7 +1195,7 @@ router.get('/company-settings', authenticateToken, async (req, res) => {
 });
 
 // Update company settings (company_admin only)
-router.put('/company-settings', authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.put('/company-settings', authenticateToken, requireRole('company_admin'), requirePermission('packages.edit_settings'), async (req, res) => {
   try {
     const { allow_student_pick_teacher, payment_qr_image, cancellation_hours, cancellation_penalty_enabled, payment_method, show_class_adjustments } = req.body;
 
@@ -1367,7 +1377,7 @@ router.get('/students/:id/package-adjustments', authenticateToken, requireRole('
 });
 
 // Update student profile (company_admin only)
-router.put('/students/:id', authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.put('/students/:id', authenticateToken, requireRole('company_admin'), requirePermission('students.edit'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const { id } = req.params;
@@ -1402,7 +1412,7 @@ router.put('/students/:id', authenticateToken, requireRole('company_admin'), asy
 });
 
 // Admin creates a booking for a student (wrapped in transaction to prevent double-deduction)
-router.post('/bookings', authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post('/bookings', authenticateToken, requireRole('company_admin'), requirePermission('calendar.book_classes', 'students.book_classes'), async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const companyId = req.user.company_id;
@@ -1565,7 +1575,7 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
 });
 
 // Assign teacher to a single booking
-router.put('/bookings/:bookingId/assign-teacher', authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.put('/bookings/:bookingId/assign-teacher', authenticateToken, requireRole('company_admin'), requirePermission('students.edit'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const { bookingId } = req.params;
@@ -1589,7 +1599,7 @@ router.put('/bookings/:bookingId/assign-teacher', authenticateToken, requireRole
 });
 
 // Bulk assign teacher to all unassigned upcoming bookings for a student
-router.post('/students/:id/bulk-assign-teacher', authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post('/students/:id/bulk-assign-teacher', authenticateToken, requireRole('company_admin'), requirePermission('students.edit'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const studentId = Number(req.params.id);
@@ -1667,7 +1677,7 @@ router.post('/students/:id/bulk-assign-teacher', authenticateToken, requireRole(
 });
 
 // Update the teacher assigned to a student at the package level, and cascade to all future bookings
-router.put('/students/:id/assign-teacher', authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.put('/students/:id/assign-teacher', authenticateToken, requireRole('company_admin'), requirePermission('students.edit', 'dashboard.confirm_payments'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const studentId = Number(req.params.id);
@@ -1789,7 +1799,7 @@ router.put('/students/:id/assign-teacher', authenticateToken, requireRole('compa
 });
 
 // Admin assign a package to a student (bypasses student self-enrollment)
-router.post('/students/:id/assign-package', authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post('/students/:id/assign-package', authenticateToken, requireRole('company_admin'), requirePermission('students.assign_package'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const studentId = Number(req.params.id);
@@ -1866,7 +1876,7 @@ router.post('/students/:id/assign-package', authenticateToken, requireRole('comp
 });
 
 // Create a student (company admin only)
-router.post('/students', authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post('/students', authenticateToken, requireRole('company_admin'), requirePermission('students.add'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const { name, email, password, guardian_name, nationality, age } = req.body;
@@ -1923,7 +1933,7 @@ router.post('/students', authenticateToken, requireRole('company_admin'), async 
 });
 
 // Deactivate a student (company_admin only — soft-delete)
-router.post('/students/:id/deactivate', authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post('/students/:id/deactivate', authenticateToken, requireRole('company_admin'), requirePermission('students.deactivate'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const { id } = req.params;
@@ -1967,7 +1977,7 @@ router.post('/students/:id/deactivate', authenticateToken, requireRole('company_
 });
 
 // Reactivate a student (company_admin only)
-router.post('/students/:id/reactivate', authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post('/students/:id/reactivate', authenticateToken, requireRole('company_admin'), requirePermission('students.deactivate'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const { id } = req.params;
@@ -1989,7 +1999,7 @@ router.post('/students/:id/reactivate', authenticateToken, requireRole('company_
 // bookings, class reports, homework and feedback are all destroyed. The typed-name
 // confirmation is re-checked here rather than trusted from the UI, so a stray click
 // or a replayed request can never wipe a roster.
-router.delete('/students/:id', authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.delete('/students/:id', authenticateToken, requireRole('company_admin'), requirePermission('students.delete'), async (req, res) => {
   const connection = await pool.getConnection();
   let inTransaction = false;
   try {
@@ -2310,10 +2320,17 @@ router.put('/users/:id/reset-password', authenticateToken, requireRole('company_
       return res.status(400).json({ message: 'Password must be at least 6 characters' });
 
     const [[user]] = await pool.query(
-      'SELECT id FROM users WHERE id = ? AND company_id = ?',
+      'SELECT id, role FROM users WHERE id = ? AND company_id = ?',
       [req.params.id, req.user.company_id]
     );
     if (!user) return res.status(404).json({ message: 'User not found' });
+    // Only students and teachers can be reset here; another admin's password
+    // is theirs to change, and resetting it would be a way to take the account over.
+    const requiredPerm = user.role === 'student' ? 'students.reset_password'
+      : user.role === 'teacher' ? 'teachers.reset_password' : null;
+    if (!requiredPerm || !await hasAnyPermission(req.user.id, requiredPerm)) {
+      return res.status(403).json({ message: 'You do not have permission to reset this password' });
+    }
 
     await pool.query('UPDATE users SET password = ? WHERE id = ? AND company_id = ?', [password, req.params.id, req.user.company_id]);
     await logAction(req.user.company_id, req.user.id, 'password_reset_by_admin', 'user', Number(req.params.id), {});
@@ -2348,6 +2365,10 @@ router.post("/student-packages/:id/adjust-sessions", authenticateToken, requireR
     if (isNaN(adj)) {
       connection.release();
       return res.status(400).json({ message: 'adjustment must be a number' });
+    }
+    if (!await hasAnyPermission(adminId, adj > 0 ? 'students.add_sessions' : 'students.deduct_sessions')) {
+      connection.release();
+      return res.status(403).json({ message: `You do not have permission to ${adj > 0 ? 'add' : 'deduct'} sessions` });
     }
 
     await connection.beginTransaction();
@@ -2446,7 +2467,7 @@ router.get("/student-packages/:id/members", authenticateToken, requireRole('comp
 });
 
 // Share a package with another student
-router.post("/student-packages/:id/members", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post("/student-packages/:id/members", authenticateToken, requireRole('company_admin'), requirePermission('students.assign_package'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const studentId = Number(req.body.student_id);
@@ -2480,7 +2501,7 @@ router.post("/student-packages/:id/members", authenticateToken, requireRole('com
 
 // Stop sharing a package with a student. Blocked while they still have upcoming
 // classes on it, so no booked class is left pointing at a package they can't use.
-router.delete("/student-packages/:id/members/:studentId", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.delete("/student-packages/:id/members/:studentId", authenticateToken, requireRole('company_admin'), requirePermission('students.assign_package'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const { id, studentId } = req.params;

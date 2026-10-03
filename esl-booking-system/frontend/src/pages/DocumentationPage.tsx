@@ -143,7 +143,7 @@ const sections: Section[] = [
           items={[
             "All company_admin capabilities",
             "Create and manage sub-admin accounts",
-            "Set sub-admin permissions (add/edit/delete teachers)",
+            "Set sub-admin access permissions per page (Dashboard, Calendar, Packages, Students, Teachers, Admins)",
             "Access company analytics dashboard",
             "Manage company settings (QR code, cancellation policy, teacher-picker toggle)",
             "View company audit logs",
@@ -158,10 +158,8 @@ const sections: Section[] = [
         </p>
         <UL
           items={[
-            "Manage students (add, view profiles, assign packages)",
-            "Manage teachers (depending on granted permissions)",
-            "Confirm or cancel bookings",
-            "View the weekly schedule and reports",
+            "Open only the pages the owner has granted",
+            "On each page, do only the actions the owner has granted (e.g. add sessions, cancel classes)",
           ]}
         />
 
@@ -712,32 +710,32 @@ const sections: Section[] = [
 
         <H3>Creating a sub-admin</H3>
         <p>
-          Only the owner can create sub-admin accounts. Set their name, email,
-          password, and choose which teacher management permissions to grant:
+          Set their name, email and password, then choose their access for each
+          page. Every page offers three quick presets — <strong>No access</strong>,{" "}
+          <strong>View only</strong> and <strong>Full access</strong> — or expand
+          the page to tick individual actions:
         </p>
         <UL
           items={[
-            "Can add teachers",
-            "Can edit teachers",
-            "Can delete teachers",
+            "Dashboard — view, confirm/reject payments, cancel classes",
+            "Calendar — view, book classes, cancel classes, open/close teacher slots",
+            "Packages — view, add, edit, delete, edit company settings",
+            "Students — view, add/import, edit, assign/share packages, add sessions, deduct sessions, book classes, cancel classes, reset passwords, deactivate, delete",
+            "Teachers — view, add/import, edit, delete, manage schedules, approve/reject leaves, reset passwords",
+            "Admins — view, add, edit permissions, delete",
           ]}
         />
-
-        <H3>What sub-admins can always do</H3>
-        <UL
-          items={[
-            "View and manage students",
-            "Confirm/reject enrollments",
-            "Manage bookings and the weekly schedule",
-            "View class reports",
-          ]}
-        />
+        <p>
+          Pages without View access are hidden from the sub-admin's navbar. A
+          sub-admin who is allowed to add admins or edit permissions can only
+          grant permissions they hold themselves, and can never change their own
+          permissions or the owner's account.
+        </p>
 
         <H3>What sub-admins cannot do</H3>
         <UL
           items={[
-            "Create other sub-admins",
-            "Change company settings",
+            "Change their own permissions",
             "View or submit upgrade requests",
             "Access the Activity Log",
             "Access this documentation",

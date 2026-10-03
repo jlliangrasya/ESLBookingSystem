@@ -2,6 +2,7 @@ const express = require("express");
 const pool = require("../db");
 const authenticateToken = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
+const { requirePermission } = require("../utils/permissions");
 const notify = require("../utils/notify");
 const { logAction } = require("../utils/audit");
 const { notifyWaitlistForSlot } = require("./waitlistRoutes");
@@ -610,7 +611,7 @@ router.delete("/api/bookings/:id", authenticateToken, async (req, res) => {
 });
 
 // Mark class as done + deduct session (wrapped in transaction to prevent race conditions)
-router.post("/api/bookings/done/:id", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post("/api/bookings/done/:id", authenticateToken, requireRole('company_admin'), requirePermission('dashboard.cancel_classes', 'calendar.cancel_classes', 'students.cancel_classes'), async (req, res) => {
     const { id } = req.params;
     const { student_package_id } = req.body;
     const companyId = req.user.company_id;
@@ -715,7 +716,7 @@ router.post("/api/bookings/done/:id", authenticateToken, requireRole('company_ad
 });
 
 // Cancel a class (admin cancels — notify student + teacher)
-router.post("/api/bookings/cancel/:id", authenticateToken, requireRole('company_admin'), async (req, res) => {
+router.post("/api/bookings/cancel/:id", authenticateToken, requireRole('company_admin'), requirePermission('dashboard.cancel_classes', 'calendar.cancel_classes', 'students.cancel_classes'), async (req, res) => {
     const { id } = req.params;
     const companyId = req.user.company_id;
     const cancelAll = req.query.cancelAll === 'true';

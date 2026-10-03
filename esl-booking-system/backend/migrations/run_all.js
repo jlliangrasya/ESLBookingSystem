@@ -149,6 +149,12 @@ const MIGRATIONS = [
     check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND INDEX_NAME = 'idx_bookings_attendee'",
     up: 'CREATE INDEX idx_bookings_attendee ON bookings (attendee_id)',
   },
+  // ── 017: Granular sub-admin permissions ───────────────────────────────────
+  {
+    name: 'admin_permissions.permissions column',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admin_permissions' AND COLUMN_NAME = 'permissions'",
+    up: 'ALTER TABLE admin_permissions ADD COLUMN permissions TEXT NULL',
+  },
 ];
 
 async function main() {

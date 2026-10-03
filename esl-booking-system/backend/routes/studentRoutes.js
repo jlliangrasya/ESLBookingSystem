@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require('../db');
 const authenticateToken = require('../middleware/authMiddleware');
 const requireRole = require('../middleware/requireRole');
+const { hasAnyPermission } = require('../utils/permissions');
 const notify = require('../utils/notify');
 const { attendeeSql, canUsePackageSql, packageStudentIds } = require('../utils/sharedPackages');
 
@@ -680,6 +681,8 @@ router.get("/students", authenticateToken, requireRole('company_admin'), async (
             `SELECT COUNT(*) AS total FROM users WHERE role = 'student' AND company_id = ? ${countSearchClause}`,
             countParams
         );
+        // Passwords back the "Copy info" button — only for admins who manage credentials
+        if (!await hasAnyPermission(req.user.id, 'students.reset_password')) rows.forEach(r => delete r.password);
 
         res.json({
             data: rows,

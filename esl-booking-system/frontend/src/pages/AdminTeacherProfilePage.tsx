@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
 import AuthContext from "@/context/AuthContext";
+import { usePermissions } from "@/context/PermissionsContext";
 import { AdminTour } from "@/components/AdminTour";
 import { format, addDays, startOfWeek } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -175,6 +176,8 @@ const AdminTeacherProfilePage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const authContext = useContext(AuthContext);
+  const { can, canAny } = usePermissions();
+  const canEditSchedule = canAny("teachers.manage_schedule", "calendar.manage_slots");
   const currentUser = authContext?.user ?? null;
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
@@ -347,6 +350,7 @@ const AdminTeacherProfilePage = () => {
   }, [id]);
 
   const toggleSlot = async (dateStr: string, time: string) => {
+    if (!canEditSchedule) return;
     const key = `${dateStr}|${time}`;
     const isOpen = openSlots.has(key);
     const action = isOpen ? "close" : "open";
@@ -531,19 +535,25 @@ const AdminTeacherProfilePage = () => {
               Teacher Profile
             </CardTitle>
             <div className="flex gap-2">
-              <Button id="teacher-btn-copy-login" size="sm" variant="outline" className="gap-1"
-                onClick={handleCopyCredentials}>
-                {credCopied
-                  ? <><Check className="h-4 w-4 text-green-600" /> Copied!</>
-                  : <><Copy className="h-4 w-4" /> Copy Login</>}
-              </Button>
-              <Button id="teacher-btn-reset-pw" size="sm" variant="outline" className="gap-1"
-                onClick={() => { setShowResetPw(true); setResetPw(""); setResetPwMsg(null); }}>
-                <KeyRound className="h-4 w-4" /> Reset Password
-              </Button>
-              <Button id="teacher-btn-edit" size="sm" variant="outline" className="gap-1" onClick={openEdit}>
-                <Pencil className="h-4 w-4" /> Edit
-              </Button>
+              {can("teachers.reset_password") && (
+                <>
+                  <Button id="teacher-btn-copy-login" size="sm" variant="outline" className="gap-1"
+                    onClick={handleCopyCredentials}>
+                    {credCopied
+                      ? <><Check className="h-4 w-4 text-green-600" /> Copied!</>
+                      : <><Copy className="h-4 w-4" /> Copy Login</>}
+                  </Button>
+                  <Button id="teacher-btn-reset-pw" size="sm" variant="outline" className="gap-1"
+                    onClick={() => { setShowResetPw(true); setResetPw(""); setResetPwMsg(null); }}>
+                    <KeyRound className="h-4 w-4" /> Reset Password
+                  </Button>
+                </>
+              )}
+              {can("teachers.edit") && (
+                <Button id="teacher-btn-edit" size="sm" variant="outline" className="gap-1" onClick={openEdit}>
+                  <Pencil className="h-4 w-4" /> Edit
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
@@ -1080,16 +1090,18 @@ const AdminTeacherProfilePage = () => {
                 <CalendarDays className="h-5 w-5 text-primary" />
                 Weekly Availability
               </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">Click slots to open/close, or use bulk actions below</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {canEditSchedule ? "Click slots to open/close, or use bulk actions below" : "View only"}
+              </p>
             </div>
-            <div className="flex items-center gap-2">
+            {canEditSchedule && <div className="flex items-center gap-2">
               <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => { setRecurringAvailMsg(null); setShowRecurringAvail(true); }}>
                 Set Recurring
               </Button>
               <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50" disabled={clearingWeek} onClick={handleClearWeek}>
                 {clearingWeek ? <Loader2 className="h-3 w-3 animate-spin" /> : "Clear Week"}
               </Button>
-            </div>
+            </div>}
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between mb-4">

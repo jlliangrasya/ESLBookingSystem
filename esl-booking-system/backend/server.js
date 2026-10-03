@@ -274,6 +274,8 @@ async function runAutoMigrations() {
     ['users', 'last_login_at', 'TIMESTAMP NULL'],
     // Migration 016: every booking query reads attendee_id, so it must exist at boot.
     ['bookings', 'attendee_id', 'INT NULL'],
+    // Migration 017: every permission check reads this, so it must exist at boot.
+    ['admin_permissions', 'permissions', 'TEXT NULL'],
   ];
   for (const [table, col, def] of addTableCols) {
     try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); }

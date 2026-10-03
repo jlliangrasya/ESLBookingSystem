@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import NavBar from "../components/Navbar";
 import AuthContext from "@/context/AuthContext";
+import { usePermissions } from "@/context/PermissionsContext";
 import { AdminTour } from "@/components/AdminTour";
 import { useOnboarding } from "@/context/OnboardingContext";
 import BulkImportDialog from "@/components/BulkImportDialog";
@@ -128,6 +129,7 @@ const loadHiddenColumns = (): OptionalColumn[] => {
 const StudentListPage: React.FC = () => {
   const navigate = useNavigate();
   const authContext = useContext(AuthContext);
+  const { can } = usePermissions();
   const currentUser = authContext?.user ?? null;
   const { status: onboarding } = useOnboarding();
   const [students, setStudents] = useState<Student[]>([]);
@@ -349,7 +351,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
       <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-gray-800">Students List</h1>
-          <div className="flex gap-2">
+          {can("students.add") && <div className="flex gap-2">
             <Button
               id="btn-bulk-import-students"
               variant="outline"
@@ -367,7 +369,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
             >
               <UserPlus className="h-4 w-4 mr-2" /> Add Student
             </Button>
-          </div>
+          </div>}
         </div>
 
         {/* Explain the gate up front rather than letting them fill in a whole form
@@ -545,7 +547,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                         )}
                         <TableCell>
                           <div className="flex items-center gap-1.5">
-                            <Button
+                            {can("students.deduct_sessions") && <Button
                               size="sm"
                               variant="outline"
                               aria-label={`Deduct sessions from ${student.name}`}
@@ -558,7 +560,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                               onClick={() => setAdjustTarget({ student, mode: "deduct" })}
                             >
                               <Minus className="h-3 w-3" />
-                            </Button>
+                            </Button>}
                             {/* Fixed width so the + lines up down the column
                                 whether the row shows one badge or two. */}
                             <div className="w-60 shrink-0 flex gap-1 flex-wrap items-center">
@@ -577,7 +579,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                               </Badge>
                             )}
                             </div>
-                            <Button
+                            {can("students.add_sessions") && <Button
                               size="sm"
                               variant="outline"
                               aria-label={`Add sessions to ${student.name}`}
@@ -587,7 +589,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                               onClick={() => setAdjustTarget({ student, mode: "add" })}
                             >
                               <Plus className="h-3 w-3" />
-                            </Button>
+                            </Button>}
                           </div>
                         </TableCell>
                         <TableCell>
@@ -601,7 +603,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                         </TableCell>
                         <TableCell>{student.nationality || "—"}</TableCell>
                         <TableCell className="text-right flex items-center justify-end gap-1">
-                          <TooltipProvider>
+                          {can("students.reset_password") && <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
@@ -625,7 +627,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                                 </p>
                               </TooltipContent>
                             </Tooltip>
-                          </TooltipProvider>
+                          </TooltipProvider>}
                           <Button
                             size="sm"
                             variant="ghost"
@@ -636,7 +638,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                           >
                             View
                           </Button>
-                          <TooltipProvider>
+                          {can("students.delete") && <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
@@ -657,7 +659,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                                 <p>Delete Student</p>
                               </TooltipContent>
                             </Tooltip>
-                          </TooltipProvider>
+                          </TooltipProvider>}
                         </TableCell>
                       </TableRow>
                     ))

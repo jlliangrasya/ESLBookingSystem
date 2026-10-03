@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import AuthContext from "@/context/AuthContext";
+import { usePermissions } from "@/context/PermissionsContext";
 import NotificationBell from "@/components/NotificationBell";
 import LanguageToggle from "@/components/LanguageToggle";
 import InstallAppButton from "@/components/InstallAppButton";
@@ -26,6 +27,7 @@ const NavBar: React.FC = () => {
   const role = authContext?.user?.role;
   const isOwner = authContext?.user?.is_owner ?? false;
   const companyId = authContext?.user?.company_id ?? 0;
+  const { can, homePath } = usePermissions();
   const [mobileOpen, setMobileOpen] = useState(false);
   // useStartTour always restarts from the first segment, so it takes only the
   // company id — the stale "A" argument here was a leftover from an older signature.
@@ -38,7 +40,7 @@ const NavBar: React.FC = () => {
     navigate("/");
   };
 
-  const logoLink = role === "super_admin" ? "/super-admin" : "/admin-dashboard";
+  const logoLink = role === "super_admin" ? "/super-admin" : (homePath ?? "/admin-dashboard");
 
   const NavLink = ({ to, icon: Icon, label, id }: { to: string; icon: React.ElementType; label: string; id?: string }) => (
     <Link
@@ -71,12 +73,12 @@ const NavBar: React.FC = () => {
     </>
   ) : (
     <>
-      <NavLink id="nav-admin-dashboard" to="/admin-dashboard" icon={CalendarDays} label={t("nav.schedule")} />
-      <NavLink id="nav-admin-calendar"  to="/admin/calendar"  icon={CalendarRange} label={t("nav.calendar")} />
-      <NavLink id="nav-packages"        to="/packages"        icon={Package}      label={t("nav.packages")} />
-      <NavLink id="nav-students"        to="/students"        icon={Users}        label={t("nav.students")} />
-      <NavLink id="nav-teachers"        to="/teachers"        icon={GraduationCap} label={t("nav.teachers")} />
-      <NavLink to="/admin-users" icon={UserCog} label={t("nav.admins")} />
+      {can("dashboard.view") && <NavLink id="nav-admin-dashboard" to="/admin-dashboard" icon={CalendarDays} label={t("nav.schedule")} />}
+      {can("calendar.view") && <NavLink id="nav-admin-calendar"  to="/admin/calendar"  icon={CalendarRange} label={t("nav.calendar")} />}
+      {can("packages.view") && <NavLink id="nav-packages"        to="/packages"        icon={Package}      label={t("nav.packages")} />}
+      {can("students.view") && <NavLink id="nav-students"        to="/students"        icon={Users}        label={t("nav.students")} />}
+      {can("teachers.view") && <NavLink id="nav-teachers"        to="/teachers"        icon={GraduationCap} label={t("nav.teachers")} />}
+      {can("admins.view") && <NavLink to="/admin-users" icon={UserCog} label={t("nav.admins")} />}
     </>
   );
 
@@ -87,12 +89,12 @@ const NavBar: React.FC = () => {
     </>
   ) : (
     <>
-      <MobileNavLink to="/admin-dashboard" icon={CalendarDays} label={t("nav.schedule")} />
-      <MobileNavLink to="/admin/calendar" icon={CalendarRange} label={t("nav.calendar")} />
-      <MobileNavLink to="/packages" icon={Package} label={t("nav.packages")} />
-      <MobileNavLink to="/students" icon={Users} label={t("nav.students")} />
-      <MobileNavLink to="/teachers" icon={GraduationCap} label={t("nav.teachers")} />
-      <MobileNavLink to="/admin-users" icon={UserCog} label={t("nav.admins")} />
+      {can("dashboard.view") && <MobileNavLink to="/admin-dashboard" icon={CalendarDays} label={t("nav.schedule")} />}
+      {can("calendar.view") && <MobileNavLink to="/admin/calendar" icon={CalendarRange} label={t("nav.calendar")} />}
+      {can("packages.view") && <MobileNavLink to="/packages" icon={Package} label={t("nav.packages")} />}
+      {can("students.view") && <MobileNavLink to="/students" icon={Users} label={t("nav.students")} />}
+      {can("teachers.view") && <MobileNavLink to="/teachers" icon={GraduationCap} label={t("nav.teachers")} />}
+      {can("admins.view") && <MobileNavLink to="/admin-users" icon={UserCog} label={t("nav.admins")} />}
     </>
   );
 

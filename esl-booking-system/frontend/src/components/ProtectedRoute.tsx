@@ -1,14 +1,18 @@
 import { Navigate } from "react-router-dom";
 import { useContext } from "react";
 import AuthContext, { UserRole } from "../context/AuthContext";
+import { usePermissions } from "../context/PermissionsContext";
 
 interface ProtectedRouteProps {
   children: JSX.Element;
   allowedRoles: UserRole[];
+  // Sub-admin permission key needed to open the page (company_admin only)
+  permission?: string;
 }
 
-const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) => {
+const ProtectedRoute = ({ children, allowedRoles, permission }: ProtectedRouteProps) => {
   const authContext = useContext(AuthContext);
+  const perms = usePermissions();
 
   if (!authContext) return <Navigate to="/" />;
 
@@ -45,6 +49,24 @@ const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) => {
       student: '/studentdashboard',
     };
     return <Navigate to={roleHome[user.role]} />;
+  }
+
+  if (permission && user.role === "company_admin") {
+    if (perms.loading) {
+      return <div className="flex items-center justify-center min-h-screen text-gray-400">Loading…</div>;
+    }
+    if (!perms.can(permission)) {
+      if (perms.homePath) return <Navigate to={perms.homePath} replace />;
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen gap-3 px-4 text-center">
+          <p className="text-lg font-semibold">No pages available</p>
+          <p className="text-sm text-muted-foreground max-w-sm">
+            Your admin account doesn't have access to any pages yet. Ask the company owner to grant you permissions.
+          </p>
+          <button className="text-sm text-primary underline" onClick={() => authContext.logout()}>Log out</button>
+        </div>
+      );
+    }
   }
 
   return children;

@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const pool = require('../db');
 const authenticateToken = require('../middleware/authMiddleware');
 const requireRole = require('../middleware/requireRole');
+const { requirePermission } = require('../utils/permissions');
 const notify = require('../utils/notify');
 const { logAction } = require('../utils/audit');
 const { attendeeSql, canUsePackage } = require('../utils/sharedPackages');
@@ -51,7 +52,7 @@ function dayOfWeek(dateStr) {
 function dateStrLt(a, b) { return a < b; }
 
 // POST / — Create recurring schedule + auto-generate bookings
-router.post('/', authenticateToken, requireRole('student', 'company_admin'), async (req, res) => {
+router.post('/', authenticateToken, requireRole('student', 'company_admin'), requirePermission('students.book_classes'), async (req, res) => {
     const connection = await pool.getConnection();
     try {
         const companyId = req.user.company_id;
@@ -453,7 +454,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 });
 
 // POST /:id/cancel — Cancel entire series
-router.post('/:id/cancel', authenticateToken, requireRole('student', 'company_admin'), async (req, res) => {
+router.post('/:id/cancel', authenticateToken, requireRole('student', 'company_admin'), requirePermission('students.cancel_classes'), async (req, res) => {
     const connection = await pool.getConnection();
     try {
         const { id } = req.params;
@@ -550,7 +551,7 @@ router.post('/:id/cancel', authenticateToken, requireRole('student', 'company_ad
 });
 
 // POST /:id/bookings/:bookingId/cancel — Cancel single occurrence (transaction-wrapped)
-router.post('/:id/bookings/:bookingId/cancel', authenticateToken, requireRole('student', 'company_admin'), async (req, res) => {
+router.post('/:id/bookings/:bookingId/cancel', authenticateToken, requireRole('student', 'company_admin'), requirePermission('students.cancel_classes'), async (req, res) => {
     const connection = await pool.getConnection();
     try {
         const { id, bookingId } = req.params;

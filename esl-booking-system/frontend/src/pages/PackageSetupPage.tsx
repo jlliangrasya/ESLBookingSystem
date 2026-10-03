@@ -2,6 +2,7 @@
 import axios from "axios";
 import NavBar from "@/components/Navbar";
 import AuthContext from "@/context/AuthContext";
+import { usePermissions } from "@/context/PermissionsContext";
 import { AdminTour } from "@/components/AdminTour";
 import PackageTemplatePicker from "@/components/PackageTemplatePicker";
 import { Button } from "@/components/ui/button";
@@ -99,6 +100,8 @@ const PackageSetupPage = () => {
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
   const authContext = useContext(AuthContext);
+  const { can } = usePermissions();
+  const canSettings = can("packages.edit_settings");
   const currentUser = authContext?.user ?? null;
 
   const [packages, setPackages] = useState<TutorialPackage[]>([]);
@@ -287,14 +290,14 @@ const PackageSetupPage = () => {
         {/* Ready-made presets — only while the company has no packages at all.
             Picking one prefills the normal Add Package dialog so the owner sets
             their price and saves through the existing path. */}
-        <PackageTemplatePicker
+        {can("packages.add") && <PackageTemplatePicker
           hasPackages={packages.length > 0}
           onPick={(prefill) => {
             setEditPackage(null);
             setForm({ ...EMPTY_FORM, ...prefill });
             setShowModal(true);
           }}
-        />
+        />}
 
         {/* Class Packages Card */}
         <Card className="glow-card border-0 rounded-2xl">
@@ -303,10 +306,12 @@ const PackageSetupPage = () => {
               <Package className="h-5 w-5 text-primary" />
               Class Packages
             </CardTitle>
-            <Button id="btn-add-package" size="sm" onClick={openAdd} className="gap-1">
-              <Plus className="h-4 w-4" />
-              {packages.length === 0 ? "Build a custom package" : "Add Package"}
-            </Button>
+            {can("packages.add") && (
+              <Button id="btn-add-package" size="sm" onClick={openAdd} className="gap-1">
+                <Plus className="h-4 w-4" />
+                {packages.length === 0 ? "Build a custom package" : "Add Package"}
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             <Table>
@@ -382,15 +387,18 @@ const PackageSetupPage = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs"
-                            onClick={() => openEdit(pkg)}
-                          >
-                            <Pencil className="h-3 w-3 mr-1" /> Edit
-                          </Button>
-                          <Button
+                          {can("packages.edit") && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
+                              onClick={() => openEdit(pkg)}
+                            >
+                              <Pencil className="h-3 w-3 mr-1" /> Edit
+                            </Button>
+                          )}
+                          {/* Deactivating is the package "delete" (soft); reactivating is an edit */}
+                          {can(pkg.is_active ? "packages.delete" : "packages.edit") && <Button
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs"
@@ -405,7 +413,7 @@ const PackageSetupPage = () => {
                                 <Eye className="h-3 w-3 mr-1" /> Activate
                               </>
                             )}
-                          </Button>
+                          </Button>}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -424,7 +432,9 @@ const PackageSetupPage = () => {
               Company Settings
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent>
+            {/* A disabled fieldset locks every control inside for view-only admins */}
+            <fieldset disabled={!canSettings} className="space-y-6">
             {/* Teacher picker toggle */}
             <div className="flex items-center justify-between border rounded-lg p-4">
               <div>
@@ -660,12 +670,15 @@ const PackageSetupPage = () => {
             </div>
             */}
 
-            <Button id="btn-save-settings" onClick={handleSaveSettings} disabled={settingsSaving}>
-              {settingsSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : null}
-              Save Settings
-            </Button>
+            {canSettings && (
+              <Button id="btn-save-settings" onClick={handleSaveSettings} disabled={settingsSaving}>
+                {settingsSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : null}
+                Save Settings
+              </Button>
+            )}
+            </fieldset>
           </CardContent>
         </Card>
       </div>

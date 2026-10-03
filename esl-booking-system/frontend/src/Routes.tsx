@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { PermissionsProvider } from "./context/PermissionsContext";
 import { TourEngineProvider } from "./context/TourEngine";
 import { OnboardingProvider } from "./context/OnboardingContext";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -75,6 +76,7 @@ const OnboardingApprovalPage = lazy(
 const AppRoutes = () => {
   return (
     <AuthProvider>
+      <PermissionsProvider>
       <OnboardingProvider>
       <TourEngineProvider>
       <Suspense
@@ -120,7 +122,7 @@ const AppRoutes = () => {
           <Route
             path="/admin-dashboard"
             element={
-              <ProtectedRoute allowedRoles={["company_admin"]}>
+              <ProtectedRoute allowedRoles={["company_admin"]} permission="dashboard.view">
                 <AdminDashboard />
               </ProtectedRoute>
             }
@@ -128,7 +130,7 @@ const AppRoutes = () => {
           <Route
             path="/students"
             element={
-              <ProtectedRoute allowedRoles={["company_admin"]}>
+              <ProtectedRoute allowedRoles={["company_admin"]} permission="students.view">
                 <StudentListPage />
               </ProtectedRoute>
             }
@@ -136,7 +138,7 @@ const AppRoutes = () => {
           <Route
             path="/admin/calendar"
             element={
-              <ProtectedRoute allowedRoles={["company_admin"]}>
+              <ProtectedRoute allowedRoles={["company_admin"]} permission="calendar.view">
                 <AdminCalendarPage />
               </ProtectedRoute>
             }
@@ -144,7 +146,7 @@ const AppRoutes = () => {
           <Route
             path="/admin/students/:id"
             element={
-              <ProtectedRoute allowedRoles={["company_admin"]}>
+              <ProtectedRoute allowedRoles={["company_admin"]} permission="students.view">
                 <AdminStudentProfilePage />
               </ProtectedRoute>
             }
@@ -152,7 +154,7 @@ const AppRoutes = () => {
           <Route
             path="/admin/teachers/:id"
             element={
-              <ProtectedRoute allowedRoles={["company_admin"]}>
+              <ProtectedRoute allowedRoles={["company_admin"]} permission="teachers.view">
                 <AdminTeacherProfilePage />
               </ProtectedRoute>
             }
@@ -168,7 +170,7 @@ const AppRoutes = () => {
           <Route
             path="/packages"
             element={
-              <ProtectedRoute allowedRoles={["company_admin"]}>
+              <ProtectedRoute allowedRoles={["company_admin"]} permission="packages.view">
                 <PackageSetupPage />
               </ProtectedRoute>
             }
@@ -176,7 +178,7 @@ const AppRoutes = () => {
           <Route
             path="/teachers"
             element={
-              <ProtectedRoute allowedRoles={["company_admin"]}>
+              <ProtectedRoute allowedRoles={["company_admin"]} permission="teachers.view">
                 <TeacherManagementPage />
               </ProtectedRoute>
             }
@@ -184,7 +186,7 @@ const AppRoutes = () => {
           <Route
             path="/admin-users"
             element={
-              <ProtectedRoute allowedRoles={["company_admin"]}>
+              <ProtectedRoute allowedRoles={["company_admin"]} permission="admins.view">
                 <AdminManagementPage />
               </ProtectedRoute>
             }
@@ -221,7 +223,7 @@ const AppRoutes = () => {
           <Route
             path="/admin/recurring"
             element={
-              <ProtectedRoute allowedRoles={["company_admin"]}>
+              <ProtectedRoute allowedRoles={["company_admin"]} permission="students.view">
                 <RecurringSchedulesPage />
               </ProtectedRoute>
             }
@@ -338,6 +340,7 @@ const AppRoutes = () => {
       </Suspense>
       </TourEngineProvider>
       </OnboardingProvider>
+      </PermissionsProvider>
     </AuthProvider>
   );
 };
