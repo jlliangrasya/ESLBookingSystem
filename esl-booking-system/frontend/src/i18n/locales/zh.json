@@ -267,6 +267,7 @@
           "makeupClass": "补课",
           "bonusSessions": "奖励课时",
           "referralReward": "推荐奖励",
+          "correctionOfCount": "次数修正",
           "other": "其他"
         },
         "deduct": {

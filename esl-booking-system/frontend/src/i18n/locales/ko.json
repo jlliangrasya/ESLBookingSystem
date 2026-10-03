@@ -267,6 +267,7 @@
           "makeupClass": "보충 수업",
           "bonusSessions": "보너스 수업",
           "referralReward": "추천 보상",
+          "correctionOfCount": "횟수 수정",
           "other": "기타"
         },
         "deduct": {

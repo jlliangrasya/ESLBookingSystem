@@ -267,6 +267,7 @@
           "makeupClass": "Makeup Class",
           "bonusSessions": "Bonus Sessions",
           "referralReward": "Referral Reward",
+          "correctionOfCount": "Correction of Count",
           "other": "Other"
         },
         "deduct": {
