@@ -1,6 +1,5 @@
 ﻿import { useState, useEffect, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useTranslation } from "react-i18next";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
 import AuthContext from "@/context/AuthContext";
@@ -19,12 +18,12 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users, UserCheck, X, CheckCircle, AlertTriangle, TrendingUp, TrendingDown,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly, localToMysql } from "@/utils/timezone";
 import TablePagination from "@/components/TablePagination";
+import SessionAdjustDialog from "@/components/SessionAdjustDialog";
 
 interface PackageHistory {
   id: number;
@@ -82,6 +81,11 @@ interface ActivePackage {
   subject: string | null;
   teacher_id: number | null;
   price: number;
+  /** The student who owns the package — differs from this profile when it's a sibling's shared package */
+  owner_id: number;
+  owner_name: string;
+  /** Other students the package is shared with */
+  members: { id: number; name: string }[];
 }
 
 interface BookingRecord {
@@ -147,7 +151,6 @@ const statusColors: Record<string, string> = {
 };
 
 const AdminStudentProfilePage = () => {
-  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const authContext = useContext(AuthContext);
@@ -241,6 +244,53 @@ const AdminStudentProfilePage = () => {
   const [assignTeacherIdVal, setAssignTeacherIdVal] = useState("");
   const [assignTeacherLoading, setAssignTeacherLoading] = useState(false);
   const [assignTeacherMsg, setAssignTeacherMsg] = useState<string | null>(null);
+
+  // ── Shared package (siblings) ──
+  const [showShare, setShowShare] = useState(false);
+  const [shareCandidates, setShareCandidates] = useState<{ id: number; name: string }[]>([]);
+  const [shareStudentId, setShareStudentId] = useState("");
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
+
+  const openShare = async () => {
+    setShareStudentId("");
+    setShareError(null);
+    setShowShare(true);
+    try {
+      const res = await axios.get(`${base}/api/student/students`, { headers });
+      const taken = new Set([activePackage?.owner_id, ...(activePackage?.members ?? []).map(m => m.id)]);
+      const rows: { id: number; name: string; is_active: number | boolean }[] = res.data?.data ?? [];
+      setShareCandidates(rows.filter(s => s.is_active && !taken.has(s.id)).map(s => ({ id: s.id, name: s.name })));
+    } catch {
+      setShareError("Failed to load students");
+    }
+  };
+
+  const handleShare = async () => {
+    if (!activePackage || !shareStudentId) return;
+    setShareLoading(true);
+    setShareError(null);
+    try {
+      await axios.post(`${base}/api/admin/student-packages/${activePackage.id}/members`, { student_id: Number(shareStudentId) }, { headers });
+      setShowShare(false);
+      fetchData();
+    } catch (err: unknown) {
+      setShareError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to share package");
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const handleUnshare = async (memberId: number, memberName: string) => {
+    if (!activePackage) return;
+    if (!window.confirm(`Stop sharing this package with ${memberName}?`)) return;
+    try {
+      await axios.delete(`${base}/api/admin/student-packages/${activePackage.id}/members/${memberId}`, { headers });
+      fetchData();
+    } catch (err: unknown) {
+      alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to remove sharing");
+    }
+  };
 
   const handleAssignStudentTeacher = async (teacherIdVal: string | null) => {
     setAssignTeacherLoading(true);
@@ -460,62 +510,11 @@ const AdminStudentProfilePage = () => {
 
   // Session adjustment dialog
   const [showAdjust, setShowAdjust] = useState<"add" | "deduct" | null>(null);
-  const [adjustAmount, setAdjustAmount] = useState("1");
-  const [adjustRemarkPreset, setAdjustRemarkPreset] = useState("");
-  const [adjustRemarks, setAdjustRemarks] = useState("");
-  const [adjustLoading, setAdjustLoading] = useState(false);
-  const [adjustError, setAdjustError] = useState<string | null>(null);
-  const [adjustSuccess, setAdjustSuccess] = useState<string | null>(null);
-
-  const ADD_PRESETS = [
-    { value: "Free Class",       label: t("profile.adjustment.presets.add.freeClass") },
-    { value: "Teacher Absent",   label: t("profile.adjustment.presets.add.teacherAbsent") },
-    { value: "Makeup Class",     label: t("profile.adjustment.presets.add.makeupClass") },
-    { value: "Bonus Sessions",   label: t("profile.adjustment.presets.add.bonusSessions") },
-    { value: "Referral Reward",  label: t("profile.adjustment.presets.add.referralReward") },
-    { value: "Other",            label: t("profile.adjustment.presets.add.other") },
-  ];
-  const DEDUCT_PRESETS = [
-    { value: "Class Already Used",   label: t("profile.adjustment.presets.deduct.classUsed") },
-    { value: "Student Absent",       label: t("profile.adjustment.presets.deduct.studentAbsent") },
-    { value: "Session Consumed",     label: t("profile.adjustment.presets.deduct.sessionConsumed") },
-    { value: "Correction of Count",  label: t("profile.adjustment.presets.deduct.correctionOfCount") },
-    { value: "Other",                label: t("profile.adjustment.presets.deduct.other") },
-  ];
 
   // Session adjustment history
   const [showAdjustHistory, setShowAdjustHistory] = useState(false);
   const [adjustHistory, setAdjustHistory] = useState<{ id: number; adjustment: number; remarks: string; created_at: string; adjusted_by_name: string }[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-
-  const handleAdjustSessions = async () => {
-    if (!activePackage || !adjustRemarks.trim()) return;
-    setAdjustLoading(true);
-    setAdjustError(null);
-    setAdjustSuccess(null);
-    try {
-      const adj = showAdjust === "deduct" ? -Math.abs(Number(adjustAmount)) : Math.abs(Number(adjustAmount));
-      const res = await axios.post(
-        `${base}/api/admin/student-packages/${activePackage.id}/adjust-sessions`,
-        { adjustment: adj, remarks: adjustRemarks.trim() },
-        { headers }
-      );
-      setAdjustSuccess(res.data.message);
-      fetchData();
-      // Keep the dialog open briefly to show success, then close
-      setTimeout(() => {
-        setShowAdjust(null);
-        setAdjustAmount("1");
-        setAdjustRemarks("");
-        setAdjustSuccess(null);
-      }, 1500);
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to adjust sessions";
-      setAdjustError(msg);
-    } finally {
-      setAdjustLoading(false);
-    }
-  };
 
   const fetchAdjustmentHistory = async () => {
     if (!activePackage) return;
@@ -591,6 +590,7 @@ const AdminStudentProfilePage = () => {
         const appointmentDate = localToMysql(date, time);
         await axios.post(`${base}/api/admin/bookings`, {
           student_package_id: activePackage.id,
+          student_id: Number(id),
           appointment_date: appointmentDate,
           teacher_id: addTeacherId ? Number(addTeacherId) : null,
         }, { headers });
@@ -622,6 +622,7 @@ const AdminStudentProfilePage = () => {
     try {
       const res = await axios.post(`${base}/api/recurring`, {
         student_package_id: activePackage.id,
+        student_id: Number(id),
         teacher_id: recurringTeacherId ? Number(recurringTeacherId) : undefined,
         days_of_week: recurringDays,
         start_time: recurringTime,
@@ -985,7 +986,7 @@ const AdminStudentProfilePage = () => {
                       variant="ghost"
                       className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50"
                       title="Add sessions"
-                      onClick={() => { setShowAdjust("add"); setAdjustAmount("1"); setAdjustRemarkPreset(""); setAdjustRemarks(""); setAdjustError(null); setAdjustSuccess(null); }}
+                      onClick={() => setShowAdjust("add")}
                     >
                       <PlusCircle className="h-4 w-4" />
                     </Button>
@@ -995,7 +996,7 @@ const AdminStudentProfilePage = () => {
                       variant="ghost"
                       className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-50"
                       title="Deduct sessions"
-                      onClick={() => { setShowAdjust("deduct"); setAdjustAmount("1"); setAdjustRemarkPreset(""); setAdjustRemarks(""); setAdjustError(null); setAdjustSuccess(null); }}
+                      onClick={() => setShowAdjust("deduct")}
                     >
                       <MinusCircle className="h-4 w-4" />
                     </Button>
@@ -1048,6 +1049,46 @@ const AdminStudentProfilePage = () => {
                   )}
                 </div>
               </div>
+
+              {/* Shared package row — siblings booking from one package */}
+              {activePackage.owner_id === Number(id) ? (
+                <div className="flex items-center justify-between gap-2 pt-1 border-t">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Shared with:</span>
+                    {activePackage.members.length > 0 ? activePackage.members.map(m => (
+                      <Badge key={m.id} variant="outline" className="gap-1">
+                        {m.name}
+                        <button type="button" title={`Stop sharing with ${m.name}`} className="hover:text-destructive" onClick={() => handleUnshare(m.id, m.name)}>
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    )) : (
+                      <span className="text-muted-foreground italic text-xs">Not shared</span>
+                    )}
+                  </div>
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={openShare}>
+                    <Plus className="h-3.5 w-3.5" /> Share with sibling
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-2 pt-1 border-t">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Shared package owned by</span>
+                    <button type="button" className="font-semibold text-sm hover:underline" onClick={() => navigate(`/admin/students/${activePackage.owner_id}`)}>
+                      {activePackage.owner_name}
+                    </button>
+                    {activePackage.members.filter(m => m.id !== Number(id)).map(m => (
+                      <Badge key={m.id} variant="outline">{m.name}</Badge>
+                    ))}
+                  </div>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground gap-1 hover:text-destructive"
+                    onClick={() => handleUnshare(Number(id), student?.name ?? "this student")}>
+                    <X className="h-3.5 w-3.5" /> Stop sharing
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -1650,94 +1691,48 @@ const AdminStudentProfilePage = () => {
       </Dialog>
 
       {/* Session Adjustment Dialog */}
-      <Dialog open={!!showAdjust} onOpenChange={(o) => { if (!o) { setShowAdjust(null); setAdjustRemarkPreset(""); setAdjustRemarks(""); setAdjustSuccess(null); } }}>
-        <DialogContent className="sm:max-w-sm">
+      <SessionAdjustDialog
+        mode={showAdjust}
+        studentPackageId={activePackage?.id ?? null}
+        sessionsRemaining={activePackage?.sessions_remaining ?? 0}
+        unusedSessions={activePackage?.unused_sessions ?? 0}
+        onClose={() => setShowAdjust(null)}
+        onAdjusted={() => fetchData()}
+      />
+
+      {/* Assign Teacher to Student (package-level + cascade) */}
+      {/* Share Package Dialog */}
+      <Dialog open={showShare} onOpenChange={(o) => { if (!o) setShowShare(false); }}>
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>
-              {showAdjust === "add" ? "Add Sessions" : "Deduct Sessions"}
-            </DialogTitle>
+            <DialogTitle>Share package with a sibling</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            {adjustError && <p className="text-sm text-destructive">{adjustError}</p>}
-            {adjustSuccess && <p className="text-sm text-green-600">{adjustSuccess}</p>}
-
-            <div className="space-y-1.5">
-              <Label>
-                Number of sessions to {showAdjust === "add" ? "add" : "deduct"} <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                type="number"
-                min="1"
-                max="100"
-                value={adjustAmount}
-                onChange={(e) => setAdjustAmount(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Reason <span className="text-destructive">*</span></Label>
-              <Select
-                value={adjustRemarkPreset}
-                onValueChange={(val) => {
-                  setAdjustRemarkPreset(val);
-                  if (val !== "Other") setAdjustRemarks(val);
-                  else setAdjustRemarks("");
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a reason..." />
-                </SelectTrigger>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              Both students book from the same {activePackage?.sessions_remaining ?? 0} remaining session(s). Each class still shows under the student who attends it.
+            </p>
+            <div>
+              <Label>Student</Label>
+              <Select value={shareStudentId} onValueChange={setShareStudentId}>
+                <SelectTrigger><SelectValue placeholder="Select a student" /></SelectTrigger>
                 <SelectContent>
-                  {(showAdjust === "add" ? ADD_PRESETS : DEDUCT_PRESETS).map((preset) => (
-                    <SelectItem key={preset.value} value={preset.value}>{preset.label}</SelectItem>
+                  {shareCandidates.map(s => (
+                    <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {adjustRemarkPreset === "Other" && (
-                <Textarea
-                  placeholder="Enter custom reason..."
-                  value={adjustRemarks}
-                  onChange={(e) => setAdjustRemarks(e.target.value)}
-                  rows={2}
-                />
-              )}
-              <p className="text-xs text-muted-foreground">
-                This note will be included in the notification sent to the student.
-              </p>
             </div>
-
-            {activePackage && (
-              <div className="bg-muted/50 rounded-lg p-3 text-sm">
-                <p className="text-muted-foreground">Remaining sessions: <strong>{activePackage.unused_sessions}</strong></p>
-                <p className="text-muted-foreground">Available to book: <strong>{activePackage.sessions_remaining}</strong></p>
-                <p className="text-muted-foreground">
-                  After adjustment (available to book): <strong>
-                    {showAdjust === "add"
-                      ? activePackage.sessions_remaining + Math.abs(Number(adjustAmount) || 0)
-                      : Math.max(0, activePackage.sessions_remaining - Math.abs(Number(adjustAmount) || 0))}
-                  </strong>
-                </p>
-              </div>
-            )}
+            {shareError && <p className="text-xs text-destructive">{shareError}</p>}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAdjust(null)}>Cancel</Button>
-            <Button
-              onClick={handleAdjustSessions}
-              disabled={adjustLoading || !adjustRemarks.trim() || !adjustAmount || Number(adjustAmount) < 1}
-              variant={showAdjust === "deduct" ? "destructive" : "default"}
-            >
-              {adjustLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                showAdjust === "add" ? "Add Sessions" : "Deduct Sessions"
-              )}
+            <Button variant="outline" onClick={() => setShowShare(false)}>Cancel</Button>
+            <Button onClick={handleShare} disabled={!shareStudentId || shareLoading}>
+              {shareLoading && <Loader2 className="h-4 w-4 animate-spin mr-1" />} Share
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Assign Teacher to Student (package-level + cascade) */}
       <Dialog open={showAssignTeacher} onOpenChange={(o) => { if (!o) { setShowAssignTeacher(false); setAssignTeacherMsg(null); } }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>

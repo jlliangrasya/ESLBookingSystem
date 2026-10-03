@@ -119,6 +119,36 @@ const MIGRATIONS = [
     check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'teacher_notes' AND INDEX_NAME = 'idx_note_group'",
     up: 'CREATE INDEX idx_note_group ON teacher_notes (company_id, teacher_id, note_group_id)',
   },
+  // ── 016: Shared packages (siblings) ───────────────────────────────────────
+  // Split from 016_shared_packages.sql for the same re-run safety as 015.
+  {
+    name: 'student_package_members table',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student_package_members'",
+    up: `CREATE TABLE student_package_members (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      company_id INT NOT NULL,
+      student_package_id INT NOT NULL,
+      student_id INT NOT NULL,
+      added_by INT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_package_member (student_package_id, student_id),
+      INDEX idx_spm_student (student_id),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (student_package_id) REFERENCES student_packages(id) ON DELETE CASCADE,
+      FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL
+    )`,
+  },
+  {
+    name: 'bookings.attendee_id column',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'attendee_id'",
+    up: 'ALTER TABLE bookings ADD COLUMN attendee_id INT NULL',
+  },
+  {
+    name: 'bookings attendee index',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND INDEX_NAME = 'idx_bookings_attendee'",
+    up: 'CREATE INDEX idx_bookings_attendee ON bookings (attendee_id)',
+  },
 ];
 
 async function main() {

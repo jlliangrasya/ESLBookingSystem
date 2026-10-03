@@ -230,6 +230,16 @@ async function runAutoMigrations() {
         INDEX idx_company_kind (company_id, kind),
         FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL)` },
+    // student_package_members (migration 016 — shared packages)
+    { name: 'student_package_members', sql: `CREATE TABLE IF NOT EXISTS student_package_members (
+        id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, student_package_id INT NOT NULL,
+        student_id INT NOT NULL, added_by INT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_package_member (student_package_id, student_id),
+        INDEX idx_spm_student (student_id),
+        FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+        FOREIGN KEY (student_package_id) REFERENCES student_packages(id) ON DELETE CASCADE,
+        FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL)` },
   ];
 
   for (const m of migrations) {
@@ -262,11 +272,15 @@ async function runAutoMigrations() {
   const addTableCols = [
     ['notifications', 'link', 'VARCHAR(255) NULL'],
     ['users', 'last_login_at', 'TIMESTAMP NULL'],
+    // Migration 016: every booking query reads attendee_id, so it must exist at boot.
+    ['bookings', 'attendee_id', 'INT NULL'],
   ];
   for (const [table, col, def] of addTableCols) {
     try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); }
     catch (err) { if (!err.message.includes('Duplicate column')) logger.error(`Add column ${table}.${col} failed`, { error: err.message }); }
   }
+  try { await pool.query('CREATE INDEX idx_bookings_attendee ON bookings (attendee_id)'); }
+  catch (err) { if (!err.message.includes('Duplicate key name')) logger.error('Add idx_bookings_attendee failed', { error: err.message }); }
 
   // Backfill: copy old name/email into company_name/company_email if old columns exist
   try {

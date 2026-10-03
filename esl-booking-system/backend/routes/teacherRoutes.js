@@ -6,6 +6,7 @@ const requireRole = require('../middleware/requireRole');
 const notify = require('../utils/notify');
 const { logAction } = require('../utils/audit');
 const { notifyWaitlistForSlot } = require('./waitlistRoutes');
+const { attendeeSql, packageStudentIds } = require('../utils/sharedPackages');
 
 const router = express.Router();
 
@@ -114,7 +115,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
                 sp.subject,
                 sp.payment_status
             FROM student_packages sp
-            JOIN users u ON sp.student_id = u.id
+            JOIN users u ON u.id = sp.student_id OR u.id IN (SELECT spm.student_id FROM student_package_members spm WHERE spm.student_package_id = sp.id)
             JOIN tutorial_packages tp ON sp.package_id = tp.id
             WHERE sp.teacher_id = ? AND sp.company_id = ?
             ORDER BY u.name ASC
@@ -142,7 +143,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
                 sp.subject
             FROM bookings b
             JOIN student_packages sp ON b.student_package_id = sp.id
-            JOIN users u ON sp.student_id = u.id
+            JOIN users u ON u.id = ${attendeeSql()}
             JOIN tutorial_packages tp ON sp.package_id = tp.id
             WHERE b.teacher_id = ? AND b.company_id = ?
               AND DATE(b.appointment_date) >= ?
@@ -161,13 +162,13 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
                 b.teacher_absent,
                 b.booking_group_id,
                 u.name AS student_name,
-                sp.student_id,
+                ${attendeeSql()} AS student_id,
                 tp.duration_minutes,
                 sp.subject,
                 CASE WHEN cr.id IS NOT NULL THEN TRUE ELSE FALSE END AS has_report
             FROM bookings b
             JOIN student_packages sp ON b.student_package_id = sp.id
-            JOIN users u ON sp.student_id = u.id
+            JOIN users u ON u.id = ${attendeeSql()}
             JOIN tutorial_packages tp ON sp.package_id = tp.id
             LEFT JOIN class_reports cr ON cr.booking_id = b.id
             WHERE b.teacher_id = ? AND b.company_id = ? AND b.status = 'done'
@@ -414,10 +415,10 @@ router.post('/bookings/:id/cancel', authenticateToken, requireRole('teacher'), a
 
         const [[booking]] = await pool.query(
             `SELECT b.id, b.appointment_date, b.teacher_id, b.student_package_id, b.recurring_schedule_id,
-                    b.booking_group_id, sp.student_id, u.name AS student_name
+                    b.booking_group_id, ${attendeeSql()} AS student_id, u.name AS student_name
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
-             JOIN users u ON sp.student_id = u.id
+             JOIN users u ON u.id = ${attendeeSql()}
              WHERE b.id = ? AND b.teacher_id = ? AND b.company_id = ?
                AND b.status NOT IN ('done', 'cancelled')`,
             [id, teacherId, companyId]
@@ -610,11 +611,11 @@ router.get('/completed-classes', authenticateToken, requireRole('teacher'), asyn
         const [rows] = await pool.query(`
             SELECT b.id, b.appointment_date, b.status, b.student_absent, b.teacher_absent,
                    b.booking_group_id,
-                   u.name AS student_name, sp.student_id, tp.duration_minutes, sp.subject,
+                   u.name AS student_name, ${attendeeSql()} AS student_id, tp.duration_minutes, sp.subject,
                    CASE WHEN cr.id IS NOT NULL THEN TRUE ELSE FALSE END AS has_report
             FROM bookings b
             JOIN student_packages sp ON b.student_package_id = sp.id
-            JOIN users u ON sp.student_id = u.id
+            JOIN users u ON u.id = ${attendeeSql()}
             JOIN tutorial_packages tp ON sp.package_id = tp.id
             LEFT JOIN class_reports cr ON cr.booking_id = b.id
             WHERE b.teacher_id = ? AND b.company_id = ? AND b.status = 'done'
@@ -661,12 +662,12 @@ router.get('/pending-confirmation', authenticateToken, requireRole('teacher'), a
                 b.id, b.appointment_date, b.status, b.student_absent,
                 b.student_package_id, b.booking_group_id,
                 u.name AS student_name,
-                sp.student_id,
+                ${attendeeSql()} AS student_id,
                 tp.duration_minutes,
                 sp.subject
             FROM bookings b
             JOIN student_packages sp ON b.student_package_id = sp.id
-            JOIN users u ON sp.student_id = u.id
+            JOIN users u ON u.id = ${attendeeSql()}
             JOIN tutorial_packages tp ON sp.package_id = tp.id
             WHERE b.teacher_id = ? AND b.company_id = ?
               AND b.appointment_date < ?
@@ -689,10 +690,10 @@ router.post('/bookings/:id/done', authenticateToken, requireRole('teacher'), asy
     try {
         const [[booking]] = await pool.query(
             `SELECT b.id, b.student_package_id, b.appointment_date, b.student_absent,
-                    b.booking_group_id, sp.student_id, u.name AS student_name
+                    b.booking_group_id, ${attendeeSql()} AS student_id, u.name AS student_name
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
-             JOIN users u ON sp.student_id = u.id
+             JOIN users u ON u.id = ${attendeeSql()}
              WHERE b.id = ? AND b.teacher_id = ? AND b.company_id = ?
                AND b.appointment_date < ?
                AND b.status IN ('pending', 'confirmed')`,
@@ -738,13 +739,15 @@ router.post('/bookings/:id/done', authenticateToken, requireRole('teacher'), asy
              FROM student_packages sp JOIN users u ON sp.student_id = u.id
              WHERE sp.id = ?`, [booking.student_package_id]
         );
+        // Everyone sharing the package gets the warning
+        const pkgStudentIds = updatedPkg ? await packageStudentIds(booking.student_package_id) : [];
         if (updatedPkg && updatedPkg.unused_sessions <= 2 && updatedPkg.unused_sessions > 0) {
-            await notify({
-                userId: updatedPkg.student_id, companyId,
+            await Promise.all(pkgStudentIds.map(sid => notify({
+                userId: sid, companyId,
                 type: 'low_sessions',
                 title: 'Low sessions remaining',
                 message: `You have ${updatedPkg.unused_sessions} session(s) left. Please consider enrolling in a new package soon.`,
-            });
+            })));
             const [admins] = await pool.query(
                 "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin'", [companyId]
             );
@@ -755,12 +758,12 @@ router.post('/bookings/:id/done', authenticateToken, requireRole('teacher'), asy
                 message: `${updatedPkg.student_name} has only ${updatedPkg.unused_sessions} session(s) remaining.`,
             })));
         } else if (updatedPkg && updatedPkg.unused_sessions === 0) {
-            await notify({
-                userId: updatedPkg.student_id, companyId,
+            await Promise.all(pkgStudentIds.map(sid => notify({
+                userId: sid, companyId,
                 type: 'package_exhausted',
                 title: 'Package exhausted',
                 message: 'You have used all your sessions. Please enroll in a new package to continue booking.',
-            });
+            })));
         }
 
         await logAction(companyId, teacherId, 'booking_confirmed_by_teacher', 'booking', Number(id), { student_name: booking.student_name });
@@ -943,7 +946,7 @@ router.get('/week-bookings', authenticateToken, requireRole('teacher'), async (r
                     sp.subject
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
-             JOIN users u ON sp.student_id = u.id
+             JOIN users u ON u.id = ${attendeeSql()}
              WHERE b.teacher_id = ? AND b.company_id = ?
                AND DATE(b.appointment_date) >= ? AND DATE(b.appointment_date) < ?
                AND b.status <> 'cancelled'

@@ -3,6 +3,7 @@ const pool = require("../db");
 const authenticateToken = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
 const { logAction } = require("../utils/audit");
+const { canUsePackageSql } = require("../utils/sharedPackages");
 
 const router = express.Router();
 
@@ -170,13 +171,14 @@ router.get("/avail", authenticateToken, requireRole('student'), async (req, res)
         const studentId = req.user.id;
         const companyId = req.user.company_id;
 
+        // Own package first; otherwise a package shared with this student (e.g. a sibling's)
         const [rows] = await pool.query(
             `SELECT sp.id AS student_package_id, sp.teacher_id, tp.duration_minutes
              FROM student_packages sp
              JOIN tutorial_packages tp ON sp.package_id = tp.id
-             WHERE sp.student_id = ? AND sp.company_id = ? AND sp.payment_status = 'paid' AND sp.sessions_remaining > 0
-             ORDER BY sp.purchased_at DESC LIMIT 1`,
-            [studentId, companyId]
+             WHERE ${canUsePackageSql('sp')} AND sp.company_id = ? AND sp.payment_status = 'paid' AND sp.sessions_remaining > 0
+             ORDER BY (sp.student_id = ?) DESC, sp.purchased_at DESC LIMIT 1`,
+            [studentId, studentId, companyId, studentId]
         );
 
         if (rows.length === 0) {

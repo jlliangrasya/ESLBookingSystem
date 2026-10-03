@@ -4,6 +4,7 @@ const notify = require('./utils/notify');
 const { sendMail } = require('./utils/mailer');
 const logger = require('./utils/logger');
 const { phtNowSql, phtTodaySql, formatPHT } = require('./utils/phtTime');
+const { attendeeSql } = require('./utils/sharedPackages');
 
 // ── Reliability notes (Render free tier) ─────────────────────────────────────
 // The free tier idle-sleeps the process after ~15 min without inbound HTTP
@@ -230,11 +231,11 @@ async function run5HourReminders() {
         const windowEnd = phtNowSql(5.5 * 60);      // now + 5.5h (PHT)
         const [upcoming] = await pool.query(`
             SELECT b.id, b.appointment_date, b.teacher_id, b.booking_group_id,
-                   sp.student_id, u_student.name AS student_name,
+                   ${attendeeSql()} AS student_id, u_student.name AS student_name,
                    u_teacher.name AS teacher_name
             FROM bookings b
             JOIN student_packages sp ON b.student_package_id = sp.id
-            JOIN users u_student ON sp.student_id = u_student.id
+            JOIN users u_student ON u_student.id = ${attendeeSql()}
             LEFT JOIN users u_teacher ON b.teacher_id = u_teacher.id
             WHERE b.status IN ('confirmed', 'pending')
               AND b.reminded_5h = FALSE
@@ -291,11 +292,11 @@ async function run30MinReminders() {
         const windowEnd = phtNowSql(40);            // now + 40min (PHT)
         const [upcoming] = await pool.query(`
             SELECT b.id, b.appointment_date, b.teacher_id, b.class_mode, b.meeting_link, b.booking_group_id,
-                   sp.student_id, u_student.name AS student_name, u_student.email AS student_email,
+                   ${attendeeSql()} AS student_id, u_student.name AS student_name, u_student.email AS student_email,
                    u_teacher.name AS teacher_name, u_teacher.email AS teacher_email
             FROM bookings b
             JOIN student_packages sp ON b.student_package_id = sp.id
-            JOIN users u_student ON sp.student_id = u_student.id
+            JOIN users u_student ON u_student.id = ${attendeeSql()}
             LEFT JOIN users u_teacher ON b.teacher_id = u_teacher.id
             WHERE b.status IN ('confirmed', 'pending')
               AND b.reminded = FALSE

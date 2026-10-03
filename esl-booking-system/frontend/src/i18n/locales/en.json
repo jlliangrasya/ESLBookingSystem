@@ -90,6 +90,7 @@
     "dateEnrolled": "Date Enrolled:",
     "sessionsRemaining": "{{count}} remaining",
     "sessionsAvailableToBook": "{{count}} available to book",
+    "sharedWith": "Shared with {{names}}",
     "noPackage": "No package availed yet.",
     "feedback": "Feedback",
     "feedbackPlaceholder": "Leave your feedback here...",

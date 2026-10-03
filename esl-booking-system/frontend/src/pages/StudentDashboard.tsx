@@ -43,6 +43,8 @@ interface PackageDetails {
   unused_sessions: number;
   session_limit: number;
   price: number;
+  /** Siblings booking from the same package (empty when not shared) */
+  shared_with?: string[];
 }
 
 interface AvailablePackage {
@@ -580,6 +582,11 @@ const StudentDashboard = () => {
                   </Badge>
                 )}
               </div>
+              {packageDetails.shared_with && packageDetails.shared_with.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {t("student.sharedWith", { names: packageDetails.shared_with.join(", ") })}
+                </p>
+              )}
             </div>
           ) : (
             <p className="text-muted-foreground text-sm italic">

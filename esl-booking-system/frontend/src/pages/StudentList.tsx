@@ -6,6 +6,7 @@ import AuthContext from "@/context/AuthContext";
 import { AdminTour } from "@/components/AdminTour";
 import { useOnboarding } from "@/context/OnboardingContext";
 import BulkImportDialog from "@/components/BulkImportDialog";
+import SessionAdjustDialog, { type AdjustMode } from "@/components/SessionAdjustDialog";
 import {
   Table,
   TableBody,
@@ -118,10 +119,8 @@ const StudentListPage: React.FC = () => {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  // Row currently saving a quick +/- session adjustment, so its buttons can't
-  // be double-clicked into two requests.
-  const [adjustingId, setAdjustingId] = useState<number | null>(null);
-  const [adjustError, setAdjustError] = useState<string | null>(null);
+  // Student whose sessions are being added/deducted via the +/- buttons.
+  const [adjustTarget, setAdjustTarget] = useState<{ student: Student; mode: AdjustMode } | null>(null);
 
   // The server checks this too — this only decides when the button lights up.
   const deleteConfirmed =
@@ -177,44 +176,20 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
     }
   };
 
-  // One-click +1 / -1 from the list. Uses the same endpoint (and audit trail)
-  // as the profile's Add/Deduct dialog, with a fixed remark since there's no
-  // form here to type one into.
-  const handleQuickAdjust = async (student: Student, delta: 1 | -1) => {
-    if (!student.student_package_id || adjustingId !== null) return;
-    setAdjustingId(student.id);
-    setAdjustError(null);
-    try {
-      const token = localStorage.getItem("token");
-      const res = await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/admin/student-packages/${student.student_package_id}/adjust-sessions`,
-        {
-          adjustment: delta,
-          remarks: delta > 0 ? "Quick add from Students List" : "Quick deduct from Students List",
-        },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      const newRemaining: number = res.data.sessions_remaining;
-      setStudents((prev) =>
-        prev.map((s) =>
-          s.id === student.id
-            ? {
-                ...s,
-                sessions_remaining: newRemaining,
-                unused_sessions: (s.unused_sessions ?? s.sessions_remaining ?? 0) + delta,
-              }
-            : s,
-        ),
-      );
-    } catch (err: unknown) {
-      if (axios.isAxiosError(err) && err.response) {
-        setAdjustError(err.response.data?.message || "Failed to adjust sessions");
-      } else {
-        setAdjustError("An unexpected error occurred");
-      }
-    } finally {
-      setAdjustingId(null);
-    }
+  // Patch the row in place rather than refetching, so the table doesn't
+  // flash or lose its page while the dialog shows its success message.
+  const handleAdjusted = (studentId: number, adjustment: number, newRemaining: number) => {
+    setStudents((prev) =>
+      prev.map((s) =>
+        s.id === studentId
+          ? {
+              ...s,
+              sessions_remaining: newRemaining,
+              unused_sessions: (s.unused_sessions ?? s.sessions_remaining ?? 0) + adjustment,
+            }
+          : s,
+      ),
+    );
   };
 
   const filtered = useMemo(() => {
@@ -431,12 +406,6 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
           </Select>
         </div>
 
-        {adjustError && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertDescription>{adjustError}</AlertDescription>
-          </Alert>
-        )}
-
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
           {isLoading ? (
             <div className="flex justify-center items-center py-16">
@@ -500,22 +469,18 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                             <Button
                               size="sm"
                               variant="outline"
-                              aria-label={`Deduct a session from ${student.name}`}
-                              title="Deduct 1 session"
-                              className="h-6 w-6 p-0 shrink-0"
+                              aria-label={`Deduct sessions from ${student.name}`}
+                              title={student.student_package_id ? "Deduct sessions" : "No package assigned"}
+                              className="h-6 w-6 p-0 shrink-0 text-red-600 hover:text-red-700 hover:bg-red-50"
                               disabled={
                                 !student.student_package_id ||
-                                adjustingId !== null ||
                                 (student.sessions_remaining ?? 0) <= 0
                               }
-                              onClick={() => handleQuickAdjust(student, -1)}
+                              onClick={() => setAdjustTarget({ student, mode: "deduct" })}
                             >
                               <Minus className="h-3 w-3" />
                             </Button>
-                          <div className="flex gap-1 flex-wrap items-center">
-                            {adjustingId === student.id && (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                            )}
+                            <div className="flex gap-1 flex-wrap items-center">
                             <Badge
                               variant={
                                 (student.unused_sessions ?? student.sessions_remaining ?? 0) <= 3
@@ -530,15 +495,15 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                                 {student.sessions_remaining ?? 0} available to book
                               </Badge>
                             )}
-                          </div>
+                            </div>
                             <Button
                               size="sm"
                               variant="outline"
-                              aria-label={`Add a session to ${student.name}`}
-                              title={student.student_package_id ? "Add 1 session" : "No package assigned"}
-                              className="h-6 w-6 p-0 shrink-0"
-                              disabled={!student.student_package_id || adjustingId !== null}
-                              onClick={() => handleQuickAdjust(student, 1)}
+                              aria-label={`Add sessions to ${student.name}`}
+                              title={student.student_package_id ? "Add sessions" : "No package assigned"}
+                              className="h-6 w-6 p-0 shrink-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                              disabled={!student.student_package_id}
+                              onClick={() => setAdjustTarget({ student, mode: "add" })}
                             >
                               <Plus className="h-3 w-3" />
                             </Button>
@@ -792,6 +757,20 @@ Please use the email and password to login to https://esl-booking-system.pages.d
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <SessionAdjustDialog
+        mode={adjustTarget?.mode ?? null}
+        studentPackageId={adjustTarget?.student.student_package_id ?? null}
+        studentName={adjustTarget?.student.name}
+        sessionsRemaining={adjustTarget?.student.sessions_remaining ?? 0}
+        unusedSessions={
+          adjustTarget?.student.unused_sessions ?? adjustTarget?.student.sessions_remaining ?? 0
+        }
+        onClose={() => setAdjustTarget(null)}
+        onAdjusted={(adjustment, newRemaining) => {
+          if (adjustTarget) handleAdjusted(adjustTarget.student.id, adjustment, newRemaining);
+        }}
+      />
 
       <BulkImportDialog
         open={showBulkImport}

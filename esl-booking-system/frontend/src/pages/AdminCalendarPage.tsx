@@ -93,10 +93,6 @@ const STUDENT_COLORS = [
   "#b45309", // amber-dark
 ];
 
-/** Same student → same color on every load; spreads consecutive ids apart. */
-const studentColor = (studentId: number) =>
-  STUDENT_COLORS[(studentId * 7) % STUDENT_COLORS.length];
-
 /** How far the pointer must travel before a press counts as a drag rather than a click. */
 const DRAG_THRESHOLD_PX = 8;
 /** Touch has no drag-to-select, so a hold starts one. */
@@ -259,6 +255,13 @@ const AdminCalendarPage = () => {
     return { bookingByKey: byKey, groupFirstSlot: firstSlot };
   }, [bookings]);
 
+  // Hand out the palette in order to the students booked this week, so no color
+  // repeats until every one of them is in use. Sorted by id to keep it stable.
+  const colorByStudent = useMemo(() => {
+    const ids = [...new Set(bookings.map(b => b.student_id))].sort((a, b) => a - b);
+    return new Map(ids.map((id, i) => [id, STUDENT_COLORS[i % STUDENT_COLORS.length]]));
+  }, [bookings]);
+
   const toggleSlot = async (dateStr: string, time: string, action: "open" | "close") => {
     if (!teacher) return;
     const key = `${dateStr}|${time}`;
@@ -287,10 +290,12 @@ const AdminCalendarPage = () => {
     setBookingSlot({ date, time });
   };
 
-  const selectedPkg = bookableStudents.find(p => String(p.student_package_id) === selectedPkgId) ?? null;
+  // A shared package is listed once per sibling, so key by package + student
+  const pkgKey = (p: BookablePackage) => `${p.student_package_id}:${p.student_id}`;
+  const selectedPkg = bookableStudents.find(p => pkgKey(p) === selectedPkgId) ?? null;
 
   const studentPickerItems = useMemo(() => bookableStudents.map(p => ({
-    id: String(p.student_package_id),
+    id: pkgKey(p),
     name: p.student_name,
     durationMinutes: p.duration_minutes || 25,
     sessionsRemaining: p.sessions_remaining,
@@ -321,6 +326,7 @@ const AdminCalendarPage = () => {
     try {
       await axios.post(`${base}/api/admin/bookings`, {
         student_package_id: selectedPkg.student_package_id,
+        student_id: selectedPkg.student_id,
         appointment_date: localToMysql(bookingSlot.date, bookingSlot.time),
         teacher_id: teacher.id,
         require_open_slot: true,
@@ -852,7 +858,7 @@ const AdminCalendarPage = () => {
                                   if (!isDone && cancellingId === null) handleBookedClick(booking);
                                 }}
                                 title={isDone ? `${tooltip} — completed, cannot cancel` : `${tooltip} — click to cancel`}
-                                style={isDone ? undefined : { backgroundColor: studentColor(booking.student_id), color: "#fff" }}
+                                style={isDone ? undefined : { backgroundColor: colorByStudent.get(booking.student_id), color: "#fff" }}
                                 className={`p-1 text-center border transition-[filter] ${
                                   isDone ? "bg-slate-200 text-slate-500 cursor-default"
                                   : isPending ? "cursor-pointer hover:brightness-110 bg-[repeating-linear-gradient(45deg,transparent_0_6px,rgba(255,255,255,0.35)_6px_12px)]"

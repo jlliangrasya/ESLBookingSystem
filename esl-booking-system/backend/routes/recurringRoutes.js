@@ -6,6 +6,7 @@ const authenticateToken = require('../middleware/authMiddleware');
 const requireRole = require('../middleware/requireRole');
 const notify = require('../utils/notify');
 const { logAction } = require('../utils/audit');
+const { attendeeSql, canUsePackage } = require('../utils/sharedPackages');
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -86,10 +87,18 @@ router.post('/', authenticateToken, requireRole('student', 'company_admin'), asy
         }
         const sp = spRows[0];
 
-        // Students can only create schedules for their own packages
-        if (req.user.role === 'student' && sp.student_id !== req.user.id) {
+        // Who attends: the student themself, or (admin) the chosen student on a
+        // shared package — defaulting to the package owner as before.
+        const attendeeId = req.user.role === 'student'
+            ? req.user.id
+            : (req.body.student_id ? Number(req.body.student_id) : sp.student_id);
+
+        // Students can only create schedules for their own (or shared-with-them) packages
+        if (!(await canUsePackage(attendeeId, student_package_id, connection))) {
             await connection.rollback(); connection.release();
-            return res.status(403).json({ message: 'You can only create recurring schedules for your own packages.' });
+            return res.status(403).json({ message: req.user.role === 'student'
+                ? 'You can only create recurring schedules for your own packages.'
+                : 'That student does not share this package.' });
         }
 
         if (sp.payment_status !== 'paid') {
@@ -247,9 +256,9 @@ router.post('/', authenticateToken, requireRole('student', 'company_admin'), asy
                 const slotDatetime = `${dateStr} ${timeStr}:00`;
                 const [overlapRows] = await connection.query(
                     `SELECT b.id FROM bookings b JOIN student_packages spp ON b.student_package_id = spp.id
-                     WHERE spp.student_id = ? AND b.company_id = ? AND b.status NOT IN ('cancelled', 'done')
+                     WHERE ${attendeeSql('b', 'spp')} = ? AND b.company_id = ? AND b.status NOT IN ('cancelled', 'done')
                      AND ABS(TIMESTAMPDIFF(MINUTE, b.appointment_date, ?)) < 30`,
-                    [sp.student_id, companyId, slotDatetime]
+                    [attendeeId, companyId, slotDatetime]
                 );
                 if (overlapRows.length > 0) {
                     skippedDates.push({ date: dateStr, reason: `Student has existing class at ${timeStr}` });
@@ -291,7 +300,7 @@ router.post('/', authenticateToken, requireRole('student', 'company_admin'), asy
               duration_minutes, slots_per_class, num_weeks, start_date, end_date,
               total_possible, sessions_booked, skipped_dates, status, created_by)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
-            [companyId, student_package_id, teacherId, sp.student_id,
+            [companyId, student_package_id, teacherId, attendeeId,
              JSON.stringify(days_of_week), start_time,
              durationMinutes, slotsPerClass, weeksCount, startDateStr, endDateStr,
              targetDates.length, bookableDates.length,
@@ -309,10 +318,10 @@ router.post('/', authenticateToken, requireRole('student', 'company_admin'), asy
             for (const timeStr of slots) {
                 const appointmentDate = `${date} ${timeStr}:00`;
                 const [result] = await connection.query(
-                    `INSERT INTO bookings (company_id, student_package_id, teacher_id, appointment_date,
+                    `INSERT INTO bookings (company_id, student_package_id, attendee_id, teacher_id, appointment_date,
                      status, rescheduled_by_admin, booking_group_id, recurring_schedule_id, created_at)
-                     VALUES (?, ?, ?, ?, 'confirmed', 0, ?, ?, NOW())`,
-                    [companyId, student_package_id, teacherId, appointmentDate, groupId, scheduleId]
+                     VALUES (?, ?, ?, ?, ?, 'confirmed', 0, ?, ?, NOW())`,
+                    [companyId, student_package_id, attendeeId, teacherId, appointmentDate, groupId, scheduleId]
                 );
                 allInsertedIds.push(result.insertId);
             }
@@ -333,7 +342,7 @@ router.post('/', authenticateToken, requireRole('student', 'company_admin'), asy
         const daysStr = days_of_week.join(', ');
         const msg = `Recurring schedule created: ${daysStr} at ${start_time} for ${weeksCount} weeks. ${bookableDates.length} classes booked.`;
 
-        notify({ userId: sp.student_id, companyId, type: 'recurring_schedule_created', title: 'Recurring Schedule Created', message: msg });
+        notify({ userId: attendeeId, companyId, type: 'recurring_schedule_created', title: 'Recurring Schedule Created', message: msg });
         if (teacherId !== createdBy) {
             notify({ userId: teacherId, companyId, type: 'recurring_schedule_created', title: 'Recurring Schedule Created', message: msg });
         }
@@ -550,7 +559,7 @@ router.post('/:id/bookings/:bookingId/cancel', authenticateToken, requireRole('s
         await connection.beginTransaction();
 
         const [[booking]] = await connection.query(
-            `SELECT b.*, sp.student_id
+            `SELECT b.*, ${attendeeSql()} AS student_id
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
              WHERE b.id = ? AND b.recurring_schedule_id = ? AND b.company_id = ?

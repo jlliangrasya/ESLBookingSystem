@@ -495,11 +495,14 @@ router.delete('/users/:id', authenticateToken, requireRole('super_admin'), async
         await connection.query('DELETE FROM admin_permissions WHERE user_id = ?', [id]);
         await connection.query('DELETE FROM class_reports WHERE booking_id IN (SELECT b.id FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id WHERE sp.student_id = ?)', [id]);
         await connection.query('DELETE FROM class_reports WHERE teacher_id = ?', [id]);
+        // Classes this student attended on a sibling's shared package
+        await connection.query('DELETE FROM class_reports WHERE booking_id IN (SELECT id FROM bookings WHERE attendee_id = ?)', [id]);
         // session_adjustments references student_packages — must delete BEFORE student_packages
         await connection.query('DELETE FROM session_adjustments WHERE student_package_id IN (SELECT id FROM student_packages WHERE student_id = ?)', [id]);
         await connection.query('DELETE FROM session_adjustments WHERE adjusted_by = ?', [id]);
         await connection.query('DELETE FROM bookings WHERE student_package_id IN (SELECT id FROM student_packages WHERE student_id = ?)', [id]);
         await connection.query('DELETE FROM bookings WHERE teacher_id = ?', [id]);
+        await connection.query('DELETE FROM bookings WHERE attendee_id = ?', [id]);
         await connection.query('DELETE FROM student_packages WHERE student_id = ?', [id]);
         await connection.query('DELETE FROM student_feedback WHERE student_id = ?', [id]);
         await connection.query('DELETE FROM student_feedback WHERE teacher_id = ?', [id]);

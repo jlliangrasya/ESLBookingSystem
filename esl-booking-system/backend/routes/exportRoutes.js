@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db');
 const authenticateToken = require('../middleware/authMiddleware');
 const requireRole = require('../middleware/requireRole');
+const { attendeeSql } = require('../utils/sharedPackages');
 
 const router = express.Router();
 
@@ -61,7 +62,7 @@ router.get('/bookings', authenticateToken, requireRole('company_admin'), async (
                    tp.package_name, b.class_mode, b.teacher_absent, b.student_absent, b.created_at
             FROM bookings b
             JOIN student_packages sp ON b.student_package_id = sp.id
-            JOIN users u_student ON sp.student_id = u_student.id
+            JOIN users u_student ON u_student.id = ${attendeeSql()}
             LEFT JOIN users u_teacher ON b.teacher_id = u_teacher.id
             JOIN tutorial_packages tp ON sp.package_id = tp.id
             WHERE b.company_id = ?

@@ -5,6 +5,7 @@ const requireRole = require("../middleware/requireRole");
 const notify = require("../utils/notify");
 const { logAction } = require("../utils/audit");
 const { notifyWaitlistForSlot } = require("./waitlistRoutes");
+const { attendeeSql, canUsePackageSql, canUsePackage, packageStudentIds } = require("../utils/sharedPackages");
 
 const router = express.Router();
 
@@ -37,8 +38,8 @@ router.get("/api/bookings", authenticateToken, async (req, res) => {
         // Students can only view their own packages
         if (role === 'student') {
             const [[pkg]] = await pool.query(
-                "SELECT id FROM student_packages WHERE id = ? AND student_id = ? AND company_id = ?",
-                [student_package_id, userId, companyId]
+                `SELECT sp.id FROM student_packages sp WHERE sp.id = ? AND sp.company_id = ? AND ${canUsePackageSql('sp')}`,
+                [student_package_id, companyId, userId, userId]
             );
             if (!pkg) {
                 return res.status(403).json({ message: "Access denied" });
@@ -87,6 +88,13 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
             await connection.rollback();
             connection.release();
             return res.status(404).json({ message: "Package not found" });
+        }
+
+        // The package must be the student's own or one shared with them
+        if (!(await canUsePackage(studentId, student_package_id, connection))) {
+            await connection.rollback();
+            connection.release();
+            return res.status(403).json({ message: "Access denied" });
         }
 
         // Issue #13: Block booking with unpaid package
@@ -194,7 +202,7 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
             const slotDatetime = `${slot.slot_date} ${slot.slot_time}:00`;
             const [studentOverlap] = await connection.query(
                 `SELECT b.id FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id
-                 WHERE sp.student_id = ? AND b.company_id = ? AND b.status NOT IN ('cancelled', 'done')
+                 WHERE ${attendeeSql()} = ? AND b.company_id = ? AND b.status NOT IN ('cancelled', 'done')
                  AND ABS(TIMESTAMPDIFF(MINUTE, b.appointment_date, ?)) < 30`,
                 [studentId, companyId, slotDatetime]
             );
@@ -227,9 +235,9 @@ router.post("/api/bookings", authenticateToken, requireRole('student'), async (r
         for (const slot of slotList) {
             const slotAppointment = `${slot.slot_date} ${slot.slot_time}:00`;
             const [result] = await connection.query(
-                `INSERT INTO bookings (company_id, student_package_id, teacher_id, appointment_date, status, rescheduled_by_admin, booking_group_id, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-                [companyId, student_package_id, teacherId, slotAppointment, status, rescheduled_by_admin, groupId]
+                `INSERT INTO bookings (company_id, student_package_id, attendee_id, teacher_id, appointment_date, status, rescheduled_by_admin, booking_group_id, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+                [companyId, student_package_id, studentId, teacherId, slotAppointment, status, rescheduled_by_admin, groupId]
             );
             insertedIds.push(result.insertId);
         }
@@ -294,13 +302,13 @@ router.get("/api/student-bookings", authenticateToken, requireRole('company_admi
                 b.id, b.appointment_date, b.status, b.rescheduled_by_admin,
                 b.student_package_id, b.recurring_schedule_id, b.created_at,
                 b.booking_group_id,
-                sp.student_id,
+                ${attendeeSql()} AS student_id,
                 u.name AS student_name,
                 tp.package_name,
                 t.name AS teacher_name
             FROM bookings b
             JOIN student_packages sp ON b.student_package_id = sp.id
-            JOIN users u ON sp.student_id = u.id
+            JOIN users u ON u.id = ${attendeeSql()}
             JOIN tutorial_packages tp ON sp.package_id = tp.id
             LEFT JOIN users t ON b.teacher_id = t.id
             WHERE b.appointment_date >= NOW() AND b.company_id = ?
@@ -340,7 +348,7 @@ router.get("/api/student/bookings", authenticateToken, requireRole('student'), a
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
              LEFT JOIN users t ON b.teacher_id = t.id
-             WHERE sp.student_id = ? AND b.company_id = ?
+             WHERE ${attendeeSql()} = ? AND b.company_id = ?
                AND b.status NOT IN ('cancelled')
              ORDER BY b.appointment_date ASC`,
             [studentId, companyId]
@@ -374,13 +382,13 @@ router.get("/api/completed-bookings", authenticateToken, requireRole('company_ad
             SELECT
                 b.id, b.appointment_date, b.status, b.rescheduled_by_admin,
                 b.student_package_id, b.created_at,
-                u.name AS student_name, sp.student_id,
+                u.name AS student_name, ${attendeeSql()} AS student_id,
                 tp.package_name,
                 t.name AS teacher_name, b.teacher_id,
                 CASE WHEN cr.id IS NOT NULL THEN TRUE ELSE FALSE END AS has_report
             FROM bookings b
             JOIN student_packages sp ON b.student_package_id = sp.id
-            JOIN users u ON sp.student_id = u.id
+            JOIN users u ON u.id = ${attendeeSql()}
             JOIN tutorial_packages tp ON sp.package_id = tp.id
             LEFT JOIN users t ON b.teacher_id = t.id
             LEFT JOIN class_reports cr ON cr.booking_id = b.id
@@ -414,13 +422,13 @@ router.get("/api/student-package/:id", authenticateToken, async (req, res) => {
         const userId = req.user.id;
         const role = req.user.role;
 
-        let query = "SELECT subject FROM student_packages WHERE id = ? AND company_id = ?";
+        let query = "SELECT sp.subject FROM student_packages sp WHERE sp.id = ? AND sp.company_id = ?";
         const params = [id, companyId];
 
-        // Students can only view their own packages
+        // Students can only view their own (or shared-with-them) packages
         if (role === 'student') {
-            query += " AND student_id = ?";
-            params.push(userId);
+            query += ` AND ${canUsePackageSql('sp')}`;
+            params.push(userId, userId);
         }
 
         const [rows] = await pool.query(query, params);
@@ -439,7 +447,7 @@ router.delete("/api/bookings/:id", authenticateToken, async (req, res) => {
         const studentId = req.user.id;
 
         const [[booking]] = await pool.query(
-            `SELECT b.*, sp.student_id
+            `SELECT b.*, ${attendeeSql()} AS student_id
              FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id
              WHERE b.id = ? AND b.company_id = ?`,
             [id, companyId]
@@ -645,7 +653,7 @@ router.post("/api/bookings/done/:id", authenticateToken, requireRole('company_ad
             `SELECT b.teacher_id, u.name AS student_name
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
-             JOIN users u ON sp.student_id = u.id
+             JOIN users u ON u.id = ${attendeeSql()}
              WHERE b.id = ? AND b.company_id = ?`,
             [id, companyId]
         );
@@ -670,13 +678,14 @@ router.post("/api/bookings/done/:id", authenticateToken, requireRole('company_ad
              FROM student_packages sp JOIN users u ON sp.student_id = u.id
              WHERE sp.id = ?`, [student_package_id]
         );
+        const pkgStudentIds = updatedPkg ? await packageStudentIds(student_package_id) : [];
         if (updatedPkg && updatedPkg.unused_sessions <= 2 && updatedPkg.unused_sessions > 0) {
-            await notify({
-                userId: updatedPkg.student_id, companyId,
+            await Promise.all(pkgStudentIds.map(sid => notify({
+                userId: sid, companyId,
                 type: 'low_sessions',
                 title: 'Low sessions remaining',
                 message: `You have ${updatedPkg.unused_sessions} session(s) left in your current package. Please consider enrolling in a new package soon.`,
-            });
+            })));
             const [admins] = await pool.query(
                 "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin'", [companyId]
             );
@@ -687,12 +696,12 @@ router.post("/api/bookings/done/:id", authenticateToken, requireRole('company_ad
                 message: `${updatedPkg.student_name} has only ${updatedPkg.unused_sessions} session(s) remaining.`,
             })));
         } else if (updatedPkg && updatedPkg.unused_sessions === 0) {
-            await notify({
-                userId: updatedPkg.student_id, companyId,
+            await Promise.all(pkgStudentIds.map(sid => notify({
+                userId: sid, companyId,
                 type: 'package_exhausted',
                 title: 'Package exhausted',
                 message: 'You have used all your sessions. Please enroll in a new package to continue booking classes.',
-            });
+            })));
         }
 
         await logAction(companyId, req.user.id, 'booking_done', 'booking', id, { student_package_id });
@@ -713,10 +722,10 @@ router.post("/api/bookings/cancel/:id", authenticateToken, requireRole('company_
 
     try {
         const [[booking]] = await pool.query(
-            `SELECT b.*, sp.student_id, u.name AS student_name
+            `SELECT b.*, ${attendeeSql()} AS student_id, u.name AS student_name
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
-             JOIN users u ON sp.student_id = u.id
+             JOIN users u ON u.id = ${attendeeSql()}
              WHERE b.id = ? AND b.company_id = ?`,
             [id, companyId]
         );

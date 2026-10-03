@@ -55,6 +55,8 @@ interface ScheduleDetail extends Schedule {
 
 interface StudentPackage {
   id: number;
+  /** Who attends — set for admin rows, since a shared package lists each sibling */
+  student_id?: number;
   student_name: string;
   package_name: string;
   sessions_remaining: number;
@@ -62,6 +64,9 @@ interface StudentPackage {
   teacher_id: number | null;
   teacher_name: string | null;
 }
+
+/** Picker key: a shared package appears once per sibling, so the package id alone isn't unique */
+const pkgKey = (p: StudentPackage) => `${p.id}:${p.student_id ?? ""}`;
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -122,6 +127,7 @@ const RecurringSchedulesPage: React.FC = () => {
         const rows = Array.isArray(res.data) ? res.data : [];
         const pkgs: StudentPackage[] = rows.map((s: any) => ({
           id: s.student_package_id,
+          student_id: s.student_id,
           student_name: s.student_name,
           package_name: s.package_name || s.subject || "Package",
           sessions_remaining: s.sessions_remaining || 0,
@@ -146,7 +152,8 @@ const RecurringSchedulesPage: React.FC = () => {
     setCreateResult(null);
     try {
       const res = await axios.post(`${API}/api/recurring`, {
-        student_package_id: parseInt(selectedPkgId),
+        student_package_id: selectedPkg?.id ?? parseInt(selectedPkgId),
+        student_id: selectedPkg?.student_id,
         days_of_week: selectedDays,
         start_time: startTime,
         num_weeks: parseInt(numWeeks) || 4,
@@ -217,7 +224,7 @@ const RecurringSchedulesPage: React.FC = () => {
     return <Badge className="bg-gray-100 text-gray-700 text-xs">{s}</Badge>;
   };
 
-  const selectedPkg = packages.find(p => p.id.toString() === selectedPkgId);
+  const selectedPkg = packages.find(p => pkgKey(p) === selectedPkgId);
   const estimatedClasses = selectedDays.length * (parseInt(numWeeks) || 4);
 
   return (
@@ -299,7 +306,7 @@ const RecurringSchedulesPage: React.FC = () => {
                   <Label>Student Package</Label>
                   <StudentPackagePicker
                     items={packages.map(p => ({
-                      id: p.id.toString(),
+                      id: pkgKey(p),
                       name: p.student_name,
                       durationMinutes: p.duration_minutes,
                       sessionsRemaining: p.sessions_remaining,

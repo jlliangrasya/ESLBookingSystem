@@ -4,6 +4,7 @@ const pool = require('../db');
 const authenticateToken = require('../middleware/authMiddleware');
 const requireRole = require('../middleware/requireRole');
 const notify = require('../utils/notify');
+const { attendeeSql, canUsePackageSql, packageStudentIds } = require('../utils/sharedPackages');
 
 /** Format a stored PHT datetime string for notification messages without UTC shift. */
 function fmtAppt(dtStr) {
@@ -43,13 +44,26 @@ router.get('/dashboard', authenticateToken, requireRole('student'), async (req, 
                     ) AS unused_sessions
              FROM student_packages sp
              JOIN tutorial_packages tp ON sp.package_id = tp.id
-             WHERE sp.student_id = ? AND sp.company_id = ? AND sp.payment_status = 'paid'
+             WHERE ${canUsePackageSql('sp')} AND sp.company_id = ? AND sp.payment_status = 'paid'
                AND (sp.sessions_remaining > 0
                     OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = sp.id AND b2.status NOT IN ('done','cancelled')))
-             ORDER BY sp.purchased_at DESC LIMIT 1`,
-            [userId, companyId]
+             ORDER BY (sp.student_id = ?) DESC, sp.purchased_at DESC LIMIT 1`,
+            [userId, userId, companyId, userId]
         );
         const packageDetails = packageRows.length > 0 ? packageRows[0] : null;
+
+        // Names of the other students sharing this package (empty when not shared)
+        if (packageDetails) {
+            const sharerIds = (await packageStudentIds(packageDetails.student_package_id)).filter(id => id !== userId);
+            packageDetails.shared_with = [];
+            if (sharerIds.length > 0) {
+                const [sharers] = await pool.query(
+                    `SELECT name FROM users WHERE id IN (${sharerIds.map(() => '?').join(',')}) ORDER BY name`,
+                    sharerIds
+                );
+                packageDetails.shared_with = sharers.map(s => s.name);
+            }
+        }
 
         let bookings = [];
         // Fetch bookings from ALL student packages for this student
@@ -60,7 +74,7 @@ router.get('/dashboard', authenticateToken, requireRole('student'), async (req, 
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
              LEFT JOIN users u ON b.teacher_id = u.id
-             WHERE sp.student_id = ? AND sp.company_id = ?
+             WHERE ${attendeeSql()} = ? AND sp.company_id = ?
                AND DATE(b.appointment_date) >= CURDATE()
                AND b.status NOT IN ('done', 'cancelled')`,
             [userId, companyId]
@@ -97,7 +111,7 @@ router.get('/dashboard', authenticateToken, requireRole('student'), async (req, 
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
              LEFT JOIN users u ON b.teacher_id = u.id
-             WHERE sp.student_id = ? AND sp.company_id = ?
+             WHERE ${attendeeSql()} = ? AND sp.company_id = ?
                AND (b.student_absent = TRUE OR b.teacher_absent = TRUE)
              ORDER BY b.appointment_date DESC`,
             [userId, companyId]
@@ -120,7 +134,7 @@ router.post('/bookings/:id/mark-teacher-absent', authenticateToken, requireRole(
         const [[booking]] = await pool.query(
             `SELECT b.id, b.teacher_absent, b.student_package_id FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
-             WHERE b.id = ? AND sp.student_id = ?
+             WHERE b.id = ? AND ${attendeeSql()} = ?
                AND TIMESTAMPADD(MINUTE, 15, b.appointment_date) <= NOW()
                AND b.status NOT IN ('done', 'cancelled')`,
             [id, userId]
@@ -146,7 +160,7 @@ router.post('/bookings/:id/mark-teacher-absent', authenticateToken, requireRole(
                 `SELECT b.appointment_date, u_student.name AS student_name, u_teacher.name AS teacher_name
                  FROM bookings b
                  JOIN student_packages sp ON b.student_package_id = sp.id
-                 JOIN users u_student ON sp.student_id = u_student.id
+                 JOIN users u_student ON u_student.id = ${attendeeSql()}
                  LEFT JOIN users u_teacher ON b.teacher_id = u_teacher.id
                  WHERE b.id = ?`,
                 [id]
@@ -182,7 +196,7 @@ router.get('/stats', authenticateToken, requireRole('student'), async (req, res)
             `SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR))) AS completed_count
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
-             WHERE sp.student_id = ? AND sp.company_id = ? AND b.status = 'done'`,
+             WHERE ${attendeeSql()} = ? AND sp.company_id = ? AND b.status = 'done'`,
             [userId, companyId]
         );
 
@@ -190,7 +204,7 @@ router.get('/stats', authenticateToken, requireRole('student'), async (req, res)
             `SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR))) AS upcoming_count
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
-             WHERE sp.student_id = ? AND sp.company_id = ?
+             WHERE ${attendeeSql()} = ? AND sp.company_id = ?
                AND DATE(b.appointment_date) >= CURDATE()
                AND b.status NOT IN ('done', 'cancelled')`,
             [userId, companyId]
@@ -199,11 +213,11 @@ router.get('/stats', authenticateToken, requireRole('student'), async (req, res)
         const [[activePkg]] = await pool.query(
             `SELECT sp.sessions_remaining
              FROM student_packages sp
-             WHERE sp.student_id = ? AND sp.company_id = ? AND sp.payment_status = 'paid'
+             WHERE ${canUsePackageSql('sp')} AND sp.company_id = ? AND sp.payment_status = 'paid'
                AND (sp.sessions_remaining > 0
                     OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = sp.id AND b2.status NOT IN ('done','cancelled')))
-             ORDER BY sp.purchased_at DESC LIMIT 1`,
-            [userId, companyId]
+             ORDER BY (sp.student_id = ?) DESC, sp.purchased_at DESC LIMIT 1`,
+            [userId, userId, companyId, userId]
         );
 
         res.json({
@@ -237,9 +251,9 @@ router.get('/package-adjustments', authenticateToken, requireRole('student'), as
              FROM session_adjustments sa
              JOIN users u ON sa.adjusted_by = u.id
              JOIN student_packages sp ON sa.student_package_id = sp.id
-             WHERE sp.student_id = ? AND sa.company_id = ?
+             WHERE ${canUsePackageSql('sp')} AND sa.company_id = ?
              ORDER BY sa.created_at DESC`,
-            [userId, companyId]
+            [userId, userId, companyId]
         );
         res.json(rows);
     } catch (err) {
@@ -257,9 +271,9 @@ router.get('/package-history', authenticateToken, requireRole('student'), async 
                     tp.package_name, tp.session_limit, tp.subject, tp.price, tp.currency, tp.duration_minutes
              FROM student_packages sp
              JOIN tutorial_packages tp ON sp.package_id = tp.id
-             WHERE sp.student_id = ? AND sp.company_id = ?
+             WHERE ${canUsePackageSql('sp')} AND sp.company_id = ?
              ORDER BY sp.purchased_at DESC`,
-            [userId, companyId]
+            [userId, userId, companyId]
         );
         res.json(rows);
     } catch (err) {
@@ -317,12 +331,12 @@ router.post('/feedback', authenticateToken, requireRole('student'), async (req, 
 
         // Find the teacher assigned to the student's active paid package
         const [[pkg]] = await pool.query(
-            `SELECT teacher_id FROM student_packages
-             WHERE student_id = ? AND company_id = ? AND payment_status = 'paid'
-               AND (sessions_remaining > 0
-                    OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = student_packages.id AND b2.status NOT IN ('done','cancelled')))
-             ORDER BY purchased_at DESC LIMIT 1`,
-            [studentId, companyId]
+            `SELECT sp.teacher_id FROM student_packages sp
+             WHERE ${canUsePackageSql('sp')} AND sp.company_id = ? AND sp.payment_status = 'paid'
+               AND (sp.sessions_remaining > 0
+                    OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = sp.id AND b2.status NOT IN ('done','cancelled')))
+             ORDER BY (sp.student_id = ?) DESC, sp.purchased_at DESC LIMIT 1`,
+            [studentId, studentId, companyId, studentId]
         );
         const teacherId = pkg?.teacher_id || null;
 
@@ -448,7 +462,7 @@ router.get('/teacher-slots', authenticateToken, requireRole('student'), async (r
         const dateEnd = `${date} 23:59:59`;
         if (teacher_id) {
             // Specific teacher: show both the student's class and other students booked with this teacher
-            bookedQuery = `SELECT b.id, b.appointment_date, sp.student_id
+            bookedQuery = `SELECT b.id, b.appointment_date, ${attendeeSql()} AS student_id
                 FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id
                 WHERE b.company_id = ? AND b.teacher_id = ? AND b.appointment_date BETWEEN ? AND ?
                 AND b.status NOT IN ('cancelled')`;
@@ -456,9 +470,9 @@ router.get('/teacher-slots', authenticateToken, requireRole('student'), async (r
         } else {
             // General schedule: only show the current student's own bookings ("your_class")
             // Slot unavailability for other students is already handled by open_slots above
-            bookedQuery = `SELECT b.id, b.appointment_date, sp.student_id
+            bookedQuery = `SELECT b.id, b.appointment_date, ${attendeeSql()} AS student_id
                 FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id
-                WHERE b.company_id = ? AND sp.student_id = ? AND b.appointment_date BETWEEN ? AND ?
+                WHERE b.company_id = ? AND ${attendeeSql()} = ? AND b.appointment_date BETWEEN ? AND ?
                 AND b.status NOT IN ('cancelled')`;
             bookedParams = [companyId, studentId, dateStart, dateEnd];
         }
@@ -608,7 +622,7 @@ router.get("/students", authenticateToken, requireRole('company_admin'), async (
         const search = req.query.search || '';
 
         let searchClause = '';
-        const params = [companyId, companyId];
+        const params = [companyId, companyId, companyId];
         if (search) {
             searchClause = 'AND (u.name LIKE ? OR u.email LIKE ?)';
             params.push(`%${search}%`, `%${search}%`);
@@ -627,13 +641,21 @@ router.get("/students", authenticateToken, requireRole('company_admin'), async (
                 CASE WHEN sp.payment_status = 'paid' AND (sp.sessions_remaining > 0 OR IFNULL(active_bk.active_classes, 0) > 0) THEN TRUE ELSE FALSE END AS enrolled
             FROM users u
             LEFT JOIN (
-                SELECT sp2.*, ROW_NUMBER() OVER (PARTITION BY sp2.student_id ORDER BY
+                SELECT sp2.*, ROW_NUMBER() OVER (PARTITION BY sp2.viewer_id ORDER BY
                     CASE WHEN sp2.payment_status = 'paid' AND (sp2.sessions_remaining > 0
                          OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = sp2.id AND b2.status NOT IN ('done','cancelled')))
                          THEN 0 ELSE 1 END,
+                    CASE WHEN sp2.viewer_id = sp2.student_id THEN 0 ELSE 1 END,
                     sp2.purchased_at DESC) AS rn
-                FROM student_packages sp2 WHERE sp2.company_id = ?
-            ) sp ON u.id = sp.student_id AND sp.rn = 1
+                FROM (
+                    SELECT own.*, own.student_id AS viewer_id FROM student_packages own WHERE own.company_id = ?
+                    UNION ALL
+                    SELECT shared.*, spm.student_id AS viewer_id
+                    FROM student_package_members spm
+                    JOIN student_packages shared ON shared.id = spm.student_package_id
+                    WHERE shared.company_id = ?
+                ) sp2
+            ) sp ON u.id = sp.viewer_id AND sp.rn = 1
             LEFT JOIN tutorial_packages tp ON sp.package_id = tp.id
             LEFT JOIN users t ON t.id = sp.teacher_id
             LEFT JOIN (

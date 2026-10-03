@@ -9,6 +9,7 @@ const { logAction } = require("../utils/audit");
 const { sendMail } = require("../utils/mailer");
 const { generateTempPassword } = require("../utils/tempPassword");
 const { phtNowSql } = require("../utils/phtTime");
+const { attendeeSql, canUsePackageSql, canUsePackage, packageStudentIds } = require("../utils/sharedPackages");
 
 /** Format a stored PHT datetime string for notification messages without UTC shift. */
 function fmtAppt(dtStr) {
@@ -319,7 +320,7 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
              u.name AS student_name, tp.package_name, tp.duration_minutes, sp.subject
       FROM bookings b
       JOIN student_packages sp ON b.student_package_id = sp.id
-      JOIN users u ON sp.student_id = u.id
+      JOIN users u ON u.id = ${attendeeSql()}
       JOIN tutorial_packages tp ON sp.package_id = tp.id
       WHERE b.teacher_id = ? AND b.company_id = ? AND b.appointment_date >= NOW()
         AND b.status NOT IN ('cancelled')
@@ -339,12 +340,12 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
              MAX(IF(cr.id IS NOT NULL, 1, 0)) AS has_report
       FROM bookings b
       JOIN student_packages sp ON b.student_package_id = sp.id
-      JOIN users u ON sp.student_id = u.id
+      JOIN users u ON u.id = ${attendeeSql()}
       JOIN tutorial_packages tp ON sp.package_id = tp.id
       LEFT JOIN class_reports cr ON cr.booking_id = b.id
       WHERE b.teacher_id = ? AND b.company_id = ? AND b.status = 'done'
       GROUP BY COALESCE(b.booking_group_id, CAST(b.id AS CHAR)),
-               b.student_absent, b.teacher_absent, sp.student_id, tp.duration_minutes, sp.subject
+               b.student_absent, b.teacher_absent, u.id, tp.duration_minutes, sp.subject
       ORDER BY MIN(b.appointment_date) DESC
     `, [id, companyId]);
 
@@ -697,7 +698,7 @@ router.get("/teachers/:id/week-bookings", authenticateToken, requireRole('compan
               u.name AS student_name, sp.subject
        FROM bookings b
        JOIN student_packages sp ON b.student_package_id = sp.id
-       JOIN users u ON sp.student_id = u.id
+       JOIN users u ON u.id = ${attendeeSql()}
        WHERE b.company_id = ? AND b.teacher_id = ?
          AND DATE(b.appointment_date) >= ? AND DATE(b.appointment_date) < ?
          AND b.status <> 'cancelled'
@@ -902,7 +903,7 @@ router.get("/teachers/:id/schedule", authenticateToken, requireRole('company_adm
              tp.package_name, tp.duration_minutes
       FROM bookings b
       JOIN student_packages sp ON b.student_package_id = sp.id
-      JOIN users u ON sp.student_id = u.id
+      JOIN users u ON u.id = ${attendeeSql()}
       JOIN tutorial_packages tp ON sp.package_id = tp.id
       WHERE b.teacher_id = ? AND b.company_id = ? AND b.status != 'cancelled' AND ${dateFilter}
       ORDER BY b.appointment_date ASC
@@ -1100,7 +1101,7 @@ router.post("/teacher-leaves/:id/approve", authenticateToken, requireRole('compa
       `SELECT b.id, b.appointment_date, b.student_package_id, b.booking_group_id, u.name AS student_name, u.id AS student_id
        FROM bookings b
        JOIN student_packages sp ON b.student_package_id = sp.id
-       JOIN users u ON sp.student_id = u.id
+       JOIN users u ON u.id = ${attendeeSql()}
        WHERE b.teacher_id = ? AND DATE(b.appointment_date) = ? AND b.company_id = ?
          AND b.status NOT IN ('done','cancelled')`,
       [leave.teacher_id, leaveDateStr, companyId]
@@ -1243,7 +1244,8 @@ router.get('/bookable-students', authenticateToken, requireRole('company_admin')
               sp.teacher_id, t.name AS teacher_name,
               tp.package_name, tp.duration_minutes
        FROM student_packages sp
-       JOIN users u ON sp.student_id = u.id
+       JOIN users u ON u.id = sp.student_id
+         OR u.id IN (SELECT spm.student_id FROM student_package_members spm WHERE spm.student_package_id = sp.id)
        JOIN tutorial_packages tp ON sp.package_id = tp.id
        LEFT JOIN users t ON t.id = sp.teacher_id
        WHERE sp.company_id = ? AND sp.payment_status = 'paid'
@@ -1276,15 +1278,25 @@ router.get('/students/:id', authenticateToken, requireRole('company_admin'), asy
               sp.sessions_remaining + (
                 SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR)))
                 FROM bookings b WHERE b.student_package_id = sp.id AND b.status NOT IN ('done','cancelled')
-              ) AS unused_sessions
+              ) AS unused_sessions,
+              sp.student_id AS owner_id, owner.name AS owner_name
        FROM student_packages sp
        JOIN tutorial_packages tp ON sp.package_id = tp.id
-       WHERE sp.student_id = ? AND sp.company_id = ? AND sp.payment_status = 'paid'
+       JOIN users owner ON owner.id = sp.student_id
+       WHERE ${canUsePackageSql('sp')} AND sp.company_id = ? AND sp.payment_status = 'paid'
          AND (sp.sessions_remaining > 0
               OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = sp.id AND b2.status NOT IN ('done','cancelled')))
-       ORDER BY sp.purchased_at DESC LIMIT 1`,
-      [id, companyId]
+       ORDER BY (sp.student_id = ?) DESC, sp.purchased_at DESC LIMIT 1`,
+      [id, id, companyId, id]
     );
+    if (activePackage) {
+      const [members] = await pool.query(
+        `SELECT u.id, u.name FROM student_package_members spm JOIN users u ON u.id = spm.student_id
+         WHERE spm.student_package_id = ? ORDER BY u.name`,
+        [activePackage.id]
+      );
+      activePackage.members = members;
+    }
 
     const [bookings] = await pool.query(
       `SELECT b.id, b.appointment_date, b.status, b.class_mode, b.meeting_link,
@@ -1293,11 +1305,10 @@ router.get('/students/:id', authenticateToken, requireRole('company_admin'), asy
               u.name AS teacher_name,
               CASE WHEN cr.id IS NOT NULL THEN TRUE ELSE FALSE END AS has_report
        FROM bookings b
+       JOIN student_packages sp ON b.student_package_id = sp.id
        LEFT JOIN users u ON b.teacher_id = u.id
        LEFT JOIN class_reports cr ON cr.booking_id = b.id
-       WHERE b.company_id = ? AND b.student_package_id IN (
-           SELECT id FROM student_packages WHERE student_id = ? AND company_id = ?
-       )
+       WHERE b.company_id = ? AND ${attendeeSql()} = ? AND sp.company_id = ?
        ORDER BY b.appointment_date ASC`,
       [companyId, id, companyId]
     );
@@ -1318,9 +1329,9 @@ router.get('/students/:id/package-history', authenticateToken, requireRole('comp
               tp.package_name, tp.session_limit, tp.subject, tp.price, tp.currency, tp.duration_minutes
        FROM student_packages sp
        JOIN tutorial_packages tp ON sp.package_id = tp.id
-       WHERE sp.student_id = ? AND sp.company_id = ?
+       WHERE ${canUsePackageSql('sp')} AND sp.company_id = ?
        ORDER BY sp.purchased_at DESC`,
-      [id, companyId]
+      [id, id, companyId]
     );
     res.json(rows);
   } catch (err) {
@@ -1339,9 +1350,9 @@ router.get('/students/:id/package-adjustments', authenticateToken, requireRole('
        FROM session_adjustments sa
        JOIN users u ON sa.adjusted_by = u.id
        JOIN student_packages sp ON sa.student_package_id = sp.id
-       WHERE sp.student_id = ? AND sa.company_id = ?
+       WHERE ${canUsePackageSql('sp')} AND sa.company_id = ?
        ORDER BY sa.created_at DESC`,
-      [id, companyId]
+      [id, id, companyId]
     );
     res.json(rows);
   } catch (err) {
@@ -1407,6 +1418,13 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
     if (sp.payment_status !== 'paid') { await connection.rollback(); return res.status(403).json({ message: 'Package payment has not been confirmed yet.' }); }
     if (sp.sessions_remaining <= 0) { await connection.rollback(); return res.status(403).json({ message: 'No sessions remaining in this package.' }); }
 
+    // Who attends: defaults to the package owner; on a shared package the admin may pick a sibling
+    const attendeeId = req.body.student_id ? Number(req.body.student_id) : sp.student_id;
+    if (attendeeId !== sp.student_id && !(await canUsePackage(attendeeId, student_package_id, connection))) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'That student does not share this package.' });
+    }
+
     // Auto-assign teacher: package's assigned teacher > only company teacher > null
     if (!teacher_id) {
       if (sp.package_teacher_id) {
@@ -1467,9 +1485,9 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
       // Student overlap
       const [studentOverlap] = await connection.query(
         `SELECT b.id FROM bookings b JOIN student_packages spp ON b.student_package_id = spp.id
-         WHERE spp.student_id = ? AND b.company_id = ? AND b.status NOT IN ('cancelled', 'done')
+         WHERE ${attendeeSql('b', 'spp')} = ? AND b.company_id = ? AND b.status NOT IN ('cancelled', 'done')
          AND ABS(TIMESTAMPDIFF(MINUTE, b.appointment_date, ?)) < 30`,
-        [sp.student_id, companyId, slotDt]
+        [attendeeId, companyId, slotDt]
       );
       if (studentOverlap.length > 0) {
         await connection.rollback();
@@ -1495,9 +1513,9 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
     const insertedIds = [];
     for (const slotDt of slotList) {
       const [result] = await connection.query(
-        `INSERT INTO bookings (company_id, student_package_id, teacher_id, appointment_date, status, rescheduled_by_admin, booking_group_id, created_at)
-         VALUES (?, ?, ?, ?, 'confirmed', 1, ?, NOW())`,
-        [companyId, student_package_id, teacher_id || null, slotDt, groupId]
+        `INSERT INTO bookings (company_id, student_package_id, attendee_id, teacher_id, appointment_date, status, rescheduled_by_admin, booking_group_id, created_at)
+         VALUES (?, ?, ?, ?, ?, 'confirmed', 1, ?, NOW())`,
+        [companyId, student_package_id, attendeeId, teacher_id || null, slotDt, groupId]
       );
       insertedIds.push(result.insertId);
     }
@@ -1524,13 +1542,13 @@ router.post('/bookings', authenticateToken, requireRole('company_admin'), async 
     }
 
     notify({
-      userId: sp.student_id, companyId,
+      userId: attendeeId, companyId,
       type: 'booking_created',
       title: 'Class scheduled',
       message: `A class has been scheduled for you on ${dateStr}${slotMsg}.`,
     });
 
-    await logAction(companyId, req.user.id, 'admin_booking_created', 'booking', insertedIds[0], { student_id: sp.student_id, appointment_date, slots_booked: slotsNeeded });
+    await logAction(companyId, req.user.id, 'admin_booking_created', 'booking', insertedIds[0], { student_id: attendeeId, appointment_date, slots_booked: slotsNeeded });
     res.status(201).json({ message: 'Booking created', booking_id: insertedIds[0], slots_booked: slotsNeeded });
   } catch (err) {
     try { await connection.rollback(); } catch (_) {}
@@ -1593,7 +1611,7 @@ router.post('/students/:id/bulk-assign-teacher', authenticateToken, requireRole(
     const [bookings] = await pool.query(
       `SELECT b.id, b.appointment_date FROM bookings b
        JOIN student_packages sp ON b.student_package_id = sp.id
-       WHERE sp.student_id = ? AND b.company_id = ? AND b.teacher_id IS NULL
+       WHERE ${attendeeSql()} = ? AND b.company_id = ? AND b.teacher_id IS NULL
          AND b.status IN ('pending','confirmed') AND b.appointment_date >= NOW()
        ORDER BY b.appointment_date ASC`,
       [studentId, companyId]
@@ -1667,12 +1685,12 @@ router.put('/students/:id/assign-teacher', authenticateToken, requireRole('compa
 
     // Find student's active paid package (prefer one with sessions remaining or active bookings)
     const [[activePkg]] = await pool.query(
-      `SELECT id FROM student_packages
-       WHERE student_id = ? AND company_id = ? AND payment_status = 'paid'
-       ORDER BY CASE WHEN sessions_remaining > 0
-                     OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = student_packages.id AND b2.status NOT IN ('done','cancelled'))
-                     THEN 0 ELSE 1 END, purchased_at DESC LIMIT 1`,
-      [studentId, companyId]
+      `SELECT sp.id FROM student_packages sp
+       WHERE ${canUsePackageSql('sp')} AND sp.company_id = ? AND sp.payment_status = 'paid'
+       ORDER BY CASE WHEN sp.sessions_remaining > 0
+                     OR EXISTS (SELECT 1 FROM bookings b2 WHERE b2.student_package_id = sp.id AND b2.status NOT IN ('done','cancelled'))
+                     THEN 0 ELSE 1 END, (sp.student_id = ?) DESC, sp.purchased_at DESC LIMIT 1`,
+      [studentId, studentId, companyId, studentId]
     );
     if (!activePkg) return res.status(404).json({ message: 'No active paid package found for this student' });
 
@@ -1704,7 +1722,7 @@ router.put('/students/:id/assign-teacher', authenticateToken, requireRole('compa
     const [futureBookings] = await pool.query(
       `SELECT b.id, b.appointment_date FROM bookings b
        JOIN student_packages sp ON b.student_package_id = sp.id
-       WHERE sp.student_id = ? AND b.company_id = ?
+       WHERE ${attendeeSql()} = ? AND b.company_id = ?
          AND b.status IN ('pending','confirmed') AND b.appointment_date >= NOW()
        ORDER BY b.appointment_date ASC`,
       [studentId, companyId]
@@ -1913,7 +1931,7 @@ router.post('/students/:id/deactivate', authenticateToken, requireRole('company_
     const [futureBookings] = await pool.query(
       `SELECT b.id, b.student_package_id FROM bookings b
        JOIN student_packages sp ON b.student_package_id = sp.id
-       WHERE sp.student_id = ? AND b.company_id = ? AND b.status NOT IN ('done', 'cancelled')
+       WHERE ${attendeeSql()} = ? AND b.company_id = ? AND b.status NOT IN ('done', 'cancelled')
          AND b.appointment_date >= NOW()`,
       [id, companyId]
     );
@@ -1986,14 +2004,30 @@ router.delete('/students/:id', authenticateToken, requireRole('company_admin'), 
       });
     }
 
+    // Deleting the owner of a shared package would delete the siblings' classes
+    // with it — make the admin remove the sharing first.
+    const [sharedWith] = await connection.query(
+      `SELECT DISTINCT u.name FROM student_package_members spm
+       JOIN student_packages sp ON sp.id = spm.student_package_id
+       JOIN users u ON u.id = spm.student_id
+       WHERE sp.student_id = ? AND sp.company_id = ?`,
+      [id, companyId]
+    );
+    if (sharedWith.length > 0) {
+      return res.status(409).json({
+        code: 'PACKAGE_SHARED',
+        message: `${student.name}'s package is shared with ${sharedWith.map(s => s.name).join(', ')}. Remove the sharing from their profile before deleting.`,
+      });
+    }
+
     // Teachers would otherwise find classes silently gone from their schedule.
     // Collected before the delete removes the rows; sent after it commits.
     const [affectedTeachers] = await connection.query(
       `SELECT DISTINCT b.teacher_id FROM bookings b
        JOIN student_packages sp ON b.student_package_id = sp.id
-       WHERE sp.student_id = ? AND b.company_id = ? AND b.teacher_id IS NOT NULL
+       WHERE (sp.student_id = ? OR b.attendee_id = ?) AND b.company_id = ? AND b.teacher_id IS NOT NULL
          AND b.status NOT IN ('done', 'cancelled') AND b.appointment_date >= ?`,
-      [id, companyId, phtNowSql()]
+      [id, id, companyId, phtNowSql()]
     );
 
     // Recorded for the audit log and the confirmation message — after the delete
@@ -2002,8 +2036,8 @@ router.delete('/students/:id', authenticateToken, requireRole('company_admin'), 
       `SELECT
          (SELECT COUNT(*) FROM student_packages WHERE student_id = ?) AS packages,
          (SELECT COUNT(*) FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id
-           WHERE sp.student_id = ?) AS bookings`,
-      [id, id]
+           WHERE sp.student_id = ? OR b.attendee_id = ?) AS bookings`,
+      [id, id, id]
     );
 
     // Deployments can be behind on migrations, and a table that was never created
@@ -2023,8 +2057,26 @@ router.delete('/students/:id', authenticateToken, requireRole('company_admin'), 
     };
 
     const ownPackages = 'SELECT id FROM student_packages WHERE student_id = ?';
+    // Bookings on their own packages, plus classes they attended on a sibling's shared package
     const ownBookings =
-      'SELECT b.id FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id WHERE sp.student_id = ?';
+      'SELECT b.id FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id WHERE sp.student_id = ? OR b.attendee_id = ?';
+
+    // Upcoming classes on a sibling's shared package go back to that package
+    const [sharedUpcoming] = await connection.query(
+      `SELECT b.student_package_id,
+              COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR))) AS classes
+       FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id
+       WHERE b.attendee_id = ? AND sp.student_id <> ?
+         AND b.status NOT IN ('done', 'cancelled') AND b.appointment_date >= ?
+       GROUP BY b.student_package_id`,
+      [id, id, phtNowSql()]
+    );
+    for (const row of sharedUpcoming) {
+      await connection.query(
+        'UPDATE student_packages SET sessions_remaining = sessions_remaining + ? WHERE id = ? AND company_id = ?',
+        [row.classes, row.student_package_id, companyId]
+      );
+    }
 
     // Children first. Several of these have ON DELETE CASCADE and would go on
     // their own, but the ones added after migration 002 (homework, recurring
@@ -2033,11 +2085,12 @@ router.delete('/students/:id', authenticateToken, requireRole('company_admin'), 
       'student_id = ? OR assignment_id IN (SELECT id FROM assignments WHERE student_id = ?)',
       [id, id], ['assignments']);
     await purge('assignments', 'student_id = ?', [id]);
-    await purge('class_reports', `student_id = ? OR booking_id IN (${ownBookings})`, [id, id]);
+    await purge('class_reports', `student_id = ? OR booking_id IN (${ownBookings})`, [id, id, id]);
     await purge('recurring_schedules',
       `student_id = ? OR student_package_id IN (${ownPackages})`, [id, id]);
     await purge('session_adjustments', `student_package_id IN (${ownPackages})`, [id]);
-    await purge('bookings', `student_package_id IN (${ownPackages})`, [id]);
+    await purge('bookings', `student_package_id IN (${ownPackages}) OR attendee_id = ?`, [id, id]);
+    await purge('student_package_members', `student_id = ? OR student_package_id IN (${ownPackages})`, [id, id]);
     await purge('student_packages', 'student_id = ?', [id]);
     await purge('student_feedback', 'student_id = ?', [id]);
     await purge('waitlist', 'student_id = ?', [id]);
@@ -2361,6 +2414,99 @@ router.post("/student-packages/:id/adjust-sessions", authenticateToken, requireR
 });
 
 // GET /api/admin/student-packages/:id/adjustments — adjustment history
+// ── Shared packages (siblings) ────────────────────────────────────────────────
+// A package keeps its owner; members are other students allowed to book against it.
+
+// List who shares a package (owner + members)
+router.get("/student-packages/:id/members", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const [[pkg]] = await pool.query(
+      `SELECT sp.id, sp.student_id AS owner_id, u.name AS owner_name
+       FROM student_packages sp JOIN users u ON u.id = sp.student_id
+       WHERE sp.id = ? AND sp.company_id = ?`,
+      [req.params.id, companyId]
+    );
+    if (!pkg) return res.status(404).json({ message: 'Student package not found' });
+    const [members] = await pool.query(
+      `SELECT u.id, u.name FROM student_package_members spm JOIN users u ON u.id = spm.student_id
+       WHERE spm.student_package_id = ? ORDER BY u.name`,
+      [pkg.id]
+    );
+    res.json({ owner: { id: pkg.owner_id, name: pkg.owner_name }, members });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Share a package with another student
+router.post("/student-packages/:id/members", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const studentId = Number(req.body.student_id);
+    if (!studentId) return res.status(400).json({ message: 'student_id is required' });
+
+    const [[pkg]] = await pool.query(
+      'SELECT id, student_id FROM student_packages WHERE id = ? AND company_id = ?',
+      [req.params.id, companyId]
+    );
+    if (!pkg) return res.status(404).json({ message: 'Student package not found' });
+    if (pkg.student_id === studentId) return res.status(400).json({ message: 'This student already owns the package.' });
+
+    const [[student]] = await pool.query(
+      "SELECT id, name FROM users WHERE id = ? AND company_id = ? AND role = 'student'",
+      [studentId, companyId]
+    );
+    if (!student) return res.status(404).json({ message: 'Student not found' });
+
+    await pool.query(
+      `INSERT IGNORE INTO student_package_members (company_id, student_package_id, student_id, added_by)
+       VALUES (?, ?, ?, ?)`,
+      [companyId, pkg.id, studentId, req.user.id]
+    );
+
+    await logAction(companyId, req.user.id, 'package_shared', 'student_package', pkg.id, { student_id: studentId, owner_id: pkg.student_id });
+    res.status(201).json({ message: `Package shared with ${student.name}.` });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Stop sharing a package with a student. Blocked while they still have upcoming
+// classes on it, so no booked class is left pointing at a package they can't use.
+router.delete("/student-packages/:id/members/:studentId", authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const { id, studentId } = req.params;
+
+    const [[pkg]] = await pool.query(
+      'SELECT id FROM student_packages WHERE id = ? AND company_id = ?',
+      [id, companyId]
+    );
+    if (!pkg) return res.status(404).json({ message: 'Student package not found' });
+
+    const [[{ upcoming }]] = await pool.query(
+      `SELECT COUNT(*) AS upcoming FROM bookings
+       WHERE student_package_id = ? AND attendee_id = ? AND status NOT IN ('done', 'cancelled')`,
+      [pkg.id, studentId]
+    );
+    if (upcoming > 0) {
+      return res.status(409).json({ message: 'This student still has upcoming classes on this package. Cancel them first.' });
+    }
+
+    const [result] = await pool.query(
+      'DELETE FROM student_package_members WHERE student_package_id = ? AND student_id = ?',
+      [pkg.id, studentId]
+    );
+    if (result.affectedRows === 0) return res.status(404).json({ message: 'This student is not sharing the package.' });
+
+    await logAction(companyId, req.user.id, 'package_unshared', 'student_package', pkg.id, { student_id: Number(studentId) });
+    res.json({ message: 'Sharing removed.' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 router.get("/student-packages/:id/adjustments", authenticateToken, requireRole('company_admin'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
