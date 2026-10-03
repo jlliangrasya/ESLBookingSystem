@@ -93,6 +93,12 @@ const emptyForm = {
 // never disappears if an older API response omits the column.
 const isActive = (s: Student) => s.is_active === undefined || !!s.is_active;
 
+// The count the "N remaining" badge shows. The badge turns red at or below
+// LOW_SESSIONS, and the "3 or Fewer Left" filter uses the same rule, so the
+// filter returns exactly the rows with red badges.
+const LOW_SESSIONS = 3;
+const remainingCount = (s: Student) => s.unused_sessions ?? s.sessions_remaining ?? 0;
+
 const StudentListPage: React.FC = () => {
   const navigate = useNavigate();
   const authContext = useContext(AuthContext);
@@ -201,8 +207,9 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
         (s.nationality || "").toLowerCase().includes(q);
       const matchSession =
         sessionFilter === "all" ||
-        (sessionFilter === "active" && ((s.unused_sessions ?? s.sessions_remaining) > 0)) ||
-        (sessionFilter === "empty" && (s.unused_sessions ?? s.sessions_remaining) === 0);
+        (sessionFilter === "active" && remainingCount(s) > 0) ||
+        (sessionFilter === "low" && remainingCount(s) <= LOW_SESSIONS) ||
+        (sessionFilter === "empty" && remainingCount(s) === 0);
       const matchTeacher =
         teacherFilter === "all" ||
         (teacherFilter === "assigned" && !!s.teacher_id) ||
@@ -363,12 +370,13 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
               setPage(1);
             }}
           >
-            <SelectTrigger className="w-44">
+            <SelectTrigger className="w-48">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Students</SelectItem>
               <SelectItem value="active">Has Sessions</SelectItem>
+              <SelectItem value="low">{LOW_SESSIONS} or Fewer Left</SelectItem>
               <SelectItem value="empty">No Sessions</SelectItem>
             </SelectContent>
           </Select>
@@ -485,12 +493,12 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                             <div className="w-60 shrink-0 flex gap-1 flex-wrap items-center">
                             <Badge
                               variant={
-                                (student.unused_sessions ?? student.sessions_remaining ?? 0) <= 3
+                                remainingCount(student) <= LOW_SESSIONS
                                   ? "destructive"
                                   : "default"
                               }
                             >
-                              {student.unused_sessions ?? student.sessions_remaining ?? 0} remaining
+                              {remainingCount(student)} remaining
                             </Badge>
                             {student.sessions_remaining !== student.unused_sessions && (
                               <Badge variant="outline" className="text-muted-foreground text-[10px]">
