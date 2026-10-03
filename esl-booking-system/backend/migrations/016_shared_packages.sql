@@ -20,5 +20,21 @@ CREATE TABLE IF NOT EXISTS student_package_members (
 
 -- Who actually attends the class. NULL = the package owner, so every existing
 -- booking keeps resolving to the same student it always did.
-ALTER TABLE bookings ADD COLUMN attendee_id INT NULL;
-CREATE INDEX idx_bookings_attendee ON bookings (attendee_id);
+-- Safe to rerun: server.js also adds these at boot, so they may already exist.
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'attendee_id');
+SET @sql = IF(@col_exists = 0,
+    'ALTER TABLE bookings ADD COLUMN attendee_id INT NULL',
+    'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @idx_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND INDEX_NAME = 'idx_bookings_attendee');
+SET @sql = IF(@idx_exists = 0,
+    'CREATE INDEX idx_bookings_attendee ON bookings (attendee_id)',
+    'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

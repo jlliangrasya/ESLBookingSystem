@@ -66,19 +66,50 @@ const SessionAdjustDialog: React.FC<SessionAdjustDialogProps> = ({
   }, [mode, studentPackageId]);
 
   const ADD_PRESETS = [
-    { value: "Free Class",       label: t("profile.adjustment.presets.add.freeClass") },
-    { value: "Teacher Absent",   label: t("profile.adjustment.presets.add.teacherAbsent") },
-    { value: "Makeup Class",     label: t("profile.adjustment.presets.add.makeupClass") },
-    { value: "Bonus Sessions",   label: t("profile.adjustment.presets.add.bonusSessions") },
-    { value: "Referral Reward",  label: t("profile.adjustment.presets.add.referralReward") },
-    { value: "Other",            label: t("profile.adjustment.presets.add.other") },
+    {
+      value: "Free Class",
+      label: t("profile.adjustment.presets.add.freeClass"),
+    },
+    {
+      value: "Teacher Absent",
+      label: t("profile.adjustment.presets.add.teacherAbsent"),
+    },
+    {
+      value: "Makeup Class",
+      label: t("profile.adjustment.presets.add.makeupClass"),
+    },
+    {
+      value: "Bonus Sessions",
+      label: t("profile.adjustment.presets.add.bonusSessions"),
+    },
+    {
+      value: "Referral Reward",
+      label: t("profile.adjustment.presets.add.referralReward"),
+    },
+    {
+      value: "Correction of Count",
+      label: t("profile.adjustment.presets.add.correctionOfCount"),
+    },
+    { value: "Other", label: t("profile.adjustment.presets.add.other") },
   ];
   const DEDUCT_PRESETS = [
-    { value: "Class Already Used",   label: t("profile.adjustment.presets.deduct.classUsed") },
-    { value: "Student Absent",       label: t("profile.adjustment.presets.deduct.studentAbsent") },
-    { value: "Session Consumed",     label: t("profile.adjustment.presets.deduct.sessionConsumed") },
-    { value: "Correction of Count",  label: t("profile.adjustment.presets.deduct.correctionOfCount") },
-    { value: "Other",                label: t("profile.adjustment.presets.deduct.other") },
+    {
+      value: "Class Already Used",
+      label: t("profile.adjustment.presets.deduct.classUsed"),
+    },
+    {
+      value: "Student Absent",
+      label: t("profile.adjustment.presets.deduct.studentAbsent"),
+    },
+    {
+      value: "Session Consumed",
+      label: t("profile.adjustment.presets.deduct.sessionConsumed"),
+    },
+    {
+      value: "Correction of Count",
+      label: t("profile.adjustment.presets.deduct.correctionOfCount"),
+    },
+    { value: "Other", label: t("profile.adjustment.presets.deduct.other") },
   ];
 
   const handleSubmit = async () => {
@@ -87,7 +118,10 @@ const SessionAdjustDialog: React.FC<SessionAdjustDialogProps> = ({
     setError(null);
     setSuccess(null);
     try {
-      const adj = mode === "deduct" ? -Math.abs(Number(amount)) : Math.abs(Number(amount));
+      const adj =
+        mode === "deduct"
+          ? -Math.abs(Number(amount))
+          : Math.abs(Number(amount));
       const token = localStorage.getItem("token");
       const res = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/admin/student-packages/${studentPackageId}/adjust-sessions`,
@@ -99,7 +133,9 @@ const SessionAdjustDialog: React.FC<SessionAdjustDialogProps> = ({
       // Keep the dialog open briefly to show success, then close
       setTimeout(onClose, 1500);
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to adjust sessions";
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to adjust sessions";
       setError(msg);
     } finally {
       setLoading(false);
@@ -107,7 +143,12 @@ const SessionAdjustDialog: React.FC<SessionAdjustDialogProps> = ({
   };
 
   return (
-    <Dialog open={!!mode} onOpenChange={(o) => { if (!o) onClose(); }}>
+    <Dialog
+      open={!!mode}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>
@@ -125,7 +166,8 @@ const SessionAdjustDialog: React.FC<SessionAdjustDialogProps> = ({
 
           <div className="space-y-1.5">
             <Label>
-              Number of sessions to {mode === "add" ? "add" : "deduct"} <span className="text-destructive">*</span>
+              Number of sessions to {mode === "add" ? "add" : "deduct"}{" "}
+              <span className="text-destructive">*</span>
             </Label>
             <Input
               type="number"
@@ -137,7 +179,9 @@ const SessionAdjustDialog: React.FC<SessionAdjustDialogProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Reason <span className="text-destructive">*</span></Label>
+            <Label>
+              Reason <span className="text-destructive">*</span>
+            </Label>
             <Select
               value={remarkPreset}
               onValueChange={(val) => {
@@ -150,9 +194,13 @@ const SessionAdjustDialog: React.FC<SessionAdjustDialogProps> = ({
                 <SelectValue placeholder="Select a reason..." />
               </SelectTrigger>
               <SelectContent>
-                {(mode === "add" ? ADD_PRESETS : DEDUCT_PRESETS).map((preset) => (
-                  <SelectItem key={preset.value} value={preset.value}>{preset.label}</SelectItem>
-                ))}
+                {(mode === "add" ? ADD_PRESETS : DEDUCT_PRESETS).map(
+                  (preset) => (
+                    <SelectItem key={preset.value} value={preset.value}>
+                      {preset.label}
+                    </SelectItem>
+                  ),
+                )}
               </SelectContent>
             </Select>
             {remarkPreset === "Other" && (
@@ -164,33 +212,52 @@ const SessionAdjustDialog: React.FC<SessionAdjustDialogProps> = ({
               />
             )}
             <p className="text-xs text-muted-foreground">
-              This note will be included in the notification sent to the student.
+              This note will be included in the notification sent to the
+              student.
             </p>
           </div>
 
           <div className="bg-muted/50 rounded-lg p-3 text-sm">
-            <p className="text-muted-foreground">Remaining sessions: <strong>{unusedSessions}</strong></p>
-            <p className="text-muted-foreground">Available to book: <strong>{sessionsRemaining}</strong></p>
             <p className="text-muted-foreground">
-              After adjustment (available to book): <strong>
+              Remaining sessions: <strong>{unusedSessions}</strong>
+            </p>
+            <p className="text-muted-foreground">
+              Available to book: <strong>{sessionsRemaining}</strong>
+            </p>
+            <p className="text-muted-foreground">
+              After adjustment (available to book):{" "}
+              <strong>
                 {mode === "add"
                   ? sessionsRemaining + Math.abs(Number(amount) || 0)
-                  : Math.max(0, sessionsRemaining - Math.abs(Number(amount) || 0))}
+                  : Math.max(
+                      0,
+                      sessionsRemaining - Math.abs(Number(amount) || 0),
+                    )}
               </strong>
             </p>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
           <Button
             onClick={handleSubmit}
-            disabled={loading || !!success || !remarks.trim() || !amount || Number(amount) < 1}
+            disabled={
+              loading ||
+              !!success ||
+              !remarks.trim() ||
+              !amount ||
+              Number(amount) < 1
+            }
             variant={mode === "deduct" ? "destructive" : "default"}
           >
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
+            ) : mode === "add" ? (
+              "Add Sessions"
             ) : (
-              mode === "add" ? "Add Sessions" : "Deduct Sessions"
+              "Deduct Sessions"
             )}
           </Button>
         </DialogFooter>

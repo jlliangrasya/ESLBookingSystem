@@ -480,7 +480,9 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                             >
                               <Minus className="h-3 w-3" />
                             </Button>
-                            <div className="flex gap-1 flex-wrap items-center">
+                            {/* Fixed width so the + lines up down the column
+                                whether the row shows one badge or two. */}
+                            <div className="w-60 shrink-0 flex gap-1 flex-wrap items-center">
                             <Badge
                               variant={
                                 (student.unused_sessions ?? student.sessions_remaining ?? 0) <= 3
