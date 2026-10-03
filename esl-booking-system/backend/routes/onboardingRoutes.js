@@ -33,8 +33,12 @@ router.get('/status', authenticateToken, requireRole('company_admin'), async (re
         const [[studentPackageCounts]] = await pool.query(
             `SELECT
                (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'student' AND is_active = TRUE) AS student_count,
-               (SELECT COUNT(*) FROM tutorial_packages WHERE company_id = ? AND is_active = TRUE) AS package_count`,
-            [companyId, companyId]
+               (SELECT COUNT(*) FROM tutorial_packages WHERE company_id = ? AND is_active = TRUE) AS package_count,
+               -- Any opened slot or any class already on a teacher's schedule means
+               -- availability is set up; EXISTS keeps this cheap on busy companies.
+               (EXISTS (SELECT 1 FROM teacher_available_slots WHERE company_id = ?)
+                OR EXISTS (SELECT 1 FROM bookings WHERE company_id = ? AND teacher_id IS NOT NULL)) AS has_teacher_schedule`,
+            [companyId, companyId, companyId, companyId]
         );
 
         // One query for all three teacher facts — the count, who to chase about an
@@ -67,6 +71,7 @@ router.get('/status', authenticateToken, requireRole('company_admin'), async (re
             teacher_count: activeTeachers.length,
             student_count: studentPackageCounts.student_count,
             package_count: studentPackageCounts.package_count,
+            has_teacher_schedule: !!studentPackageCounts.has_teacher_schedule,
         };
 
         const steps = {

@@ -4,6 +4,7 @@ const authenticateToken = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
 const { requirePermission } = require("../utils/permissions");
 const { logAction } = require("../utils/audit");
+const notify = require("../utils/notify");
 const { canUsePackageSql } = require("../utils/sharedPackages");
 
 const router = express.Router();
@@ -158,6 +159,27 @@ router.post("/avail", authenticateToken, requireRole('student'), async (req, res
              receipt_image || transaction_order_number || null,
              teacher_id || null]
         );
+
+        // Let admins know there's a payment to confirm on the dashboard
+        const [[info]] = await pool.query(
+            `SELECT u.name AS student_name, tp.package_name
+             FROM users u JOIN tutorial_packages tp ON tp.id = ?
+             WHERE u.id = ?`,
+            [package_id, studentId]
+        );
+        const [admins] = await pool.query(
+            "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin' AND is_active = TRUE",
+            [companyId]
+        );
+        for (const admin of admins) {
+            notify({
+                userId: admin.id, companyId,
+                type: 'package_availed',
+                title: 'New package availed',
+                message: `${info?.student_name || 'A student'} availed ${info?.package_name || 'a package'} and is waiting for payment confirmation.`,
+                link: '/admin-dashboard',
+            });
+        }
 
         res.json({ message: "Package availed successfully", student_package_id: result.insertId });
     } catch (err) {

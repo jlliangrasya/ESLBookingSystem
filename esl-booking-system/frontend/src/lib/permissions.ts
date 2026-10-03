@@ -118,3 +118,25 @@ export function pageAccessLevel(group: PermissionGroup, perms: string[]): PageAc
   if (held === 1 && perms.includes(viewKey(group.page))) return "view";
   return "custom";
 }
+
+// Notification categories a sub-admin can be opted out of (stored as the muted
+// list). Keep keys in sync with backend/utils/notificationCategories.js.
+export interface NotificationCategory {
+  key: string;
+  label: string;
+  description: string;
+}
+
+export const NOTIFICATION_CATEGORIES: NotificationCategory[] = [
+  { key: "low_sessions", label: "Low class sessions", description: "A student is running out of sessions" },
+  { key: "new_student", label: "New student", description: "A student registers" },
+  { key: "package_availed", label: "Package availed", description: "A student avails a package and needs payment confirmation" },
+  { key: "new_teacher", label: "New teacher", description: "A teacher registers or logs in for the first time" },
+  { key: "booking_created", label: "New bookings", description: "Classes or recurring schedules are booked" },
+  { key: "booking_cancelled", label: "Cancelled bookings", description: "Classes or recurring schedules are cancelled" },
+  { key: "leave_requested", label: "Leave requests", description: "A teacher requests a day off" },
+  { key: "teacher_issues", label: "Teacher issues", description: "Teacher no-shows and deactivations" },
+  { key: "student_feedback", label: "Student feedback", description: "A student submits feedback" },
+  { key: "bulk_import", label: "Bulk imports", description: "A student or teacher import finishes" },
+  { key: "announcement", label: "Announcements", description: "Platform announcements" },
+];

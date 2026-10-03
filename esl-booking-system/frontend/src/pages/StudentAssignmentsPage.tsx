@@ -196,7 +196,7 @@ const StudentAssignmentsPage: React.FC = () => {
                     <CardContent className="space-y-2">
                       <p className="text-xs text-gray-500">
                         Submitted: {fmtDate(selected.submitted_at!)}
-                        {selected.is_late && <Badge className="ml-2 bg-red-100 text-red-700 text-xs">Late</Badge>}
+                        {!!selected.is_late && <Badge className="ml-2 bg-red-100 text-red-700 text-xs">Late</Badge>}
                       </p>
                       {selected.score !== null && (
                         <div className="p-3 bg-green-50 dark:bg-green-950 rounded">

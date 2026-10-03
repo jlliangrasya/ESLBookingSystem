@@ -312,6 +312,22 @@ router.post('/leaves', authenticateToken, requireRole('teacher'), async (req, re
             [companyId, teacherId, leave_date, reason_type, notes || null]
         );
         await logAction(companyId, teacherId, 'leave_requested', 'teacher_leave', result.insertId, { leave_date, reason_type });
+
+        const [[teacher]] = await pool.query('SELECT name FROM users WHERE id = ?', [teacherId]);
+        const [admins] = await pool.query(
+            "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin' AND is_active = TRUE",
+            [companyId]
+        );
+        for (const admin of admins) {
+            notify({
+                userId: admin.id, companyId,
+                type: 'leave_requested',
+                title: 'Leave request',
+                message: `${teacher?.name || 'A teacher'} requested leave on ${String(leave_date).slice(0, 10)} (${reason_type}).`,
+                link: '/teachers',
+            });
+        }
+
         res.status(201).json({ message: 'Leave request submitted', id: result.insertId });
     } catch (err) {
         res.status(500).json({ message: 'Server error' });

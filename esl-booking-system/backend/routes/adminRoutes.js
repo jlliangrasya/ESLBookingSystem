@@ -4,6 +4,7 @@ const pool = require("../db");
 const authenticateToken = require("../middleware/authMiddleware");
 const { invalidateAuthCache } = authenticateToken;
 const requireRole = require("../middleware/requireRole");
+const { parseMuted } = require("../utils/notificationCategories");
 const { requirePermission, getAdminAccess, hasAnyPermission, sanitizePermissions, parsePermissions, legacyPermissions } = require("../utils/permissions");
 const notify = require("../utils/notify");
 const { logAction } = require("../utils/audit");
@@ -11,6 +12,7 @@ const { sendMail } = require("../utils/mailer");
 const { generateTempPassword } = require("../utils/tempPassword");
 const { phtNowSql } = require("../utils/phtTime");
 const { attendeeSql, canUsePackageSql, canUsePackage, packageStudentIds } = require("../utils/sharedPackages");
+const { findAvailableTeachers } = require("../utils/teacherAvailability");
 
 /** Format a stored PHT datetime string for notification messages without UTC shift. */
 function fmtAppt(dtStr) {
@@ -538,7 +540,7 @@ router.delete("/teachers/:id", authenticateToken, requireRole('company_admin'), 
       if (admin.id === adminId) continue;
       await notify({
         userId: admin.id, companyId,
-        type: 'general',
+        type: 'teacher_deactivated',
         title: 'Teacher deactivated',
         message: `${teacherDisplayName} was deactivated. ${futureBookings.length} future booking(s) cancelled and ${packageCount} student package(s) had their teacher assignment cleared.`,
       });
@@ -931,19 +933,25 @@ router.get("/admins", authenticateToken, requireRole('company_admin'), requirePe
   try {
     const companyId = req.user.company_id;
     const [rows] = await pool.query(`
-      SELECT u.id, u.name, u.email, u.is_owner,
-             ap.permissions, ap.can_add_teacher, ap.can_edit_teacher, ap.can_delete_teacher
+      SELECT u.id, u.name, u.email, u.password, u.is_owner,
+             ap.permissions, ap.muted_notifications, ap.can_add_teacher, ap.can_edit_teacher, ap.can_delete_teacher
       FROM users u
       LEFT JOIN admin_permissions ap ON ap.user_id = u.id
       WHERE u.company_id = ? AND u.role = 'company_admin' AND u.is_active = TRUE
       ORDER BY u.is_owner DESC, u.name ASC
     `, [companyId]);
+    // Passwords back the owner's "Copy" button. Only the owner gets them, and never
+    // the owner's own: a sub-admin who could read another admin's login could sign
+    // in as someone with more permissions than they were given.
+    const requesterIsOwner = !!req.adminAccess?.is_owner;
     res.json(rows.map(r => ({
       id: r.id,
       name: r.name,
       email: r.email,
+      ...(requesterIsOwner && !r.is_owner && { password: r.password }),
       is_owner: !!r.is_owner,
       permissions: r.is_owner ? null : (parsePermissions(r.permissions) ?? legacyPermissions(r)),
+      muted_notifications: r.is_owner ? [] : parseMuted(r.muted_notifications),
     })));
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -957,6 +965,7 @@ router.post("/admins", authenticateToken, requireRole('company_admin'), requireP
     const { name, email, password } = req.body;
     if (!name || !email || !password) return res.status(400).json({ message: 'name, email, and password are required' });
     const permissions = resolveGrantable(req.body.permissions, req.adminAccess);
+    const muted = parseMuted(req.body.muted_notifications);
 
     // Enforce max_admins plan limit
     const [[planLimit]] = await pool.query(
@@ -982,10 +991,10 @@ router.post("/admins", authenticateToken, requireRole('company_admin'), requireP
       [companyId, name, email, password]
     );
     await pool.query(
-      'INSERT INTO admin_permissions (user_id, permissions) VALUES (?, ?)',
-      [result.insertId, JSON.stringify(permissions)]
+      'INSERT INTO admin_permissions (user_id, permissions, muted_notifications) VALUES (?, ?, ?)',
+      [result.insertId, JSON.stringify(permissions), JSON.stringify(muted)]
     );
-    await logAction(companyId, req.user.id, 'admin_created', 'user', result.insertId, { name, email, permissions });
+    await logAction(companyId, req.user.id, 'admin_created', 'user', result.insertId, { name, email, permissions, muted_notifications: muted });
     res.status(201).json({ message: 'Admin created successfully' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -1009,12 +1018,20 @@ router.put("/admins/:id/permissions", authenticateToken, requireRole('company_ad
 
     const current = await getAdminAccess(Number(id));
     const permissions = resolveGrantable(req.body.permissions, req.adminAccess, current.permissions);
+    // Omitted = leave the admin's notification preferences as they are
+    const mutedProvided = Array.isArray(req.body.muted_notifications);
+    const muted = parseMuted(req.body.muted_notifications);
     await pool.query(
-      `INSERT INTO admin_permissions (user_id, permissions) VALUES (?, ?)
-       ON DUPLICATE KEY UPDATE permissions = VALUES(permissions)`,
-      [id, JSON.stringify(permissions)]
+      mutedProvided
+        ? `INSERT INTO admin_permissions (user_id, permissions, muted_notifications) VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE permissions = VALUES(permissions), muted_notifications = VALUES(muted_notifications)`
+        : `INSERT INTO admin_permissions (user_id, permissions) VALUES (?, ?)
+           ON DUPLICATE KEY UPDATE permissions = VALUES(permissions)`,
+      mutedProvided ? [id, JSON.stringify(permissions), JSON.stringify(muted)] : [id, JSON.stringify(permissions)]
     );
-    await logAction(companyId, req.user.id, 'admin_permissions_updated', 'user', Number(id), { permissions });
+    await logAction(companyId, req.user.id, 'admin_permissions_updated', 'user', Number(id), {
+      permissions, ...(mutedProvided && { muted_notifications: muted }),
+    });
     res.json({ message: 'Permissions updated', permissions });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -1592,6 +1609,132 @@ router.put('/bookings/:bookingId/assign-teacher', authenticateToken, requireRole
       : null;
     await logAction(companyId, req.user.id, 'teacher_assigned_to_booking', 'booking', Number(bookingId), { teacher_id, teacher_name: teacherName });
     res.json({ message: 'Teacher assigned' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ——— Substitute teacher ———
+
+/**
+ * The whole class a booking belongs to (every 30-min row of its group), or an
+ * error string when it can't be handed to a substitute.
+ */
+async function loadClassForSubstitute(companyId, bookingId) {
+  const [[booking]] = await pool.query(
+    `SELECT b.id, b.booking_group_id, b.teacher_id, b.status, b.appointment_date,
+            t.name AS teacher_name, u.id AS student_id, u.name AS student_name
+     FROM bookings b
+     JOIN student_packages sp ON b.student_package_id = sp.id
+     JOIN users u ON u.id = ${attendeeSql()}
+     LEFT JOIN users t ON t.id = b.teacher_id
+     WHERE b.id = ? AND b.company_id = ?`,
+    [bookingId, companyId]
+  );
+  if (!booking) return { status: 404, error: 'Booking not found' };
+  if (booking.status === 'done' || booking.status === 'cancelled') {
+    return { status: 400, error: `This class is already ${booking.status}.` };
+  }
+
+  let rows = [{ id: booking.id, appointment_date: booking.appointment_date }];
+  if (booking.booking_group_id) {
+    [rows] = await pool.query(
+      `SELECT id, appointment_date FROM bookings
+       WHERE booking_group_id = ? AND company_id = ? AND status NOT IN ('cancelled','done')
+       ORDER BY appointment_date ASC`,
+      [booking.booking_group_id, companyId]
+    );
+  }
+  const start = String(rows[0].appointment_date);
+  const date = start.slice(0, 10);
+  const time = start.slice(11, 16);
+  if (isPastSlot(date, time)) return { status: 400, error: 'This class has already started.' };
+
+  return { booking, rowIds: rows.map(r => r.id), date, time, durationMins: rows.length * 30, start };
+}
+
+// Teachers who could take over a class: open slot first, then free-but-closed
+router.get('/bookings/:id/substitutes', authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const cls = await loadClassForSubstitute(companyId, req.params.id);
+    if (cls.error) return res.status(cls.status).json({ message: cls.error });
+
+    const { open, freeButClosed } = await findAvailableTeachers({
+      companyId, date: cls.date, time24: cls.time, durationMins: cls.durationMins,
+      excludeTeacherId: cls.booking.teacher_id, includeClosed: true,
+    });
+    res.json({
+      booking: {
+        id: cls.booking.id,
+        date: cls.date,
+        time: cls.time,
+        duration_minutes: cls.durationMins,
+        teacher_id: cls.booking.teacher_id,
+        teacher_name: cls.booking.teacher_name,
+        student_name: cls.booking.student_name,
+      },
+      open,
+      free_but_closed: freeButClosed,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Hand a class to a substitute teacher — moves every slot of the class
+router.post('/bookings/:id/substitute', authenticateToken, requireRole('company_admin'), requirePermission('calendar.book_classes'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const newTeacherId = Number(req.body.teacher_id);
+    if (!newTeacherId) return res.status(400).json({ message: 'teacher_id is required' });
+
+    const cls = await loadClassForSubstitute(companyId, req.params.id);
+    if (cls.error) return res.status(cls.status).json({ message: cls.error });
+    const fromTeacherId = cls.booking.teacher_id;
+    if (newTeacherId === fromTeacherId) return res.status(400).json({ message: 'That teacher already has this class.' });
+
+    // Re-check now: the list the admin picked from may be stale
+    const { open, freeButClosed } = await findAvailableTeachers({
+      companyId, date: cls.date, time24: cls.time, durationMins: cls.durationMins,
+      excludeTeacherId: fromTeacherId, includeClosed: true,
+    });
+    const newTeacher = [...open, ...freeButClosed].find(t => t.id === newTeacherId);
+    if (!newTeacher) {
+      return res.status(409).json({ message: 'That teacher is no longer free at this time. Please pick another.' });
+    }
+
+    await pool.query(
+      `UPDATE bookings SET teacher_id = ? WHERE id IN (${cls.rowIds.map(() => '?').join(',')}) AND company_id = ?`,
+      [newTeacherId, ...cls.rowIds, companyId]
+    );
+
+    const when = fmtAppt(cls.start);
+    const fromName = cls.booking.teacher_name || 'the previous teacher';
+    notify({
+      userId: cls.booking.student_id, companyId, type: 'booking_updated',
+      title: 'New teacher for your class',
+      message: `Your class on ${when} will be taught by ${newTeacher.name}.`,
+    });
+    notify({
+      userId: newTeacherId, companyId, type: 'booking_updated',
+      title: 'Substitute class assigned',
+      message: `You've been assigned ${cls.booking.student_name}'s class on ${when} (covering for ${fromName}).`,
+    });
+    if (fromTeacherId) {
+      notify({
+        userId: fromTeacherId, companyId, type: 'booking_updated',
+        title: 'Class reassigned',
+        message: `Your class with ${cls.booking.student_name} on ${when} has been reassigned to ${newTeacher.name}.`,
+      });
+    }
+
+    await logAction(companyId, req.user.id, 'booking_substituted', 'booking', cls.booking.id, {
+      from_teacher_id: fromTeacherId, to_teacher_id: newTeacherId, to_teacher_name: newTeacher.name,
+    });
+    res.json({ message: `Class reassigned to ${newTeacher.name}`, teacher: newTeacher });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });

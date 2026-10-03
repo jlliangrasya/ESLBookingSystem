@@ -6,6 +6,7 @@ const requireRole = require('../middleware/requireRole');
 const { hasAnyPermission } = require('../utils/permissions');
 const notify = require('../utils/notify');
 const { attendeeSql, canUsePackageSql, packageStudentIds } = require('../utils/sharedPackages');
+const { toTime24, findAvailableTeachers } = require('../utils/teacherAvailability');
 
 /** Format a stored PHT datetime string for notification messages without UTC shift. */
 function fmtAppt(dtStr) {
@@ -173,7 +174,7 @@ router.post('/bookings/:id/mark-teacher-absent', authenticateToken, requireRole(
             for (const admin of admins) {
                 await notify({
                     userId: admin.id, companyId: req.user.company_id,
-                    type: 'general',
+                    type: 'teacher_no_show',
                     title: 'Teacher no-show reported',
                     message: `${fullBooking?.student_name || 'A student'}'s class on ${fmtAppt(fullBooking?.appointment_date)} was marked as teacher no-show. 1 session has been refunded.`,
                 });
@@ -520,90 +521,13 @@ router.get('/available-teachers', authenticateToken, requireRole('student'), asy
         const { date, time, duration_minutes } = req.query;
         if (!date || !time) return res.status(400).json({ message: 'date and time are required' });
 
-        const durationMins = Math.max(30, parseInt(duration_minutes) || 30);
-        const slotsNeeded = Math.ceil(durationMins / 30);
-
-        // Convert time to 24h format for matching
-        const match = time.match(/^(\d{1,2}):(\d{2})\s?(AM|PM)?$/i);
-        let time24;
-        if (match && match[3]) {
-            let hr = parseInt(match[1]);
-            if (match[3].toUpperCase() === 'PM' && hr !== 12) hr += 12;
-            if (match[3].toUpperCase() === 'AM' && hr === 12) hr = 0;
-            time24 = `${String(hr).padStart(2, '0')}:${match[2]}`;
-        } else {
-            time24 = time.substring(0, 5);
-        }
-
-        // Compute all consecutive slot times needed
-        const [startH, startM] = time24.split(':').map(Number);
-        const slotTimes = [];
-        for (let i = 0; i < slotsNeeded; i++) {
-            const totalMins = startH * 60 + startM + i * 30;
-            const h = Math.floor(totalMins / 60);
-            const m = totalMins % 60;
-            slotTimes.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
-        }
-
-        // Teachers who have the FIRST slot open
-        const [firstSlotTeachers] = await pool.query(
-            `SELECT teacher_id FROM teacher_available_slots WHERE company_id = ? AND slot_date = ? AND TIME_FORMAT(slot_time, '%H:%i') = ?`,
-            [companyId, date, slotTimes[0]]
-        );
-        if (firstSlotTeachers.length === 0) return res.json([]);
-
-        const candidateIds = firstSlotTeachers.map(r => r.teacher_id);
-
-        // For multi-slot bookings, verify ALL consecutive slots are open per teacher
-        let validIds = candidateIds;
-        if (slotsNeeded > 1) {
-            const [allSlots] = await pool.query(
-                `SELECT teacher_id, TIME_FORMAT(slot_time, '%H:%i') AS slot_time_fmt
-                 FROM teacher_available_slots
-                 WHERE company_id = ? AND slot_date = ?
-                   AND TIME_FORMAT(slot_time, '%H:%i') IN (${slotTimes.map(() => '?').join(',')})
-                   AND teacher_id IN (${candidateIds.map(() => '?').join(',')})`,
-                [companyId, date, ...slotTimes, ...candidateIds]
-            );
-            // Group slots by teacher
-            const teacherSlotMap = {};
-            for (const row of allSlots) {
-                if (!teacherSlotMap[row.teacher_id]) teacherSlotMap[row.teacher_id] = new Set();
-                teacherSlotMap[row.teacher_id].add(row.slot_time_fmt);
-            }
-            // Only keep teachers that have ALL required slots open
-            validIds = candidateIds.filter(tid =>
-                teacherSlotMap[tid] && slotTimes.every(st => teacherSlotMap[tid].has(st))
-            );
-            if (validIds.length === 0) return res.json([]);
-        }
-
-        // Get teacher names
-        const [teachers] = await pool.query(
-            `SELECT id, name FROM users WHERE id IN (${validIds.map(() => '?').join(',')}) AND is_active = TRUE`,
-            validIds
-        );
-
-        // Exclude teachers on leave
-        const [onLeave] = await pool.query(
-            `SELECT teacher_id FROM teacher_leaves WHERE company_id = ? AND leave_date = ? AND status IN ('pending','approved') AND teacher_id IN (${validIds.map(() => '?').join(',')})`,
-            [companyId, date, ...validIds]
-        );
-        const leaveIds = new Set(onLeave.map(r => r.teacher_id));
-
-        // Exclude teachers with any booking conflicting with any of the consecutive slots
-        const conflictDatetimes = slotTimes.map(st => `${date} ${st}:00`);
-        const [booked] = await pool.query(
-            `SELECT DISTINCT teacher_id FROM bookings
-             WHERE company_id = ? AND status NOT IN ('cancelled','done')
-               AND appointment_date IN (${conflictDatetimes.map(() => '?').join(',')})
-               AND teacher_id IN (${validIds.map(() => '?').join(',')})`,
-            [companyId, ...conflictDatetimes, ...validIds]
-        );
-        const bookedIds = new Set(booked.map(r => r.teacher_id));
-
-        const available = teachers.filter(t => !leaveIds.has(t.id) && !bookedIds.has(t.id));
-        res.json(available);
+        const { open } = await findAvailableTeachers({
+            companyId,
+            date,
+            time24: toTime24(time),
+            durationMins: parseInt(duration_minutes) || 30,
+        });
+        res.json(open);
     } catch (err) {
         console.error("Error fetching available teachers:", err);
         res.status(500).json({ message: 'Server error' });

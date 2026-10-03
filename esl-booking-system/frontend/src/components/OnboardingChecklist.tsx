@@ -199,12 +199,20 @@ const OnboardingChecklist = () => {
  * blocked companies from ever feeling progress; now they're suggestions.
  */
 function PostMilestonePrompts({ status }: { status: OnboardingStatus }) {
+  const { teacher_count, package_count, has_teacher_schedule } = status.counts;
+  const hasTeam = teacher_count > 1;
+  const hasPackage = package_count > 0;
+
+  // Once the school has a team, a package and a schedule it's clearly up and
+  // running — the panel has done its job, so retire it entirely.
+  if (hasTeam && hasPackage && has_teacher_schedule) return null;
+
   const extras = [
     {
       label: "Add the rest of your team",
       description: "Invite your other teachers the same way.",
       href: "/teachers",
-      hide: false,
+      hide: hasTeam,
     },
     {
       label: status.student_invites_gated ? "Invite your students" : "Add your students",
@@ -224,7 +232,7 @@ function PostMilestonePrompts({ status }: { status: OnboardingStatus }) {
       label: "Open your teachers' availability",
       description: "Students can only book into slots you've opened.",
       href: "/admin/calendar",
-      hide: false,
+      hide: has_teacher_schedule,
     },
   ].filter((e) => !e.hide);
 

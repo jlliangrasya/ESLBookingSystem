@@ -288,7 +288,7 @@ const TeacherAssignmentsPage: React.FC = () => {
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm flex items-center gap-2">
                         Student Submission
-                        {selectedDetail.submission.is_late && <Badge className="bg-red-100 text-red-700 text-xs">Late</Badge>}
+                        {!!selectedDetail.submission.is_late && <Badge className="bg-red-100 text-red-700 text-xs">Late</Badge>}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">

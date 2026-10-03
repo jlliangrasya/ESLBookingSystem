@@ -155,6 +155,12 @@ const MIGRATIONS = [
     check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admin_permissions' AND COLUMN_NAME = 'permissions'",
     up: 'ALTER TABLE admin_permissions ADD COLUMN permissions TEXT NULL',
   },
+  // ── 018: Per-admin notification preferences ───────────────────────────────
+  {
+    name: 'admin_permissions.muted_notifications column',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admin_permissions' AND COLUMN_NAME = 'muted_notifications'",
+    up: 'ALTER TABLE admin_permissions ADD COLUMN muted_notifications TEXT NULL',
+  },
 ];
 
 async function main() {

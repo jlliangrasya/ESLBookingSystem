@@ -28,6 +28,7 @@ export interface OnboardingStatus {
     teacher_count: number;
     student_count: number;
     package_count: number;
+    has_teacher_schedule: boolean;
   };
   first_teacher: { id: number; name: string; email: string } | null;
   milestone_teacher: { id: number; name: string; last_login_at: string } | null;

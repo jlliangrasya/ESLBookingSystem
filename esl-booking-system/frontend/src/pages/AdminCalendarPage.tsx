@@ -13,6 +13,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { StudentPackagePicker } from "@/components/StudentPackagePicker";
+import { SubstituteTeacherDialog } from "@/components/SubstituteTeacherDialog";
 import {
   CalendarRange, ChevronLeft, ChevronRight, Loader2, GraduationCap,
 } from "lucide-react";
@@ -197,6 +198,10 @@ const AdminCalendarPage = () => {
   const [recurringCancelBooking, setRecurringCancelBooking] = useState<CalendarBooking | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
 
+  // Substitute teacher
+  const [substituteBookingId, setSubstituteBookingId] = useState<number | null>(null);
+  const [substituteNotice, setSubstituteNotice] = useState<string | null>(null);
+
   const teacher = teachers[teacherIdx] ?? null;
 
   const fetchTeachers = useCallback(async () => {
@@ -359,11 +364,32 @@ const AdminCalendarPage = () => {
 
   const handleBookedClick = (booking: CalendarBooking) => {
     if (booking.status === "done") return;
-    if (booking.recurring_schedule_id) {
+    if (!canCancel) {
+      setSubstituteBookingId(booking.id);
+    } else if (booking.recurring_schedule_id) {
       setRecurringCancelBooking(booking);
     } else {
       setCancelTarget(booking);
     }
+  };
+
+  /** Swap a cancel dialog for the substitute finder. */
+  const openSubstitute = (booking: CalendarBooking) => {
+    setCancelTarget(null);
+    setRecurringCancelBooking(null);
+    setSubstituteBookingId(booking.id);
+  };
+
+  const handleSubstituteAssigned = (teacherName: string) => {
+    setSubstituteBookingId(null);
+    setSubstituteNotice(`Class reassigned to ${teacherName}.`);
+    fetchGrid();
+  };
+
+  /** A class can only be handed over before it starts. */
+  const classStarted = (b: CalendarBooking) => {
+    const [date, time] = classStartKey(b).split("|");
+    return new Date(`${date}T${time}:00+08:00`) < new Date();
   };
 
   const doCancel = async (bookingId: number, cancelAll: boolean) => {
@@ -772,6 +798,12 @@ const AdminCalendarPage = () => {
               </p>
             </CardHeader>
             <CardContent>
+              {substituteNotice && (
+                <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                  <span>{substituteNotice}</span>
+                  <button className="text-xs underline" onClick={() => setSubstituteNotice(null)}>Dismiss</button>
+                </div>
+              )}
               <div className="flex items-center justify-between mb-4">
                 <Button variant="outline" size="sm" onClick={() => setWeekStart(addDays(weekStart, -7))}>
                   <ChevronLeft className="h-4 w-4 mr-1" /> Prev
@@ -863,9 +895,9 @@ const AdminCalendarPage = () => {
                                 {...dragProps}
                                 onClick={() => {
                                   if (!guardCellClick(key)) return;
-                                  if (!isDone && cancellingId === null && canCancel) handleBookedClick(booking);
+                                  if (!isDone && cancellingId === null && (canCancel || canBook)) handleBookedClick(booking);
                                 }}
-                                title={isDone ? `${tooltip} — completed, cannot cancel` : `${tooltip} — click to cancel`}
+                                title={isDone ? `${tooltip} — completed, cannot cancel` : `${tooltip} — click to cancel or find a substitute`}
                                 style={isDone ? undefined : { backgroundColor: colorByStudent.get(booking.student_id), color: "#fff" }}
                                 className={`p-1 text-center border transition-[filter] ${
                                   isDone ? "bg-slate-200 text-slate-500 cursor-default"
@@ -930,7 +962,7 @@ const AdminCalendarPage = () => {
                   <span className="inline-block w-3 h-3 border rounded-l" style={{ backgroundColor: STUDENT_COLORS[0] }} />
                   <span className="inline-block w-3 h-3 border" style={{ backgroundColor: STUDENT_COLORS[2] }} />
                   <span className="inline-block w-3 h-3 border rounded-r mr-1" style={{ backgroundColor: STUDENT_COLORS[4] }} />
-                  Booked (one color per student) — click to cancel
+                  Booked (one color per student) — click to cancel or find a substitute
                 </span>
                 <span>⏳ Pending (striped)</span>
                 <span><span className="inline-block w-3 h-3 bg-slate-200 border rounded mr-1" />Completed</span>
@@ -1046,6 +1078,11 @@ const AdminCalendarPage = () => {
               <p className="text-xs text-muted-foreground">1 session will be refunded to the student's package.</p>
             </div>
             <DialogFooter>
+              {canBook && !classStarted(cancelTarget) && (
+                <Button variant="outline" className="sm:mr-auto" onClick={() => openSubstitute(cancelTarget)} disabled={cancellingId !== null}>
+                  Find substitute
+                </Button>
+              )}
               <Button variant="ghost" onClick={() => setCancelTarget(null)} disabled={cancellingId !== null}>
                 Keep it
               </Button>
@@ -1079,10 +1116,25 @@ const AdminCalendarPage = () => {
                 onClick={() => doCancel(recurringCancelBooking.id, true)}>
                 {cancellingId === recurringCancelBooking.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Cancel all upcoming sessions in this series"}
               </Button>
+              {canBook && !classStarted(recurringCancelBooking) && (
+                <Button variant="outline" className="justify-start"
+                  disabled={cancellingId === recurringCancelBooking.id}
+                  onClick={() => openSubstitute(recurringCancelBooking)}>
+                  Find substitute for this session
+                </Button>
+              )}
               <Button variant="ghost" onClick={() => setRecurringCancelBooking(null)}>Keep it</Button>
             </div>
           </DialogContent>
         </Dialog>
+      )}
+
+      {substituteBookingId !== null && (
+        <SubstituteTeacherDialog
+          bookingId={substituteBookingId}
+          onClose={() => setSubstituteBookingId(null)}
+          onAssigned={handleSubstituteAssigned}
+        />
       )}
     </>
   );

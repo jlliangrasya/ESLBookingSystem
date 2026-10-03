@@ -25,7 +25,8 @@ const NavBar: React.FC = () => {
   const { t } = useTranslation();
   const authContext = useContext(AuthContext);
   const role = authContext?.user?.role;
-  const isOwner = authContext?.user?.is_owner ?? false;
+  // is_owner arrives from MySQL as 0/1 — coerce so `isOwner && <JSX>` never renders a stray "0"
+  const isOwner = Boolean(authContext?.user?.is_owner);
   const companyId = authContext?.user?.company_id ?? 0;
   const { can, homePath } = usePermissions();
   const [mobileOpen, setMobileOpen] = useState(false);

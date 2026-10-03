@@ -11,24 +11,31 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, UserCog, Plus, Pencil, Trash2, AlertCircle, ShieldCheck } from "lucide-react";
+import { Loader2, UserCog, Plus, Pencil, Trash2, AlertCircle, ShieldCheck, BellOff, Copy, Check } from "lucide-react";
 import AuthContext from "@/context/AuthContext";
 import { usePermissions } from "@/context/PermissionsContext";
 import TablePagination from "@/components/TablePagination";
 import PermissionEditor from "@/components/PermissionEditor";
+import NotificationPrefsEditor from "@/components/NotificationPrefsEditor";
 import { PERMISSION_GROUPS, pageAccessLevel, viewKey } from "@/lib/permissions";
 
 interface AdminUser {
   id: number;
   name: string;
   email: string;
+  // Only sent to the owner, and only for sub-admins
+  password?: string;
   is_owner: boolean;
   // null for the owner, who implicitly has every permission
   permissions: string[] | null;
+  // Notification categories this admin doesn't receive
+  muted_notifications: string[];
 }
 
 // Sensible starting point for a new admin: can see every page, change nothing
 const DEFAULT_NEW_PERMISSIONS = PERMISSION_GROUPS.filter((g) => g.page !== "admins").map((g) => viewKey(g.page));
+
+const LOGIN_URL = "https://brightfolks.pages.dev";
 
 const LEVEL_LABEL = { full: "Full", view: "View only", custom: "Custom" } as const;
 
@@ -71,6 +78,7 @@ const AdminManagementPage = () => {
   const emptyAddForm = () => ({
     name: "", email: "", password: "",
     permissions: DEFAULT_NEW_PERMISSIONS.filter((k) => !grantable || grantable.includes(k)),
+    muted_notifications: [] as string[],
   });
   const [addForm, setAddForm] = useState(emptyAddForm);
   const [addError, setAddError] = useState<string | null>(null);
@@ -79,8 +87,30 @@ const AdminManagementPage = () => {
   // Edit permissions modal
   const [editAdmin, setEditAdmin] = useState<AdminUser | null>(null);
   const [editPerms, setEditPerms] = useState<string[]>([]);
+  const [editMuted, setEditMuted] = useState<string[]>([]);
   const [editError, setEditError] = useState<string | null>(null);
   const [editLoading, setEditLoading] = useState(false);
+
+  const [copiedAdminId, setCopiedAdminId] = useState<number | null>(null);
+
+  const copyAdminLogin = async (admin: AdminUser) => {
+    const text = [
+      `Hi ${admin.name}, here are your Brightfolks admin login details.`,
+      ``,
+      `Login: ${LOGIN_URL}/login`,
+      `Email: ${admin.email}`,
+      `Password: ${admin.password}`,
+      ``,
+      `You can change your password once you're in.`,
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedAdminId(admin.id);
+      setTimeout(() => setCopiedAdminId((id) => (id === admin.id ? null : id)), 2000);
+    } catch {
+      alert("Couldn't copy to the clipboard. Please copy the details manually.");
+    }
+  };
 
   // Delete confirm
   const [deleteAdmin, setDeleteAdmin] = useState<AdminUser | null>(null);
@@ -121,7 +151,7 @@ const AdminManagementPage = () => {
     try {
       await axios.put(
         `${import.meta.env.VITE_API_URL}/api/admin/admins/${editAdmin.id}/permissions`,
-        { permissions: editPerms },
+        { permissions: editPerms, muted_notifications: editMuted },
         { headers },
       );
       setEditAdmin(null);
@@ -148,7 +178,9 @@ const AdminManagementPage = () => {
   const canAdd = can("admins.add");
   const canEdit = can("admins.edit_permissions");
   const canDelete = can("admins.delete");
-  const showActions = canEdit || canDelete;
+  // Passwords only come back for the owner, so this is effectively owner-only
+  const canCopy = admins.some((a) => a.password !== undefined);
+  const showActions = canEdit || canDelete || canCopy;
 
   if (loading) {
     return (
@@ -210,15 +242,30 @@ const AdminManagementPage = () => {
                           ) : (
                             <AccessSummary perms={admin.permissions ?? []} />
                           )}
+                          {admin.muted_notifications.length > 0 && (
+                            <Badge variant="outline" className="text-xs text-amber-700 border-amber-300 gap-1"
+                              title="Notification categories this admin doesn't receive">
+                              <BellOff className="h-3 w-3" /> {admin.muted_notifications.length} muted
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       {showActions && (
                         <TableCell>
                           {manageable && (
                             <div className="flex gap-1">
+                              {admin.password !== undefined && (
+                                <Button size="sm" variant="outline" className="h-7 text-xs"
+                                  title="Copy this admin's login credentials"
+                                  onClick={() => copyAdminLogin(admin)}>
+                                  {copiedAdminId === admin.id
+                                    ? <><Check className="h-3 w-3 mr-1 text-green-600" /> Copied</>
+                                    : <><Copy className="h-3 w-3 mr-1" /> Copy</>}
+                                </Button>
+                              )}
                               {canEdit && (
                                 <Button size="sm" variant="outline" className="h-7 text-xs"
-                                  onClick={() => { setEditError(null); setEditAdmin(admin); setEditPerms(admin.permissions ?? []); }}>
+                                  onClick={() => { setEditError(null); setEditAdmin(admin); setEditPerms(admin.permissions ?? []); setEditMuted(admin.muted_notifications); }}>
                                   <Pencil className="h-3 w-3 mr-1" /> Permissions
                                 </Button>
                               )}
@@ -263,6 +310,13 @@ const AdminManagementPage = () => {
                 grantable={grantable}
               />
             </div>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Notifications</p>
+              <NotificationPrefsEditor
+                muted={addForm.muted_notifications}
+                onChange={(muted_notifications) => setAddForm({ ...addForm, muted_notifications })}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddModal(false)}>Cancel</Button>
@@ -276,10 +330,13 @@ const AdminManagementPage = () => {
       {/* Edit Permissions Modal */}
       <Dialog open={!!editAdmin} onOpenChange={(o) => !o && setEditAdmin(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Edit Permissions — {editAdmin?.name}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Permissions &amp; Notifications — {editAdmin?.name}</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             {editError && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{editError}</AlertDescription></Alert>}
+            <p className="text-sm font-medium">Access Permissions</p>
             <PermissionEditor value={editPerms} onChange={setEditPerms} grantable={grantable} />
+            <p className="text-sm font-medium pt-2">Notifications</p>
+            <NotificationPrefsEditor muted={editMuted} onChange={setEditMuted} />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditAdmin(null)}>Cancel</Button>

@@ -2,6 +2,30 @@ const pool = require('../db');
 const { getIO } = require('../socket');
 const logger = require('./logger');
 const { sendPushToUser } = require('./pushService');
+const { CATEGORY_BY_TYPE, parseMuted } = require('./notificationCategories');
+
+/**
+ * True when the recipient is a sub-admin who has been opted out of this
+ * notification's category. The owner and non-admin roles always receive.
+ */
+async function isMuted(userId, type) {
+    const category = CATEGORY_BY_TYPE[type];
+    if (!category) return false;
+    try {
+        const [[row]] = await pool.query(
+            `SELECT u.role, u.is_owner, ap.muted_notifications
+             FROM users u LEFT JOIN admin_permissions ap ON ap.user_id = u.id
+             WHERE u.id = ?`,
+            [userId]
+        );
+        if (!row || row.role !== 'company_admin' || row.is_owner) return false;
+        return parseMuted(row.muted_notifications).includes(category);
+    } catch (err) {
+        // Fail open: a preference lookup problem must never swallow notifications
+        logger.error('Notification preference check failed', { error: err.message, userId, type });
+        return false;
+    }
+}
 
 /**
  * Create a notification in DB and emit it via socket.io to the recipient.
@@ -23,6 +47,7 @@ function notify({ userId, companyId = null, type, title, message = '', link = nu
     // Intentionally not returning the promise — callers should not await
     (async () => {
         try {
+            if (await isMuted(userId, type)) return;
             const [result] = await pool.query(
                 'INSERT INTO notifications (user_id, company_id, type, title, message, link) VALUES (?, ?, ?, ?, ?, ?)',
                 [userId, companyId, type, title, message, link]

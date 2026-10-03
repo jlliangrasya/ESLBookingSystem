@@ -276,6 +276,8 @@ async function runAutoMigrations() {
     ['bookings', 'attendee_id', 'INT NULL'],
     // Migration 017: every permission check reads this, so it must exist at boot.
     ['admin_permissions', 'permissions', 'TEXT NULL'],
+    // Migration 018: notify() reads this for every admin-bound notification.
+    ['admin_permissions', 'muted_notifications', 'TEXT NULL'],
   ];
   for (const [table, col, def] of addTableCols) {
     try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); }
