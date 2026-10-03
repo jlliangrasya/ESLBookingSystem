@@ -103,6 +103,11 @@ const DRAG_THRESHOLD_PX = 8;
 const LONG_PRESS_MS = 500;
 /** Finger travel before a hold is written off as the start of a scroll. */
 const TOUCH_SCROLL_CANCEL_PX = 10;
+/** Time rows visible in the grid's scroll box before it scrolls; the day headers stay pinned. */
+const VISIBLE_ROWS = 16;
+/** A drag this close to the scroll box's top or bottom edge scrolls the grid. */
+const AUTOSCROLL_EDGE_PX = 32;
+const AUTOSCROLL_MAX_STEP_PX = 14;
 
 /**
  * The grid cell under a viewport point. Touch gives every pointermove to the element the
@@ -168,6 +173,11 @@ const AdminCalendarPage = () => {
   // and so cannot see the current render's state.
   const isSelectingRef = useRef(false);
   const gridScrollRef = useRef<HTMLDivElement>(null);
+  const gridTableRef = useRef<HTMLTableElement>(null);
+  // Height of the header plus VISIBLE_ROWS rows, measured so the cap stays exact if row height changes.
+  const [gridMaxHeight, setGridMaxHeight] = useState<number | null>(null);
+  // Last pointer position during a drag, read by the edge auto-scroll loop.
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   // True while a finished drag's highlight is still standing, waiting for a bulk action.
   // The cell click handlers fire after pointerup, so they can't read this off state.
   const selectionCommittedRef = useRef(false);
@@ -491,6 +501,67 @@ const AdminCalendarPage = () => {
     // The grid unmounts while teachers load, so re-attach whenever it can have come back.
   }, [loadingTeachers, teachers.length]);
 
+  // Cap the scroll box at the header plus VISIBLE_ROWS rows. The cut-off row's top edge,
+  // measured from the table's top, is exactly that height. Re-measured on resize since a
+  // narrow screen can wrap text and make rows taller.
+  useEffect(() => {
+    const table = gridTableRef.current;
+    if (!table) return;
+    const measure = () => {
+      const cutoff = table.tBodies[0]?.rows[VISIBLE_ROWS];
+      setGridMaxHeight(cutoff ? cutoff.offsetTop : null);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(table);
+    return () => ro.disconnect();
+  }, [loadingTeachers, teachers.length]);
+
+  // While a drag is extending the highlight, holding the pointer near the scroll box's top
+  // or bottom edge scrolls the grid, so a range can reach rows outside the visible window.
+  useEffect(() => {
+    if (!isSelecting) return;
+    const onMove = (e: PointerEvent) => { lastPointerRef.current = { x: e.clientX, y: e.clientY }; };
+    window.addEventListener("pointermove", onMove);
+    let frame = 0;
+    const tick = () => {
+      const el = gridScrollRef.current;
+      const p = lastPointerRef.current;
+      if (el && p) {
+        const rect = el.getBoundingClientRect();
+        const thead = gridTableRef.current?.tHead?.getBoundingClientRect().height ?? 0;
+        const top = rect.top + thead;
+        let step = 0;
+        if (p.y < top + AUTOSCROLL_EDGE_PX) {
+          step = -Math.min(AUTOSCROLL_MAX_STEP_PX, top + AUTOSCROLL_EDGE_PX - p.y);
+        } else if (p.y > rect.bottom - AUTOSCROLL_EDGE_PX) {
+          step = Math.min(AUTOSCROLL_MAX_STEP_PX, p.y - (rect.bottom - AUTOSCROLL_EDGE_PX));
+        }
+        if (step !== 0) {
+          const before = el.scrollTop;
+          el.scrollTop += step;
+          if (el.scrollTop !== before) {
+            // The rows slid under a still pointer, so no cell got a pointer event — find
+            // the one now under it, keeping the probe inside the body rows.
+            const y = Math.min(Math.max(p.y, top + 2), rect.bottom - 2);
+            const cell = cellFromPoint(p.x, y);
+            if (cell) {
+              dragMovedRef.current = true;
+              setSelFocus(prev => (prev && prev.d === cell.d && prev.t === cell.t ? prev : cell));
+            }
+          }
+        }
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      cancelAnimationFrame(frame);
+      lastPointerRef.current = null;
+    };
+  }, [isSelecting]);
+
   // Changing the week or the teacher would leave the highlight pointing at other slots.
   useEffect(() => {
     selectionCommittedRef.current = false;
@@ -708,19 +779,23 @@ const AdminCalendarPage = () => {
               </div>
               <div
                 ref={gridScrollRef}
-                className={`overflow-x-auto overscroll-contain ${loadingGrid ? "opacity-50 pointer-events-none" : ""}`}
+                style={gridMaxHeight ? { maxHeight: gridMaxHeight } : undefined}
+                className={`overflow-auto overscroll-contain ${loadingGrid ? "opacity-50 pointer-events-none" : ""}`}
               >
                 {/* select-none stops a drag across the grid turning into a text selection,
                     and touch-none keeps a finger extending the highlight instead of scrolling. */}
                 <table
+                  ref={gridTableRef}
                   className={`w-full text-xs border-collapse table-fixed select-none ${isSelecting ? "touch-none" : ""}`}
                   onContextMenu={e => e.preventDefault()}
                 >
-                  <thead>
+                  {/* Pinned while the rows scroll; z-20 keeps it above the highlighted
+                      row's tint overlay. */}
+                  <thead className="sticky top-0 z-20 bg-white shadow-[0_1px_0_0_var(--border)]">
                     <tr>
-                      <th className="p-1 text-left w-16">Time</th>
+                      <th className="p-1 text-left w-16 bg-white">Time</th>
                       {[...Array(7)].map((_, i) => (
-                        <th key={i} className="p-1 text-center">{format(addDays(weekStart, i), "EEE MM/dd")}</th>
+                        <th key={i} className="p-1 text-center bg-white">{format(addDays(weekStart, i), "EEE MM/dd")}</th>
                       ))}
                     </tr>
                   </thead>

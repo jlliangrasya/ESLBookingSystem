@@ -48,6 +48,8 @@ import {
   ShieldCheck,
   Trash2,
   AlertTriangle,
+  Plus,
+  Minus,
 } from "lucide-react";
 import {
   Tooltip,
@@ -74,6 +76,7 @@ interface Student {
   teacher_name: string | null;
   enrolled: boolean;
   is_active?: boolean | number;
+  student_package_id: number | null;
 }
 
 const emptyForm = {
@@ -115,6 +118,10 @@ const StudentListPage: React.FC = () => {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Row currently saving a quick +/- session adjustment, so its buttons can't
+  // be double-clicked into two requests.
+  const [adjustingId, setAdjustingId] = useState<number | null>(null);
+  const [adjustError, setAdjustError] = useState<string | null>(null);
 
   // The server checks this too — this only decides when the button lights up.
   const deleteConfirmed =
@@ -167,6 +174,46 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
       }
     } finally {
       setDeleteLoading(false);
+    }
+  };
+
+  // One-click +1 / -1 from the list. Uses the same endpoint (and audit trail)
+  // as the profile's Add/Deduct dialog, with a fixed remark since there's no
+  // form here to type one into.
+  const handleQuickAdjust = async (student: Student, delta: 1 | -1) => {
+    if (!student.student_package_id || adjustingId !== null) return;
+    setAdjustingId(student.id);
+    setAdjustError(null);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/admin/student-packages/${student.student_package_id}/adjust-sessions`,
+        {
+          adjustment: delta,
+          remarks: delta > 0 ? "Quick add from Students List" : "Quick deduct from Students List",
+        },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const newRemaining: number = res.data.sessions_remaining;
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.id === student.id
+            ? {
+                ...s,
+                sessions_remaining: newRemaining,
+                unused_sessions: (s.unused_sessions ?? s.sessions_remaining ?? 0) + delta,
+              }
+            : s,
+        ),
+      );
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response) {
+        setAdjustError(err.response.data?.message || "Failed to adjust sessions");
+      } else {
+        setAdjustError("An unexpected error occurred");
+      }
+    } finally {
+      setAdjustingId(null);
     }
   };
 
@@ -275,7 +322,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
   return (
     <>
       <NavBar />
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-gray-800">Students List</h1>
           <div className="flex gap-2">
@@ -384,6 +431,12 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
           </Select>
         </div>
 
+        {adjustError && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertDescription>{adjustError}</AlertDescription>
+          </Alert>
+        )}
+
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
           {isLoading ? (
             <div className="flex justify-center items-center py-16">
@@ -443,7 +496,26 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                           )}
                         </TableCell>
                         <TableCell>
-                          <div className="flex gap-1 flex-wrap">
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              aria-label={`Deduct a session from ${student.name}`}
+                              title="Deduct 1 session"
+                              className="h-6 w-6 p-0 shrink-0"
+                              disabled={
+                                !student.student_package_id ||
+                                adjustingId !== null ||
+                                (student.sessions_remaining ?? 0) <= 0
+                              }
+                              onClick={() => handleQuickAdjust(student, -1)}
+                            >
+                              <Minus className="h-3 w-3" />
+                            </Button>
+                          <div className="flex gap-1 flex-wrap items-center">
+                            {adjustingId === student.id && (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                            )}
                             <Badge
                               variant={
                                 (student.unused_sessions ?? student.sessions_remaining ?? 0) <= 3
@@ -458,6 +530,18 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                                 {student.sessions_remaining ?? 0} available to book
                               </Badge>
                             )}
+                          </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              aria-label={`Add a session to ${student.name}`}
+                              title={student.student_package_id ? "Add 1 session" : "No package assigned"}
+                              className="h-6 w-6 p-0 shrink-0"
+                              disabled={!student.student_package_id || adjustingId !== null}
+                              onClick={() => handleQuickAdjust(student, 1)}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
                           </div>
                         </TableCell>
                         <TableCell>

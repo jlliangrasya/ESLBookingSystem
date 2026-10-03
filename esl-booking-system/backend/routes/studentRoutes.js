@@ -618,7 +618,7 @@ router.get("/students", authenticateToken, requireRole('company_admin'), async (
         const [rows] = await pool.query(`
             SELECT
                 u.id, u.name, u.email, u.password, u.guardian_name, u.nationality, u.age, u.created_at, u.is_active,
-                sp.payment_status, sp.subject, sp.package_id,
+                sp.id AS student_package_id, sp.payment_status, sp.subject, sp.package_id,
                 tp.package_name,
                 sp.sessions_remaining,
                 IFNULL(sp.sessions_remaining, 0) + IFNULL(active_bk.active_classes, 0) AS unused_sessions,
