@@ -2349,13 +2349,29 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
       [companyId]
     );
 
+    // Students holding a usable package — paid, with sessions left or a class still
+    // upcoming — either as the owner or as a member of a shared package
+    const activePackageStudentIds = `
+      SELECT sp_o.student_id FROM student_packages sp_o
+      WHERE sp_o.company_id = c.id AND sp_o.payment_status = 'paid' AND sp_o.student_id IS NOT NULL
+        AND (sp_o.sessions_remaining > 0
+             OR EXISTS (SELECT 1 FROM bookings b_o WHERE b_o.student_package_id = sp_o.id AND b_o.status NOT IN ('done','cancelled')))
+      UNION
+      SELECT spm.student_id FROM student_package_members spm
+      JOIN student_packages sp_m ON sp_m.id = spm.student_package_id
+      WHERE sp_m.company_id = c.id AND sp_m.payment_status = 'paid' AND spm.student_id IS NOT NULL
+        AND (sp_m.sessions_remaining > 0
+             OR EXISTS (SELECT 1 FROM bookings b_m WHERE b_m.student_package_id = sp_m.id AND b_m.status NOT IN ('done','cancelled')))`;
+
     // Summary totals + plan limits
     const [[totals]] = await pool.query(
       `SELECT
-         (SELECT COUNT(DISTINCT sp_a.student_id) FROM student_packages sp_a
-          WHERE sp_a.company_id = ? AND sp_a.payment_status = 'paid'
-            AND (sp_a.sessions_remaining > 0
-                 OR EXISTS (SELECT 1 FROM bookings b_a WHERE b_a.student_package_id = sp_a.id AND b_a.status NOT IN ('done','cancelled')))) AS totalStudents,
+         -- Same count the plan seat limit is enforced against (add student, register, import)
+         (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'student' AND is_active = TRUE) AS totalStudents,
+         (SELECT COUNT(*) FROM users u WHERE u.company_id = c.id AND u.role = 'student' AND u.is_active = TRUE
+            AND u.id IN (${activePackageStudentIds})) AS activeStudents,
+         (SELECT COUNT(*) FROM users u WHERE u.company_id = c.id AND u.role = 'student' AND u.is_active = TRUE
+            AND u.id NOT IN (${activePackageStudentIds})) AS noPackageStudents,
          (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE) AS teachersCount,
          (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'company_admin' AND is_active = TRUE) AS adminsCount,
          (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND status = 'done'

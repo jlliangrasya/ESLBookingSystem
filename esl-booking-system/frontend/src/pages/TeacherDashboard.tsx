@@ -187,6 +187,8 @@ const DOUBLE_CLICK_MS = 250;
 const LONG_PRESS_MS = 500;
 /** Finger travel before a hold is written off as the start of a scroll. */
 const TOUCH_SCROLL_CANCEL_PX = 10;
+/** Teachers can't cancel classes for now; flip to true to bring the Cancel button back in Upcoming Classes. */
+const TEACHER_CAN_CANCEL_CLASS = false;
 
 /**
  * The grid cell under a viewport point. Touch gives every pointermove to the element the
@@ -2857,7 +2859,7 @@ const TeacherDashboard = () => {
                       <TableHead>Status</TableHead>
                       <TableHead>Class Info</TableHead>
                       <TableHead>Attendance</TableHead>
-                      <TableHead></TableHead>
+                      {TEACHER_CAN_CANCEL_CLASS && <TableHead></TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -2975,16 +2977,18 @@ const TeacherDashboard = () => {
                                   </span>
                                 )}
                               </TableCell>
-                              <TableCell>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-xs h-7 text-destructive hover:text-destructive hover:bg-red-50"
-                                  onClick={() => handleInitiateCancel(b)}
-                                >
-                                  Cancel
-                                </Button>
-                              </TableCell>
+                              {TEACHER_CAN_CANCEL_CLASS && (
+                                <TableCell>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-xs h-7 text-destructive hover:text-destructive hover:bg-red-50"
+                                    onClick={() => handleInitiateCancel(b)}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </TableCell>
+                              )}
                             </TableRow>
                           );
                         })

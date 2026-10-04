@@ -16,6 +16,7 @@ import {
 import {
   Users,
   UserCheck,
+  UserX,
   Eye,
   MessageSquare,
   BarChart2,
@@ -115,9 +116,6 @@ interface StudentPackage {
 const AdminDashboard = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [paidStudentPackages, setPaidStudentPackages] = useState<
-    StudentPackage[]
-  >([]);
   const [studentPackages, setStudentPackages] = useState<StudentPackage[]>([]);
   const navigate = useNavigate();
   const authContext = useContext(AuthContext);
@@ -138,6 +136,8 @@ const AdminDashboard = () => {
       totalSessions: number;
       totalRevenue: number;
       totalStudents: number;
+      activeStudents: number;
+      noPackageStudents: number;
       teachersCount: number;
       adminsCount: number;
       classesToday: number;
@@ -199,14 +199,12 @@ const AdminDashboard = () => {
         studentsRes,
         bookingsRes,
         pendingRes,
-        paidRes,
         feedbackRes,
         teachersRes,
       ] = await Promise.all([
         axios.get(`${base}/api/student/students`, { headers }),
         axios.get(`${base}/api/student-bookings`, { headers }),
         axios.get(`${base}/api/student/student-packages/pending`, { headers }),
-        axios.get(`${base}/api/student/student-packages/paid`, { headers }),
         axios.get<Feedback[]>(`${base}/api/admin/feedback`, { headers }),
         axios.get(`${base}/api/admin/teachers`, { headers }),
       ]);
@@ -216,7 +214,6 @@ const AdminDashboard = () => {
       const bd = bookingsRes.data;
       setBookings(Array.isArray(bd) ? bd : (bd.data ?? []));
       setStudentPackages(pendingRes.data);
-      setPaidStudentPackages(paidRes.data);
       setFeedback(feedbackRes.data);
       setTeacherCount(teachersRes.data.length);
     } catch (err) {
@@ -292,9 +289,6 @@ const AdminDashboard = () => {
     }
   };
 
-  const enrolledStudents = paidStudentPackages.filter(
-    (sp) => sp.payment_status === "paid",
-  ).length;
   const pendingEnrollees = studentPackages.filter(
     (sp) => sp.payment_status === "unpaid" && sp.sessions_remaining > 0,
   );
@@ -347,7 +341,7 @@ const AdminDashboard = () => {
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7 gap-4">
           <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
             <div className="p-2.5 bg-[#D0E8F0] rounded-xl shrink-0">
               <Users className="h-5 w-5 text-[#2E6B9E]" />
@@ -379,6 +373,28 @@ const AdminDashboard = () => {
             </div>
           </div>
           <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
+            <div className="p-2.5 bg-emerald-100 rounded-xl shrink-0">
+              <UserCheck className="h-5 w-5 text-emerald-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 font-medium">Active Students</p>
+              <p className="text-2xl font-bold text-gray-800 tabular-nums">
+                {analytics?.totals.activeStudents ?? "—"}
+              </p>
+            </div>
+          </div>
+          <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
+            <div className="p-2.5 bg-gray-100 rounded-xl shrink-0">
+              <UserX className="h-5 w-5 text-gray-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 font-medium">No Package</p>
+              <p className="text-2xl font-bold text-gray-800 tabular-nums">
+                {analytics?.totals.noPackageStudents ?? "—"}
+              </p>
+            </div>
+          </div>
+          <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
             <div className="p-2.5 bg-purple-100 rounded-xl shrink-0">
               <GraduationCap className="h-5 w-5 text-purple-600" />
             </div>
@@ -406,17 +422,6 @@ const AdminDashboard = () => {
                   {teacherCount ?? "—"}
                 </p>
               )}
-            </div>
-          </div>
-          <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
-            <div className="p-2.5 bg-emerald-100 rounded-xl shrink-0">
-              <UserCheck className="h-5 w-5 text-emerald-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs text-gray-500 font-medium">Enrolled</p>
-              <p className="text-2xl font-bold text-gray-800 tabular-nums">
-                {enrolledStudents}
-              </p>
             </div>
           </div>
           <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
@@ -803,7 +808,7 @@ const AdminDashboard = () => {
                     Active Students
                   </p>
                   <p className="text-2xl font-bold text-gray-800">
-                    {analytics.totals.totalStudents}
+                    {analytics.totals.activeStudents}
                   </p>
                 </div>
               </div>
