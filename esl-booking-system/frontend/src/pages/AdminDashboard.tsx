@@ -347,9 +347,9 @@ const AdminDashboard = () => {
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">
           <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
-            <div className="p-2.5 bg-[#D0E8F0] rounded-xl">
+            <div className="p-2.5 bg-[#D0E8F0] rounded-xl shrink-0">
               <Users className="h-5 w-5 text-[#2E6B9E]" />
             </div>
             <div className="min-w-0">
@@ -357,10 +357,10 @@ const AdminDashboard = () => {
               {analytics?.totals.maxStudents != null ? (
                 <>
                   <p
-                    className={`text-2xl font-bold ${analytics.totals.totalStudents >= analytics.totals.maxStudents ? "text-red-600" : analytics.totals.totalStudents >= analytics.totals.maxStudents * 0.8 ? "text-amber-600" : "text-gray-800"}`}
+                    className={`text-2xl font-bold tabular-nums flex flex-wrap items-baseline gap-x-1 ${analytics.totals.totalStudents >= analytics.totals.maxStudents ? "text-red-600" : analytics.totals.totalStudents >= analytics.totals.maxStudents * 0.8 ? "text-amber-600" : "text-gray-800"}`}
                   >
                     {analytics.totals.totalStudents}
-                    <span className="text-sm font-normal text-gray-400 ml-1">
+                    <span className="text-sm font-normal text-gray-400">
                       / {analytics.totals.maxStudents}
                     </span>
                   </p>
@@ -372,14 +372,14 @@ const AdminDashboard = () => {
                   )}
                 </>
               ) : (
-                <p className="text-2xl font-bold text-gray-800">
+                <p className="text-2xl font-bold text-gray-800 tabular-nums">
                   {analytics?.totals.totalStudents ?? students.length}
                 </p>
               )}
             </div>
           </div>
           <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
-            <div className="p-2.5 bg-purple-100 rounded-xl">
+            <div className="p-2.5 bg-purple-100 rounded-xl shrink-0">
               <GraduationCap className="h-5 w-5 text-purple-600" />
             </div>
             <div className="min-w-0">
@@ -387,10 +387,10 @@ const AdminDashboard = () => {
               {analytics?.totals.maxTeachers != null ? (
                 <>
                   <p
-                    className={`text-2xl font-bold ${analytics.totals.teachersCount >= analytics.totals.maxTeachers ? "text-red-600" : analytics.totals.teachersCount >= analytics.totals.maxTeachers * 0.8 ? "text-amber-600" : "text-gray-800"}`}
+                    className={`text-2xl font-bold tabular-nums flex flex-wrap items-baseline gap-x-1 ${analytics.totals.teachersCount >= analytics.totals.maxTeachers ? "text-red-600" : analytics.totals.teachersCount >= analytics.totals.maxTeachers * 0.8 ? "text-amber-600" : "text-gray-800"}`}
                   >
                     {analytics.totals.teachersCount}
-                    <span className="text-sm font-normal text-gray-400 ml-1">
+                    <span className="text-sm font-normal text-gray-400">
                       / {analytics.totals.maxTeachers}
                     </span>
                   </p>
@@ -402,41 +402,41 @@ const AdminDashboard = () => {
                   )}
                 </>
               ) : (
-                <p className="text-2xl font-bold text-gray-800">
+                <p className="text-2xl font-bold text-gray-800 tabular-nums">
                   {teacherCount ?? "—"}
                 </p>
               )}
             </div>
           </div>
           <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
-            <div className="p-2.5 bg-emerald-100 rounded-xl">
+            <div className="p-2.5 bg-emerald-100 rounded-xl shrink-0">
               <UserCheck className="h-5 w-5 text-emerald-600" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-gray-500 font-medium">Enrolled</p>
-              <p className="text-2xl font-bold text-gray-800">
+              <p className="text-2xl font-bold text-gray-800 tabular-nums">
                 {enrolledStudents}
               </p>
             </div>
           </div>
           <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
-            <div className="p-2.5 bg-amber-100 rounded-xl">
+            <div className="p-2.5 bg-amber-100 rounded-xl shrink-0">
               <CalendarCheck className="h-5 w-5 text-amber-600" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-gray-500 font-medium">Classes Today</p>
-              <p className="text-2xl font-bold text-gray-800">
+              <p className="text-2xl font-bold text-gray-800 tabular-nums">
                 {analytics?.totals.classesToday ?? "—"}
               </p>
             </div>
           </div>
           <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
-            <div className="p-2.5 bg-indigo-100 rounded-xl">
+            <div className="p-2.5 bg-indigo-100 rounded-xl shrink-0">
               <CalendarDays className="h-5 w-5 text-indigo-600" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-gray-500 font-medium">This Month</p>
-              <p className="text-2xl font-bold text-gray-800">
+              <p className="text-2xl font-bold text-gray-800 tabular-nums">
                 {analytics?.totals.classesThisMonth ?? "—"}
               </p>
             </div>
@@ -445,12 +445,12 @@ const AdminDashboard = () => {
             onClick={() => setShowFeedback(true)}
             className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3 text-left hover:shadow-md transition-all"
           >
-            <div className="p-2.5 bg-rose-100 rounded-xl">
+            <div className="p-2.5 bg-rose-100 rounded-xl shrink-0">
               <MessageSquare className="h-5 w-5 text-rose-500" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-gray-500 font-medium">Feedback</p>
-              <p className="text-2xl font-bold text-gray-800">
+              <p className="text-2xl font-bold text-gray-800 tabular-nums">
                 {feedback.length}
               </p>
             </div>
