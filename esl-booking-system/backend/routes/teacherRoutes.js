@@ -981,6 +981,43 @@ router.get('/week-bookings', authenticateToken, requireRole('teacher'), async (r
     }
 });
 
+// GET /api/teacher/bookings/:id/last-class — the student's most recent class report before
+// this booking, so the teacher can see where the last lesson left off (notes holds the book /
+// lesson covered). Reports from any teacher count: a substitute needs the same continuity.
+router.get('/bookings/:id/last-class', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const teacherId = req.user.id;
+        const companyId = req.user.company_id;
+
+        const [[booking]] = await pool.query(
+            `SELECT b.id, b.appointment_date, ${attendeeSql()} AS student_id, u.name AS student_name
+             FROM bookings b
+             JOIN student_packages sp ON b.student_package_id = sp.id
+             JOIN users u ON u.id = ${attendeeSql()}
+             WHERE b.id = ? AND b.company_id = ? AND b.teacher_id = ?`,
+            [req.params.id, companyId, teacherId]
+        );
+        if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+        const [[report]] = await pool.query(
+            `SELECT cr.notes, cr.new_words, cr.sentences, cr.remarks,
+                    b.appointment_date, t.name AS teacher_name
+             FROM class_reports cr
+             JOIN bookings b ON cr.booking_id = b.id
+             JOIN users t ON cr.teacher_id = t.id
+             WHERE cr.student_id = ? AND cr.company_id = ? AND b.appointment_date < ?
+             ORDER BY b.appointment_date DESC
+             LIMIT 1`,
+            [booking.student_id, companyId, booking.appointment_date]
+        );
+
+        res.json({ student_name: booking.student_name, report: report || null });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // POST /api/teacher/weekly-slots/bulk — open or close every slot in a drag-selected range.
 // Past slots are skipped rather than rejected: a selection dragged across "now" should still
 // apply to the future half of it, so the response reports how many were actually touched.

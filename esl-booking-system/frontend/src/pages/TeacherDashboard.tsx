@@ -142,6 +142,14 @@ interface WeekBooking {
   teacher_absent: boolean;
   slot_count?: number;
 }
+interface LastClassReport {
+  notes: string | null;
+  new_words: string | null;
+  sentences: string | null;
+  remarks: string | null;
+  appointment_date: string;
+  teacher_name: string;
+}
 interface TeacherLeave {
   id: number;
   leave_date: string;
@@ -558,6 +566,14 @@ const TeacherDashboard = () => {
   );
   const [clearingWeek, setClearingWeek] = useState(false);
 
+  // Last-class panel — opened by clicking a booked cell in the availability grid
+  const [lastClass, setLastClass] = useState<{
+    booking: WeekBooking;
+    loading: boolean;
+    error: string | null;
+    report: LastClassReport | null;
+  } | null>(null);
+
   // Report modal
   const [reportModal, setReportModal] = useState<{
     open: boolean;
@@ -698,6 +714,27 @@ const TeacherDashboard = () => {
       // non-critical
     } finally {
       setWeekSlotsLoading(false);
+    }
+  };
+
+  const openLastClass = async (booking: WeekBooking) => {
+    setLastClass({ booking, loading: true, error: null, report: null });
+    try {
+      const res = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/teacher/bookings/${booking.id}/last-class`,
+        { headers },
+      );
+      setLastClass((prev) =>
+        prev?.booking.id === booking.id
+          ? { ...prev, loading: false, report: res.data.report }
+          : prev,
+      );
+    } catch {
+      setLastClass((prev) =>
+        prev?.booking.id === booking.id
+          ? { ...prev, loading: false, error: "Couldn't load the last class." }
+          : prev,
+      );
     }
   };
 
@@ -1552,8 +1589,13 @@ const TeacherDashboard = () => {
     const key = `${dateStr}|${time}`;
     const onHighlight = selectionCommittedRef.current && selectedKeys.has(key);
 
-    // Booked and past cells aren't part of any highlight and do nothing on their own.
+    // Booked and past cells aren't part of any highlight. Past ones do nothing; an upcoming
+    // booked one shows where the student's last class left off.
     if (!onHighlight && (bookedSlotKeys.has(key) || isPastSlot(dateStr, time))) {
+      const booking = weekBookingBySlot.get(key);
+      if (booking && gesture === "primary" && !isPastSlot(dateStr, time)) {
+        openLastClass(booking);
+      }
       return;
     }
 
@@ -2465,10 +2507,10 @@ const TeacherDashboard = () => {
                                   <td
                                     key={i}
                                     {...dragProps}
-                                    className={`border-b border-r p-2 min-[620px]:p-1 bg-green-500 text-center select-none${selectedRing}`}
+                                    className={`border-b border-r p-2 min-[620px]:p-1 bg-green-500 text-center select-none${booking ? " cursor-pointer hover:bg-green-600" : ""}${selectedRing}`}
                                     title={
                                       booking
-                                        ? `Class with ${booking.student_name}${booking.subject ? ` (${booking.subject})` : ""}`
+                                        ? `Class with ${booking.student_name}${booking.subject ? ` (${booking.subject})` : ""} — click to see the last class`
                                         : "Class booked at this slot"
                                     }
                                   >
@@ -4470,6 +4512,90 @@ const TeacherDashboard = () => {
               {recurringAvailMsg?.startsWith("Done") ? "Close" : "Apply"}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Last Class panel — from a booked cell in the availability grid */}
+      <Dialog
+        open={lastClass !== null}
+        onOpenChange={(o) => {
+          if (!o) setLastClass(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Last Class</DialogTitle>
+          </DialogHeader>
+          {lastClass && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border bg-green-50 border-green-200 p-3 text-sm">
+                <p className="font-semibold text-green-800">
+                  {lastClass.booking.student_name}
+                  {lastClass.booking.subject
+                    ? ` · ${lastClass.booking.subject}`
+                    : ""}
+                </p>
+                <p className="text-green-700 text-xs mt-0.5">
+                  Upcoming class: {fmtDate(lastClass.booking.appointment_date)}
+                </p>
+              </div>
+
+              {lastClass.loading ? (
+                <div className="flex justify-center py-6">
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                </div>
+              ) : lastClass.error ? (
+                <p className="text-sm text-red-600">{lastClass.error}</p>
+              ) : !lastClass.report ? (
+                <p className="text-sm text-gray-500 text-center py-4">
+                  No class record yet — this looks like the student's first
+                  class.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs text-gray-500">
+                    {fmtDate(lastClass.report.appointment_date)} · with{" "}
+                    {lastClass.report.teacher_name}
+                  </p>
+                  <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-primary mb-1">
+                      Notes
+                    </p>
+                    <p className="text-sm whitespace-pre-wrap">
+                      {lastClass.report.notes?.trim() || (
+                        <span className="text-gray-400 italic">
+                          No notes recorded
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  {(
+                    [
+                      ["New Words", lastClass.report.new_words],
+                      ["Sentences", lastClass.report.sentences],
+                      ["Remarks", lastClass.report.remarks],
+                    ] as const
+                  )
+                    .filter(([, v]) => v?.trim())
+                    .map(([label, v]) => (
+                      <div key={label}>
+                        <p className="text-xs font-semibold text-gray-500 mb-0.5">
+                          {label}
+                        </p>
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                          {v}
+                        </p>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLastClass(null)}>
+              Close
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
