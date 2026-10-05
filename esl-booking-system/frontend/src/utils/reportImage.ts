@@ -12,8 +12,9 @@ export interface ReportImageData {
   remarks?: string | null;
 }
 
-const WIDTH = 1000;
-const PAD = 48;
+const WIDTH = 1400;
+const PAD = 36;
+const GAP = 24; // space between the two columns
 const SCALE = 2;
 const BRAND = "#65C3E8";
 const FONT = "Poppins, 'Segoe UI', Arial, sans-serif";
@@ -44,27 +45,49 @@ function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number
 export async function downloadReportImage(data: ReportImageData) {
   if (document.fonts?.ready) await document.fonts.ready;
 
-  const sections = [
-    { label: "New Words", value: data.newWords },
-    { label: "Sentences", value: data.sentences },
-    { label: "Notes", value: data.notes },
-    { label: "Remarks", value: data.remarks },
+  // Left column: what was taught; right column: teacher's feedback
+  const columns = [
+    [
+      { label: "New Words", value: data.newWords },
+      { label: "Sentences", value: data.sentences },
+    ],
+    [
+      { label: "Notes", value: data.notes },
+      { label: "Remarks", value: data.remarks },
+    ],
   ];
 
-  const bodyFont = `15px ${FONT}`;
-  const lineH = 24;
+  const bodyFont = `24px ${FONT}`;
+  const labelFont = `600 26px ${FONT}`;
+  const lineH = 36;
+  const labelH = 38;
   const boxPad = 16;
-  const innerW = WIDTH - PAD * 2 - boxPad * 2;
+  const sectionGap = 18;
+  const colW = (WIDTH - PAD * 2 - GAP) / 2;
+  const innerW = colW - boxPad * 2;
 
   // Measure pass
   const measure = document.createElement("canvas").getContext("2d")!;
   measure.font = bodyFont;
-  const wrapped = sections.map((s) => wrapLines(measure, s.value?.trim() || "—", innerW));
+  // Collapse runs of blank lines so stray empty lines don't pad the boxes
+  const clean = (v?: string | null) => (v ?? "").replace(/\r/g, "").replace(/\n\s*\n+/g, "\n").trim() || "—";
+  const wrapped = columns.map((col) => col.map((s) => wrapLines(measure, clean(s.value), innerW)));
 
-  const headerH = 130;
-  let height = headerH + PAD;
-  for (const lines of wrapped) height += 28 + lines.length * lineH + boxPad * 2 + 24;
-  height += 40; // footer
+  // Box heights per column; the shorter column's boxes are stretched so both
+  // columns end on the same line instead of leaving a blank area underneath
+  const boxHeights = wrapped.map((col) => col.map((lines) => lines.length * lineH + boxPad * 2));
+  const colHeights = boxHeights.map((col) =>
+    col.reduce((h, boxH) => h + labelH + boxH, 0) + sectionGap * (col.length - 1)
+  );
+  const bodyH = Math.max(...colHeights);
+  boxHeights.forEach((col, c) => {
+    const extra = (bodyH - colHeights[c]) / col.length;
+    col.forEach((_, i) => { col[i] += extra; });
+  });
+
+  const headerH = 140;
+  const footerH = 36; // bottom margin, also holds the small credit
+  const height = headerH + PAD + bodyH + footerH;
 
   const canvas = document.createElement("canvas");
   canvas.width = WIDTH * SCALE;
@@ -80,37 +103,49 @@ export async function downloadReportImage(data: ReportImageData) {
   ctx.fillRect(0, 0, WIDTH, headerH);
 
   ctx.fillStyle = "#ffffff";
-  ctx.font = `600 30px ${FONT}`;
-  ctx.fillText("Class Report", PAD, 32);
-  ctx.font = `500 18px ${FONT}`;
-  ctx.fillText(data.studentName, PAD, 76);
+  ctx.font = `600 44px ${FONT}`;
+  ctx.fillText("Class Report", PAD, 26);
+  ctx.font = `500 28px ${FONT}`;
+  ctx.fillText(data.studentName, PAD, 86);
 
   ctx.textAlign = "right";
-  ctx.font = `15px ${FONT}`;
-  if (data.classDate) ctx.fillText(data.classDate, WIDTH - PAD, 40);
-  if (data.teacherName) ctx.fillText(`Teacher: ${data.teacherName}`, WIDTH - PAD, 78);
+  ctx.font = `22px ${FONT}`;
+  if (data.classDate) ctx.fillText(data.classDate, WIDTH - PAD, 36);
+  if (data.teacherName) ctx.fillText(`Teacher: ${data.teacherName}`, WIDTH - PAD, 90);
   ctx.textAlign = "left";
 
-  // Sections
-  let y = headerH + PAD;
-  sections.forEach((s, i) => {
-    const lines = wrapped[i];
-    ctx.fillStyle = "#334155";
-    ctx.font = `600 16px ${FONT}`;
-    ctx.fillText(s.label, PAD, y);
-    y += 28;
+  // Sections, one column at a time
+  columns.forEach((col, c) => {
+    const x = PAD + c * (colW + GAP);
+    let y = headerH + PAD;
+    col.forEach((s, i) => {
+      const lines = wrapped[c][i];
+      ctx.fillStyle = "#334155";
+      ctx.font = labelFont;
+      ctx.fillText(s.label, x, y);
+      y += labelH;
 
-    const boxH = lines.length * lineH + boxPad * 2;
-    ctx.fillStyle = "#f1f5f9";
-    ctx.beginPath();
-    ctx.roundRect(PAD, y, WIDTH - PAD * 2, boxH, 8);
-    ctx.fill();
+      const boxH = boxHeights[c][i];
+      ctx.fillStyle = "#f1f5f9";
+      ctx.beginPath();
+      ctx.roundRect(x, y, colW, boxH, 10);
+      ctx.fill();
 
-    ctx.fillStyle = "#0f172a";
-    ctx.font = bodyFont;
-    lines.forEach((line, j) => ctx.fillText(line, PAD + boxPad, y + boxPad + j * lineH + 3));
-    y += boxH + 24;
+      ctx.fillStyle = "#0f172a";
+      ctx.font = bodyFont;
+      lines.forEach((line, j) => ctx.fillText(line, x + boxPad, y + boxPad + j * lineH + 4));
+      y += boxH + sectionGap;
+    });
   });
+
+  // Small credit in the bottom-right corner
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = `14px ${FONT}`;
+  ctx.textAlign = "right";
+  ctx.textBaseline = "bottom";
+  ctx.fillText("© Brightfolks", WIDTH - PAD, height - 12);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
 
   const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/png"));
   if (!blob) throw new Error("Could not create image");
