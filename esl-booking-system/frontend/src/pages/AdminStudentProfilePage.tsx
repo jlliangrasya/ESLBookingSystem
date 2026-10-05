@@ -20,9 +20,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users, UserCheck, X, CheckCircle, AlertTriangle, TrendingUp, TrendingDown,
+  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users, UserCheck, X, CheckCircle, AlertTriangle, TrendingUp, TrendingDown, Download,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly, localToMysql } from "@/utils/timezone";
+import { downloadReportImage } from "@/utils/reportImage";
 import TablePagination from "@/components/TablePagination";
 import SessionAdjustDialog from "@/components/SessionAdjustDialog";
 import { StudentPackagePicker } from "@/components/StudentPackagePicker";
@@ -182,6 +183,7 @@ const AdminStudentProfilePage = () => {
   const [recordYear, setRecordYear] = useState("all");
   const [recordMonth, setRecordMonth] = useState("all");
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [editingAttendanceId, setEditingAttendanceId] = useState<number | null>(null);
   const [recurringCancelBooking, setRecurringCancelBooking] = useState<BookingRecord | null>(null);
 
   // Mini booking calendar
@@ -577,6 +579,25 @@ const AdminStudentProfilePage = () => {
       console.error("Error cancelling booking:", err);
     } finally {
       setCancellingId(null);
+    }
+  };
+
+  const handleEditAttendance = async (booking: BookingRecord, attendance: string) => {
+    const label = { present: "Present", student_absent: "Student Absent", teacher_absent: "Teacher Absent" }[attendance];
+    const sessionNote = attendance === "teacher_absent"
+      ? "\n\n1 session will be refunded to the student's package."
+      : booking.teacher_absent
+        ? "\n\nThe session refunded for the teacher absence will be deducted again."
+        : "";
+    if (!confirm(`Change attendance for ${fmtDate(booking.appointment_date, "MMM d, yyyy h:mm a")} to "${label}"?${sessionNote}`)) return;
+    setEditingAttendanceId(booking.id);
+    try {
+      await axios.put(`${base}/api/admin/bookings/${booking.id}/attendance`, { attendance }, { headers });
+      fetchData();
+    } catch (err) {
+      alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to update attendance");
+    } finally {
+      setEditingAttendanceId(null);
     }
   };
 
@@ -1313,6 +1334,31 @@ const AdminStudentProfilePage = () => {
                             {cancellingId === b.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Cancel"}
                           </Button>
                         )}
+                        {b.status === "done" && can("students.edit") && (
+                          editingAttendanceId === b.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                          ) : (
+                            <Select
+                              value=""
+                              onValueChange={(v) => handleEditAttendance(b, v)}
+                            >
+                              <SelectTrigger className="h-7 text-xs w-32">
+                                <SelectValue placeholder="Edit attendance" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {[
+                                  { value: "present", label: "Present" },
+                                  { value: "student_absent", label: "Student Absent" },
+                                  { value: "teacher_absent", label: "Teacher Absent" },
+                                ]
+                                  .filter((o) => o.value !== (b.teacher_absent ? "teacher_absent" : b.student_absent ? "student_absent" : "present"))
+                                  .map((o) => (
+                                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                          )
+                        )}
                       </TableCell>
                     </TableRow>
                   ))
@@ -1447,6 +1493,23 @@ const AdminStudentProfilePage = () => {
             </div>
           )}
           <DialogFooter>
+            {viewingReport && (
+              <Button
+                variant="outline"
+                className="sm:mr-auto"
+                onClick={() => downloadReportImage({
+                  studentName: student?.name ?? "Student",
+                  teacherName: viewingReport.teacher_name,
+                  classDate: fmtDateOnly(viewingReport.appointment_date),
+                  newWords: viewingReport.new_words,
+                  sentences: viewingReport.sentences,
+                  notes: viewingReport.notes,
+                  remarks: viewingReport.remarks,
+                })}
+              >
+                <Download className="h-4 w-4 mr-2" /> Download
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setViewingReport(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>

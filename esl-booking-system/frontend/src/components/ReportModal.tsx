@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { fmtDateOnly } from "@/utils/timezone";
+import { downloadReportImage } from "@/utils/reportImage";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, Download } from "lucide-react";
 
 interface ReportModalProps {
   open: boolean;
@@ -42,6 +43,27 @@ const ReportModal: React.FC<ReportModalProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const hasContent = [newWords, sentences, notes, remarks].some((v) => v.trim());
+
+  const handleDownload = async () => {
+    setIsDownloading(true);
+    try {
+      await downloadReportImage({
+        studentName,
+        classDate: classDate ? fmtDateOnly(classDate) : null,
+        newWords,
+        sentences,
+        notes,
+        remarks,
+      });
+    } catch {
+      setError("Failed to download report");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   // Fetch existing report when modal opens
   useEffect(() => {
@@ -201,6 +223,12 @@ const ReportModal: React.FC<ReportModalProps> = ({
         </div>
 
         <DialogFooter>
+          {hasContent && !isFetching && (
+            <Button variant="outline" onClick={handleDownload} disabled={isDownloading} className="sm:mr-auto">
+              {isDownloading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+              Download
+            </Button>
+          )}
           <Button variant="outline" onClick={onClose} disabled={isLoading || isFetching}>
             {readOnly ? "Close" : "Cancel"}
           </Button>

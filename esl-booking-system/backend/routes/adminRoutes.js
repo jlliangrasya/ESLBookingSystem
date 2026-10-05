@@ -1615,6 +1615,70 @@ router.put('/bookings/:bookingId/assign-teacher', authenticateToken, requireRole
   }
 });
 
+// Correct the attendance of a finished class (e.g. teacher hit "Mark as done"
+// before "Mark as absent" went through). Applies to every slot of the class.
+// Teacher absent refunds the class's session, so switching into/out of it
+// refunds/re-deducts 1 session — same as the student-side no-show report.
+router.put('/bookings/:bookingId/attendance', authenticateToken, requireRole('company_admin'), requirePermission('students.edit'), async (req, res) => {
+  const ATTENDANCE = ['present', 'student_absent', 'teacher_absent'];
+  const { attendance } = req.body;
+  if (!ATTENDANCE.includes(attendance)) return res.status(400).json({ message: 'Invalid attendance value.' });
+
+  const companyId = req.user.company_id;
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [[booking]] = await connection.query(
+      'SELECT id, status, booking_group_id, student_package_id FROM bookings WHERE id = ? AND company_id = ? FOR UPDATE',
+      [req.params.bookingId, companyId]
+    );
+    if (!booking) { await connection.rollback(); return res.status(404).json({ message: 'Booking not found' }); }
+    if (booking.status !== 'done') {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Attendance can only be edited for classes marked as done.' });
+    }
+
+    const scope = booking.booking_group_id
+      ? { sql: 'booking_group_id = ? AND company_id = ?', params: [booking.booking_group_id, companyId] }
+      : { sql: 'id = ? AND company_id = ?', params: [booking.id, companyId] };
+
+    const [[prev]] = await connection.query(
+      `SELECT MAX(student_absent) AS student_absent, MAX(teacher_absent) AS teacher_absent FROM bookings WHERE ${scope.sql}`,
+      scope.params
+    );
+    const wasTeacherAbsent = !!prev.teacher_absent;
+    const previous = wasTeacherAbsent ? 'teacher_absent' : prev.student_absent ? 'student_absent' : 'present';
+    if (previous === attendance) { await connection.rollback(); return res.json({ message: 'Attendance unchanged' }); }
+
+    const isTeacherAbsent = attendance === 'teacher_absent';
+    await connection.query(
+      `UPDATE bookings SET student_absent = ?, teacher_absent = ? WHERE ${scope.sql}`,
+      [attendance === 'student_absent', isTeacherAbsent, ...scope.params]
+    );
+
+    let sessionChange = 0;
+    if (isTeacherAbsent !== wasTeacherAbsent) {
+      sessionChange = isTeacherAbsent ? 1 : -1;
+      await connection.query(
+        'UPDATE student_packages SET sessions_remaining = GREATEST(0, sessions_remaining + ?) WHERE id = ? AND company_id = ?',
+        [sessionChange, booking.student_package_id, companyId]
+      );
+    }
+
+    await connection.commit();
+    await logAction(companyId, req.user.id, 'booking_attendance_edited', 'booking', booking.id, { previous, attendance, session_change: sessionChange });
+
+    const sessionMsg = sessionChange > 0 ? ' 1 session refunded.' : sessionChange < 0 ? ' 1 session deducted.' : '';
+    res.json({ message: `Attendance updated.${sessionMsg}` });
+  } catch (err) {
+    await connection.rollback();
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  } finally {
+    connection.release();
+  }
+});
+
 // ——— Substitute teacher ———
 
 /**
