@@ -4,6 +4,8 @@ const authenticateToken = require('../middleware/authMiddleware');
 const { invalidateAuthCache } = authenticateToken;
 const requireRole = require('../middleware/requireRole');
 const notify = require('../utils/notify');
+const { logAction } = require('../utils/audit');
+const { resolveCompanyState, buildSession } = require('../utils/session');
 
 const router = express.Router();
 
@@ -529,6 +531,80 @@ router.delete('/users/:id', authenticateToken, requireRole('super_admin'), async
         res.status(500).json({ message: 'Server error' });
     } finally {
         connection.release();
+    }
+});
+
+// ── Company switcher ───────────────────────────────────────────────────────
+// Lets the super admin jump into any active company as its owner from the
+// profile menu, without knowing the owner's password. The frontend keeps the
+// super admin's own session aside and restores it on "Back to Super Admin".
+
+// A company counts as active only if its status is 'active' AND it isn't sitting
+// on an expired trial (authMiddleware blocks those, so switching in is useless)
+const ACTIVE_COMPANY_SQL = `c.status = 'active' AND (c.trial_ends_at IS NULL OR c.trial_ends_at >= NOW())`;
+
+// Active companies the super admin can switch into (only ones with an admin to act as)
+router.get('/switchable-companies', authenticateToken, requireRole('super_admin'), async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT c.id, c.company_name
+            FROM companies c
+            WHERE ${ACTIVE_COMPANY_SQL}
+              AND EXISTS (
+                  SELECT 1 FROM users u
+                  WHERE u.company_id = c.id AND u.role = 'company_admin'
+                    AND COALESCE(u.is_active, 1) = 1
+              )
+            ORDER BY c.company_name ASC
+        `);
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Issue a session for the company's owner on behalf of the super admin
+router.post('/companies/:id/switch', authenticateToken, requireRole('super_admin'), async (req, res) => {
+    try {
+        const companyId = Number(req.params.id);
+        if (!companyId) return res.status(400).json({ message: 'Invalid company id' });
+
+        const [[company]] = await pool.query(
+            `SELECT c.id, c.company_name, ${ACTIVE_COMPANY_SQL} AS is_active
+             FROM companies c WHERE c.id = ?`,
+            [companyId]
+        );
+        if (!company) return res.status(404).json({ message: 'Company not found' });
+        if (!company.is_active) {
+            return res.status(400).json({ message: 'Only active companies can be switched to' });
+        }
+
+        // Prefer the owner; fall back to the oldest active admin for legacy rows without one
+        const [[owner]] = await pool.query(
+            `SELECT * FROM users
+             WHERE company_id = ? AND role = 'company_admin' AND COALESCE(is_active, 1) = 1
+             ORDER BY is_owner DESC, id ASC LIMIT 1`,
+            [companyId]
+        );
+        if (!owner) return res.status(404).json({ message: 'This company has no active admin account' });
+
+        const companyState = await resolveCompanyState(owner);
+
+        await logAction(companyId, req.user.id, 'super_admin_switched_company', 'company', companyId, {
+            company_name: company.company_name,
+            acting_as_user_id: owner.id,
+        });
+
+        // Shorter-lived than a normal login: this is a support/oversight session
+        res.json(buildSession(owner, companyState, {
+            extraClaims: { impersonated_by: req.user.id },
+            expiresIn: '12h',
+        }));
+    } catch (err) {
+        if (err.status) return res.status(err.status).json({ message: err.message });
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
     }
 });
 

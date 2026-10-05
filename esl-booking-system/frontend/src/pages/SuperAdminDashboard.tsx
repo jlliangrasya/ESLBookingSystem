@@ -1,6 +1,6 @@
 import { useState, useEffect, useContext } from "react";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import AuthContext from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 
@@ -13,8 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Building2, Users, Clock, CheckCircle, LogOut, Loader2,
   ArrowUpCircle, PackagePlus, Pencil, BarChart2, ChevronLeft, Search,
-  UserCog, CreditCard, AlertCircle, Database, Menu, X,
+  UserCog, CreditCard, AlertCircle, Database, Menu, X, User, ClipboardList,
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useCompanySwitcher, CompanySwitcherMenuItems, CompanySwitcherMobile } from "@/components/CompanySwitcher";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -406,6 +410,7 @@ const SuperAdminDashboard = () => {
   };
 
   const handleLogout = () => { authContext?.logout(); navigate("/"); };
+  const companySwitcher = useCompanySwitcher();
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const pendingCompanies = companies.filter(c => c.status === "pending");
@@ -1488,11 +1493,35 @@ const SuperAdminDashboard = () => {
 
               <NotificationBell variant="white" />
 
-              <Button variant="ghost" size="sm" onClick={handleLogout}
-                className="text-white/60 hover:text-white hover:bg-white/10 flex flex-col items-center gap-0.5 h-auto py-0">
-                <LogOut className="h-5 w-5" />
-                <span className="text-[10px] font-medium">Logout</span>
-              </Button>
+              {/* Profile dropdown — company switcher + logout */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title="Profile"
+                    className="rounded-full h-9 w-9 text-white/70 hover:text-white hover:bg-white/10"
+                  >
+                    <User className="h-5 w-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  <CompanySwitcherMenuItems switcher={companySwitcher} />
+                  <DropdownMenuItem asChild>
+                    <Link to="/activity-log" className="cursor-pointer flex items-center gap-2">
+                      <ClipboardList className="h-4 w-4" />
+                      Activity Log
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={handleLogout}
+                    className="cursor-pointer text-destructive focus:text-destructive flex items-center gap-2"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </nav>
 
             {/* Mobile: notification + hamburger */}
@@ -1521,6 +1550,7 @@ const SuperAdminDashboard = () => {
                   <span className="text-sm font-medium">{label}</span>
                 </button>
               ))}
+              <CompanySwitcherMobile switcher={companySwitcher} onDone={() => setMobileMenuOpen(false)} />
               <button
                 onClick={() => { setMobileMenuOpen(false); handleLogout(); }}
                 className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-red-200 hover:bg-white/10 w-full transition-colors"

@@ -22,8 +22,28 @@ interface AuthContextType {
   companyStatus: string;
   login: (token: string, user: User, trialExpired?: boolean, companyStatus?: string) => void;
   switchAccount: (token: string, user: User, trialExpired?: boolean, companyStatus?: string) => Promise<void>;
+  // Super admin's own session, set aside while they are switched into a company
+  impersonator: StoredSession | null;
+  enterCompany: (token: string, user: User, trialExpired?: boolean, companyStatus?: string) => void;
+  exitCompany: () => void;
   logout: () => void;
 }
+
+export interface StoredSession {
+  token: string;
+  user: User;
+}
+
+const IMPERSONATOR_KEY = "impersonator";
+
+const readImpersonator = (): StoredSession | null => {
+  try {
+    const raw = localStorage.getItem(IMPERSONATOR_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -42,6 +62,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [companyStatus, setCompanyStatus] = useState<string>(
     localStorage.getItem("company_status") || "active"
   );
+  const [impersonator, setImpersonator] = useState<StoredSession | null>(readImpersonator);
 
   const login = (token: string, user: User, expired = false, status = "active") => {
     setToken(token);
@@ -73,8 +94,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     login(newToken, newUser, expired, status);
   };
 
+  // Super admin → company owner. The super admin's own session is kept aside
+  // (only the first time — hopping between companies keeps the original), and
+  // push is left untouched so this browser keeps the super admin's notifications.
+  const enterCompany = (newToken: string, newUser: User, expired = false, status = "active") => {
+    const original = impersonator ?? (token && user ? { token, user } : null);
+    if (original) {
+      setImpersonator(original);
+      localStorage.setItem(IMPERSONATOR_KEY, JSON.stringify(original));
+    }
+    login(newToken, newUser, expired, status);
+  };
+
+  const exitCompany = () => {
+    if (!impersonator) return;
+    setImpersonator(null);
+    localStorage.removeItem(IMPERSONATOR_KEY);
+    login(impersonator.token, impersonator.user);
+  };
+
   const logout = () => {
-    const currentToken = token;
+    // While switched into a company, the push subscription belongs to the super admin
+    const currentToken = impersonator?.token ?? token;
+    setImpersonator(null);
+    localStorage.removeItem(IMPERSONATOR_KEY);
     setToken(null);
     setUser(null);
     setTrialExpired(false);
@@ -93,11 +136,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // Re-sync the push subscription whenever the app loads with a logged-in
   // user. Silent (never prompts) — repairs subscriptions lost to backend
   // cold starts or VAPID key changes.
+  // Skipped while a super admin is inside a company, so this browser isn't
+  // re-registered to the company owner's push notifications.
   useEffect(() => {
-    if (token) {
+    if (token && !impersonator) {
       ensurePushSubscription(token).catch(() => {});
     }
-  }, [token]);
+  }, [token, impersonator]);
 
   // Auto-logout on expired/invalid token (401 response)
   useEffect(() => {
@@ -115,7 +160,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [token]);
 
   return (
-    <AuthContext.Provider value={{ token, user, trialExpired, companyStatus, login, switchAccount, logout }}>
+    <AuthContext.Provider value={{ token, user, trialExpired, companyStatus, login, switchAccount, impersonator, enterCompany, exitCompany, logout }}>
       {children}
     </AuthContext.Provider>
   );

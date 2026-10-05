@@ -1,5 +1,4 @@
 const express = require('express');
-const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const pool = require('../db');
@@ -7,80 +6,13 @@ const notify = require('../utils/notify');
 const { sendMail } = require('../utils/mailer');
 const { logAction } = require('../utils/audit');
 const authenticateToken = require('../middleware/authMiddleware');
+const { resolveCompanyState, buildSession } = require('../utils/session');
 require('dotenv').config();
 
 const router = express.Router();
 
 // Roles allowed to link a second account (the "admin who also teaches" case).
 const LINKABLE_ROLES = ['company_admin', 'teacher'];
-
-/**
- * Resolve a user's company gating state. Throws an error carrying `.status`
- * when the company blocks sign-in outright.
- * Shared by /login and /switch-account so the two can't drift apart.
- */
-async function resolveCompanyState(user) {
-    let trialExpired = false;
-    let companyStatus = 'active';
-    let companyName = null;
-
-    if (user.role !== 'super_admin' && user.company_id) {
-        const [[company]] = await pool.query(
-            'SELECT status, trial_ends_at, company_name FROM companies WHERE id = ?',
-            [user.company_id]
-        );
-        if (company) companyName = company.company_name || null;
-        if (company && company.status === 'locked') {
-            // Allow login but flag — frontend redirects to locked page
-            companyStatus = 'locked';
-        } else if (company && company.status === 'suspended') {
-            // Allow login but flag — frontend redirects to suspended page
-            companyStatus = 'suspended';
-        } else if (company && company.status === 'pending') {
-            // 'pending' means "registered and fully usable, but not yet cleared to
-            // invite real students" — it is NOT a sign-in block. The only thing it
-            // gates is POST /api/admin/students. Sign in normally and let the
-            // frontend surface the gate at the invite step.
-            companyStatus = 'pending';
-            if (company.trial_ends_at && new Date(company.trial_ends_at) < new Date()) {
-                trialExpired = true;
-            }
-        } else if (!company || company.status !== 'active') {
-            // Still a hard stop for 'rejected' and for a missing company row.
-            const err = new Error('Your company account is not active');
-            err.status = 403;
-            throw err;
-        } else if (company.trial_ends_at && new Date(company.trial_ends_at) < new Date()) {
-            trialExpired = true;
-        }
-    }
-
-    return { trialExpired, companyStatus, companyName };
-}
-
-/** Sign a JWT and build the session payload the frontend stores in AuthContext. */
-function buildSession(user, { trialExpired, companyStatus, companyName }) {
-    const token = jwt.sign(
-        { id: user.id, role: user.role, company_id: user.company_id },
-        process.env.JWT_SECRET,
-        { expiresIn: '30d' }
-    );
-
-    return {
-        token,
-        user: {
-            id: user.id,
-            name: user.name,
-            role: user.role,
-            company_id: user.company_id,
-            company_name: companyName,
-            timezone: user.timezone || 'UTC',
-            is_owner: user.is_owner ?? false,
-        },
-        trial_expired: trialExpired,
-        company_status: companyStatus,
-    };
-}
 
 // Rate limiters for sensitive auth endpoints (login is intentionally unlimited)
 const registerLimiter = rateLimit({

@@ -19,6 +19,7 @@ import InstallAppButton from "@/components/InstallAppButton";
 import { useStartTour } from "@/components/AdminTour";
 import { OnboardingProgressBar } from "@/components/OnboardingChecklist";
 import { useLinkedAccounts, roleLabel } from "@/hooks/useLinkedAccounts";
+import { useCompanySwitcher, CompanySwitcherMenuItems, CompanySwitcherMobile, ImpersonationBanner } from "@/components/CompanySwitcher";
 
 const NavBar: React.FC = () => {
   const navigate = useNavigate();
@@ -34,7 +35,12 @@ const NavBar: React.FC = () => {
   // company id — the stale "A" argument here was a leftover from an older signature.
   const startTour = useStartTour(companyId);
   // Empty unless this person has linked a second account of their own
-  const { accounts: linkedAccounts, switchTo, switching } = useLinkedAccounts();
+  const { accounts: allLinkedAccounts, switchTo, switching } = useLinkedAccounts();
+  // Super admin: switch between companies (and back) from the profile menu
+  const companySwitcher = useCompanySwitcher();
+  // A super admin inside a company acts as its owner — hide the owner's own
+  // linked-account shortcuts so they can't wander off into another identity
+  const linkedAccounts = companySwitcher.isImpersonating ? [] : allLinkedAccounts;
 
   const handleLogout = () => {
     authContext?.logout();
@@ -140,7 +146,8 @@ const NavBar: React.FC = () => {
                 <User className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuContent align="end" className={companySwitcher.enabled ? "w-64" : "w-52"}>
+              <CompanySwitcherMenuItems switcher={companySwitcher} />
               {(role === "company_admin" || role === "teacher") && (
                 <DropdownMenuItem asChild>
                   <Link
@@ -214,12 +221,16 @@ const NavBar: React.FC = () => {
           follows the company admin across every page until setup is finished —
           it renders nothing once all four steps are done, and nothing at all for
           other roles. */}
+      <ImpersonationBanner switcher={companySwitcher} />
+
       {role === "company_admin" && <OnboardingProgressBar />}
 
       {/* Mobile menu */}
       {mobileOpen && (
         <div className="min-[620px]:hidden brand-gradient border-t border-white/10 pb-3">
           {mobileNavLinks}
+
+          <CompanySwitcherMobile switcher={companySwitcher} onDone={() => setMobileOpen(false)} />
 
           {(role === "super_admin" || (role === "company_admin" && isOwner)) && (
             <MobileNavLink to="/documentation" icon={BookOpen} label={t("nav.documentation")} />
