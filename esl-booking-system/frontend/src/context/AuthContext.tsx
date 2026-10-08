@@ -82,15 +82,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   // Swap to a linked account (same person, different role) without logging out.
-  // The old account's push subscription is released first and awaited, so it
-  // can't race the re-subscribe the token change triggers below.
+  // Push is left alone: the re-sync below moves this browser's subscription to
+  // the new account, and the backend fans every push out to linked accounts,
+  // so both roles' notifications keep arriving whichever one is open.
   const switchAccount = async (
     newToken: string,
     newUser: User,
     expired = false,
     status = "active"
   ) => {
-    if (token) await unsubscribeFromPush(token);
     login(newToken, newUser, expired, status);
   };
 

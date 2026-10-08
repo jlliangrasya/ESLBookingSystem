@@ -30,6 +30,8 @@ function isRetryable(err) {
     return !err.statusCode || err.statusCode === 429 || err.statusCode >= 500;
 }
 
+const ROLE_LABELS = { company_admin: 'Admin', teacher: 'Teacher' };
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function sendWithRetry(sub, payload) {
@@ -56,15 +58,36 @@ async function sendPushToUser(userId, { title, message, type }) {
         return;
     }
     try {
+        // A person with linked accounts (an admin who also teaches) uses one
+        // device for both, and that device's subscription is registered under
+        // whichever account was open last. Fan out to the linked accounts'
+        // subscriptions too, so they get both roles' notifications regardless
+        // of which account is currently open.
+        const [linked] = await pool.query(
+            `SELECT u.id
+             FROM account_links al
+             JOIN users u ON u.id = IF(al.user_id_a = ?, al.user_id_b, al.user_id_a)
+             WHERE (al.user_id_a = ? OR al.user_id_b = ?) AND u.is_active = TRUE`,
+            [userId, userId, userId]
+        );
+        const recipientIds = [userId, ...linked.map((r) => r.id)];
+
         const [subscriptions] = await pool.query(
-            'SELECT id, endpoint, p256dh, auth, failure_count FROM push_subscriptions WHERE user_id = ?',
-            [userId]
+            'SELECT id, endpoint, p256dh, auth, failure_count FROM push_subscriptions WHERE user_id IN (?)',
+            [recipientIds]
         );
         if (subscriptions.length === 0) {
             logger.info('No push subscriptions for user', { userId });
             return;
         }
         logger.info('Sending push to user', { userId, subscriptionCount: subscriptions.length });
+
+        // With two roles landing on the same device, say which one it's for
+        if (linked.length > 0) {
+            const [[recipient]] = await pool.query('SELECT role FROM users WHERE id = ?', [userId]);
+            const label = ROLE_LABELS[recipient?.role];
+            if (label) title = `[${label}] ${title}`;
+        }
 
         const payload = JSON.stringify({ title, body: message, type });
 
