@@ -582,6 +582,11 @@ router.post('/:id/bookings/:bookingId/cancel', authenticateToken, requireRole('s
             await connection.rollback(); connection.release();
             return res.status(400).json({ message: 'This booking is already completed or cancelled.' });
         }
+        // A late-notice class already earned a half credit — refunding it too would double-count
+        if (booking.absence_notice_at) {
+            await connection.rollback(); connection.release();
+            return res.status(400).json({ message: "This class has a late absence notice (half credit) recorded, so it can't be cancelled. Change its attendance first if the notice was a mistake." });
+        }
 
         // Group-aware cancel (same as bookingRoutes.js:617-635)
         if (booking.booking_group_id) {

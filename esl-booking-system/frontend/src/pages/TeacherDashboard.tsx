@@ -104,6 +104,7 @@ interface Booking {
   class_mode: string | null;
   meeting_link: string | null;
   student_absent: boolean;
+  absence_notice_at?: string | null;
   slot_count?: number;
   recurring_schedule_id: number | null;
 }
@@ -117,6 +118,7 @@ interface CompletedBooking {
   subject: string;
   has_report: boolean;
   student_absent: boolean;
+  absence_notice_at?: string | null;
   teacher_absent: boolean;
   slot_count?: number;
 }
@@ -130,6 +132,7 @@ interface PendingItem {
   subject: string;
   student_package_id: number;
   student_absent: boolean;
+  absence_notice_at?: string | null;
   slot_count?: number;
 }
 interface WeekBooking {
@@ -139,6 +142,7 @@ interface WeekBooking {
   student_name: string;
   subject: string;
   student_absent: boolean;
+  absence_notice_at?: string | null;
   teacher_absent: boolean;
   slot_count?: number;
 }
@@ -388,6 +392,13 @@ const TeacherDashboard = () => {
     { id: number; student_name: string; message: string; created_at: string }[]
   >([]);
   const [cancellationHours, setCancellationHours] = useState(1);
+  // Late absence notice → half credit (company policy)
+  const [lateNoticeEnabled, setLateNoticeEnabled] = useState(false);
+  const [lateNoticeMinutes, setLateNoticeMinutes] = useState(15);
+  const [lateNoticeBooking, setLateNoticeBooking] = useState<{ id: number; appointment_date: string; student_name: string } | null>(null);
+  const [noticeMinutes, setNoticeMinutes] = useState("0");
+  const [lateNoticeError, setLateNoticeError] = useState<string | null>(null);
+  const [lateNoticeSaving, setLateNoticeSaving] = useState(false);
 
   // Calendar
   const [calendarBookings, setCalendarBookings] = useState<
@@ -619,6 +630,8 @@ const TeacherDashboard = () => {
       setTwentyFiveMinThisWeek(dash.twenty_five_min_this_week ?? 0);
       setHealth(dash.health ?? { total_done: 0, total_absent: 0, attended: 0 });
       setCancellationHours(settingsRes.data.cancellation_hours ?? 1);
+      setLateNoticeEnabled(!!settingsRes.data.late_notice_enabled);
+      setLateNoticeMinutes(Number(settingsRes.data.late_notice_minutes ?? 15));
       setFeedback(feedbackRes.data || []);
 
       // Build calendar map
@@ -1713,6 +1726,36 @@ const TeacherDashboard = () => {
     }
   };
 
+  const openLateNotice = (b: { id: number; appointment_date: string; student_name: string }) => {
+    setNoticeMinutes("0");
+    setLateNoticeError(null);
+    setLateNoticeBooking(b);
+  };
+
+  const handleSubmitLateNotice = async () => {
+    if (!lateNoticeBooking) return;
+    setLateNoticeSaving(true);
+    setLateNoticeError(null);
+    try {
+      const res = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/teacher/bookings/${lateNoticeBooking.id}/mark-late-notice`,
+        { notice_minutes: Number(noticeMinutes) },
+        { headers },
+      );
+      setLateNoticeBooking(null);
+      alert(res.data.message);
+      fetchData();
+      fetchPending();
+    } catch (err: unknown) {
+      setLateNoticeError(
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to record late notice",
+      );
+    } finally {
+      setLateNoticeSaving(false);
+    }
+  };
+
   const handleSaveClassInfo = async () => {
     if (!editingBooking) return;
     setClassInfoLoading(true);
@@ -2050,7 +2093,7 @@ const TeacherDashboard = () => {
             <button
               key={item.key}
               onClick={() => setPage(item.key)}
-              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              className={`flex items-center gap-1 px-2 py-3.5 text-sm font-medium border-b-2 transition-colors ${
                 page === item.key
                   ? "border-white text-white"
                   : "border-transparent text-white/60 hover:text-white/90"
@@ -2653,23 +2696,41 @@ const TeacherDashboard = () => {
                           <TableCell className="text-xs">{b.subject}</TableCell>
                           <TableCell>
                             {b.student_absent ? (
-                              <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium">
-                                Absent
-                              </span>
+                              b.absence_notice_at ? (
+                                <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800 font-medium">
+                                  Late notice ½
+                                </span>
+                              ) : (
+                                <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium">
+                                  Absent
+                                </span>
+                              )
                             ) : (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-xs h-7 border-orange-400 text-orange-600 hover:bg-orange-50"
-                                disabled={absentLoadingId === b.id}
-                                onClick={() => handleMarkStudentAbsent(b.id)}
-                              >
-                                {absentLoadingId === b.id ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  "Mark Absent"
+                              <div className="flex gap-1 flex-wrap">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs h-7 border-orange-400 text-orange-600 hover:bg-orange-50"
+                                  disabled={absentLoadingId === b.id}
+                                  onClick={() => handleMarkStudentAbsent(b.id)}
+                                >
+                                  {absentLoadingId === b.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    "Mark Absent"
+                                  )}
+                                </Button>
+                                {lateNoticeEnabled && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-xs h-7 border-amber-400 text-amber-700 hover:bg-amber-50"
+                                    onClick={() => openLateNotice(b)}
+                                  >
+                                    Late notice
+                                  </Button>
                                 )}
-                              </Button>
+                              </div>
                             )}
                           </TableCell>
                           <TableCell>
@@ -2887,6 +2948,8 @@ const TeacherDashboard = () => {
                           ).getTime();
                           const canMarkAbsent =
                             Date.now() >= classTime + 15 * 60 * 1000;
+                          const canMarkLateNotice =
+                            lateNoticeEnabled && Date.now() >= classTime;
                           return (
                             <TableRow
                               key={b.id}
@@ -2952,25 +3015,45 @@ const TeacherDashboard = () => {
                               </TableCell>
                               <TableCell>
                                 {b.student_absent ? (
-                                  <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">
-                                    Absent
-                                  </span>
-                                ) : canMarkAbsent ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="text-xs h-7 border-orange-400 text-orange-600 hover:bg-orange-50"
-                                    disabled={absentLoadingId === b.id}
-                                    onClick={() =>
-                                      handleMarkStudentAbsent(b.id)
-                                    }
-                                  >
-                                    {absentLoadingId === b.id ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      "Mark Absent"
+                                  b.absence_notice_at ? (
+                                    <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800">
+                                      Late notice ½
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">
+                                      Absent
+                                    </span>
+                                  )
+                                ) : canMarkAbsent || canMarkLateNotice ? (
+                                  <div className="flex gap-1 flex-wrap">
+                                    {canMarkAbsent && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="text-xs h-7 border-orange-400 text-orange-600 hover:bg-orange-50"
+                                        disabled={absentLoadingId === b.id}
+                                        onClick={() =>
+                                          handleMarkStudentAbsent(b.id)
+                                        }
+                                      >
+                                        {absentLoadingId === b.id ? (
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                          "Mark Absent"
+                                        )}
+                                      </Button>
                                     )}
-                                  </Button>
+                                    {canMarkLateNotice && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="text-xs h-7 border-amber-400 text-amber-700 hover:bg-amber-50"
+                                        onClick={() => openLateNotice(b)}
+                                      >
+                                        Late notice
+                                      </Button>
+                                    )}
+                                  </div>
                                 ) : (
                                   <span className="text-xs text-muted-foreground">
                                     —
@@ -3125,9 +3208,15 @@ const TeacherDashboard = () => {
                               <TableCell>
                                 <div className="flex gap-1 flex-wrap">
                                   {!!b.student_absent && (
-                                    <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
-                                      Student Absent
-                                    </span>
+                                    b.absence_notice_at ? (
+                                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                                        Late notice ½
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                                        Student Absent
+                                      </span>
+                                    )
                                   )}
                                   {!!b.teacher_absent && (
                                     <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">
@@ -4598,6 +4687,62 @@ const TeacherDashboard = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setLastClass(null)}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Late absence notice — student told the team shortly after class start */}
+      <Dialog
+        open={!!lateNoticeBooking}
+        onOpenChange={(o) => {
+          if (!o) setLateNoticeBooking(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Late absence notice</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              {lateNoticeBooking?.student_name} ·{" "}
+              {lateNoticeBooking
+                ? fmtDate(lateNoticeBooking.appointment_date, "MMM d, h:mm a")
+                : ""}
+            </p>
+            <div>
+              <Label className="text-xs">
+                How many minutes after class start did the student notify you?
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                max={lateNoticeMinutes}
+                value={noticeMinutes}
+                onChange={(e) => setNoticeMinutes(e.target.value)}
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Within {lateNoticeMinutes} minutes, the student keeps half a
+                class. Later than that, use "Mark Absent" instead.
+              </p>
+            </div>
+            {lateNoticeError && (
+              <p className="text-xs text-destructive">{lateNoticeError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLateNoticeBooking(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitLateNotice}
+              disabled={lateNoticeSaving || noticeMinutes === ""}
+            >
+              {lateNoticeSaving && (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              )}
+              Record late notice
             </Button>
           </DialogFooter>
         </DialogContent>

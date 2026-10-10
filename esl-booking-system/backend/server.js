@@ -240,6 +240,20 @@ async function runAutoMigrations() {
         FOREIGN KEY (student_package_id) REFERENCES student_packages(id) ON DELETE CASCADE,
         FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL)` },
+    // half_credits (migration 019 — late absence notice)
+    { name: 'half_credits', sql: `CREATE TABLE IF NOT EXISTS half_credits (
+        id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, student_package_id INT NOT NULL,
+        student_id INT NOT NULL, booking_id INT NULL,
+        status ENUM('open','combined','paid','expired','voided') NOT NULL DEFAULT 'open',
+        value_amount DECIMAL(10,2) NOT NULL DEFAULT 0, currency VARCHAR(10) NULL,
+        combined_with_id INT NULL, amount_paid DECIMAL(10,2) NULL, payment_reference VARCHAR(255) NULL,
+        redeemed_by INT NULL, redeemed_at DATETIME NULL, created_by INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_hc_package (company_id, student_package_id, status),
+        INDEX idx_hc_student (student_id), INDEX idx_hc_booking (booking_id),
+        FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+        FOREIGN KEY (student_package_id) REFERENCES student_packages(id) ON DELETE CASCADE,
+        FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL)` },
   ];
 
   for (const m of migrations) {
@@ -278,6 +292,10 @@ async function runAutoMigrations() {
     ['admin_permissions', 'permissions', 'TEXT NULL'],
     // Migration 018: notify() reads this for every admin-bound notification.
     ['admin_permissions', 'muted_notifications', 'TEXT NULL'],
+    // Migration 019: company-settings GET/PUT and attendance read these.
+    ['companies', 'late_notice_enabled', 'BOOLEAN NOT NULL DEFAULT FALSE'],
+    ['companies', 'late_notice_minutes', 'INT NOT NULL DEFAULT 15'],
+    ['bookings', 'absence_notice_at', 'DATETIME NULL'],
   ];
   for (const [table, col, def] of addTableCols) {
     try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); }

@@ -14,6 +14,7 @@ const NOTIFICATION_CATEGORIES = {
   booking_cancelled: ['booking_cancelled', 'recurring_schedule_cancelled'],
   leave_requested: ['leave_requested'],
   teacher_issues: ['teacher_no_show', 'teacher_deactivated'],
+  late_notice: ['late_notice_half_credit', 'half_credit_paid'],
   student_feedback: ['student_feedback'],
   bulk_import: ['bulk_import'],
   announcement: ['announcement'],

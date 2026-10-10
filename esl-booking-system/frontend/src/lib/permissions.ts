@@ -136,6 +136,7 @@ export const NOTIFICATION_CATEGORIES: NotificationCategory[] = [
   { key: "booking_cancelled", label: "Cancelled bookings", description: "Classes or recurring schedules are cancelled" },
   { key: "leave_requested", label: "Leave requests", description: "A teacher requests a day off" },
   { key: "teacher_issues", label: "Teacher issues", description: "Teacher no-shows and deactivations" },
+  { key: "late_notice", label: "Late absence notices", description: "A student's late absence notice earns a half credit" },
   { key: "student_feedback", label: "Student feedback", description: "A student submits feedback" },
   { key: "bulk_import", label: "Bulk imports", description: "A student or teacher import finishes" },
   { key: "announcement", label: "Announcements", description: "Platform announcements" },

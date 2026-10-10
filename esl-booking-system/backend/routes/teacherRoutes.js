@@ -7,6 +7,7 @@ const notify = require('../utils/notify');
 const { logAction } = require('../utils/audit');
 const { notifyWaitlistForSlot } = require('./waitlistRoutes');
 const { attendeeSql, packageStudentIds } = require('../utils/sharedPackages');
+const { HalfCreditError, resolveLateNotice, createHalfCredit, notifyHalfCredit } = require('../utils/halfCredits');
 
 const router = express.Router();
 
@@ -140,7 +141,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
                 b.status,
                 b.class_mode,
                 b.meeting_link,
-                b.student_absent,
+                b.student_absent, b.absence_notice_at,
                 b.booking_group_id,
                 b.recurring_schedule_id,
                 u.name AS student_name,
@@ -163,7 +164,7 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
                 b.id,
                 b.appointment_date,
                 b.status,
-                b.student_absent,
+                b.student_absent, b.absence_notice_at,
                 b.teacher_absent,
                 b.booking_group_id,
                 u.name AS student_name,
@@ -427,6 +428,65 @@ router.post('/bookings/:id/mark-student-absent', authenticateToken, requireRole(
     }
 });
 
+// Teacher records a late absence notice: the student told the team within the
+// company's window (default 15 min) after class start. Marks the class student-
+// absent and gives the student a half credit (see utils/halfCredits.js).
+// `notice_minutes` = minutes after class start the student notified.
+router.post('/bookings/:id/mark-late-notice', authenticateToken, requireRole('teacher'), async (req, res) => {
+    const teacherId = req.user.id;
+    const companyId = req.user.company_id;
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const [[booking]] = await connection.query(
+            `SELECT id, student_absent, teacher_absent, booking_group_id, student_package_id FROM bookings
+             WHERE id = ? AND teacher_id = ? AND company_id = ?
+               AND appointment_date <= ?
+               AND status NOT IN ('done', 'cancelled')
+             FOR UPDATE`,
+            [req.params.id, teacherId, companyId, nowDatetime()]
+        );
+        if (!booking) {
+            await connection.rollback();
+            return res.status(400).json({ message: 'Cannot record a late notice: booking not found, class has not started yet, or is already closed.' });
+        }
+        if (booking.student_absent || booking.teacher_absent) {
+            await connection.rollback();
+            return res.status(400).json({ message: 'Attendance was already marked for this class. Ask an admin to correct it.' });
+        }
+
+        const notice = await resolveLateNotice(connection, booking, companyId, req.body.notice_minutes);
+        const halfCredit = await createHalfCredit(connection, { companyId, booking, firstBookingId: notice.firstBookingId, userId: teacherId });
+        const scope = booking.booking_group_id
+            ? { sql: 'booking_group_id = ? AND teacher_id = ?', params: [booking.booking_group_id, teacherId] }
+            : { sql: 'id = ? AND teacher_id = ?', params: [booking.id, teacherId] };
+        await connection.query(
+            `UPDATE bookings SET student_absent = TRUE, absence_notice_at = ? WHERE ${scope.sql}`,
+            [notice.noticeAt, ...scope.params]
+        );
+        await connection.commit();
+
+        await logAction(companyId, teacherId, 'booking_late_notice', 'booking', booking.id, {
+            notice_at: notice.noticeAt, half_credit_id: halfCredit.creditId, half_credit_combined: halfCredit.combined,
+        });
+        notifyHalfCredit({ companyId, booking, halfCredit, excludeUserId: teacherId });
+
+        res.json({
+            message: halfCredit.combined
+                ? 'Late notice recorded. Combined with an earlier half credit — 1 class returned to the student.'
+                : 'Late notice recorded. The student received a half credit.',
+            combined: halfCredit.combined,
+        });
+    } catch (err) {
+        await connection.rollback();
+        if (err instanceof HalfCreditError) return res.status(400).json({ message: err.message });
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    } finally {
+        connection.release();
+    }
+});
+
 // Teacher cancels a booking (notifies admin + student)
 router.post('/bookings/:id/cancel', authenticateToken, requireRole('teacher'), async (req, res) => {
     try {
@@ -680,7 +740,7 @@ router.get('/pending-confirmation', authenticateToken, requireRole('teacher'), a
         const companyId = req.user.company_id;
         const [rows] = await pool.query(`
             SELECT
-                b.id, b.appointment_date, b.status, b.student_absent,
+                b.id, b.appointment_date, b.status, b.student_absent, b.absence_notice_at,
                 b.student_package_id, b.booking_group_id,
                 u.name AS student_name,
                 ${attendeeSql()} AS student_id,
@@ -960,7 +1020,7 @@ router.get('/week-bookings', authenticateToken, requireRole('teacher'), async (r
             `SELECT b.id,
                     b.appointment_date,
                     b.status,
-                    b.student_absent,
+                    b.student_absent, b.absence_notice_at,
                     b.teacher_absent,
                     b.booking_group_id,
                     u.name AS student_name,

@@ -99,6 +99,8 @@ interface BookingRecord {
   meeting_link: string | null;
   student_absent: boolean;
   teacher_absent: boolean;
+  /** Set when the absence was a late notice (half credit) — see utils/halfCredits.js */
+  absence_notice_at?: string | null;
   teacher_id: number | null;
   teacher_name: string | null;
   has_report: boolean;
@@ -127,6 +129,42 @@ interface Teacher {
   id: number;
   name: string;
 }
+
+interface HalfCredit {
+  id: number;
+  student_package_id: number;
+  student_id: number;
+  status: "open" | "combined" | "paid" | "expired" | "voided";
+  value_amount: string | number;
+  currency: string | null;
+  amount_paid: string | number | null;
+  payment_reference: string | null;
+  redeemed_at: string | null;
+  created_at: string;
+  appointment_date: string | null;
+  absence_notice_at: string | null;
+  package_name: string;
+  student_name: string | null;
+  redeemed_by_name: string | null;
+  created_by_name: string | null;
+}
+
+const fmtMoney = (amount: string | number | null, currency: string | null) =>
+  `${currency ? currency + " " : ""}${Number(amount || 0).toFixed(2)}`;
+
+const halfCreditStatus: Record<HalfCredit["status"], { label: string; className: string }> = {
+  open: { label: "Open", className: "bg-amber-100 text-amber-800" },
+  combined: { label: "Combined", className: "bg-green-100 text-green-700" },
+  paid: { label: "Paid", className: "bg-blue-100 text-blue-700" },
+  expired: { label: "Expired", className: "bg-gray-100 text-gray-600" },
+  voided: { label: "Voided", className: "bg-gray-100 text-gray-500 line-through" },
+};
+
+/** Current attendance value of a booking, as the attendance endpoint names it. */
+const attendanceOf = (b: BookingRecord) =>
+  b.teacher_absent ? "teacher_absent"
+    : b.student_absent ? (b.absence_notice_at ? "late_notice" : "student_absent")
+    : "present";
 
 interface AvailablePackage {
   id: number;
@@ -184,6 +222,19 @@ const AdminStudentProfilePage = () => {
   const [recordMonth, setRecordMonth] = useState("all");
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [editingAttendanceId, setEditingAttendanceId] = useState<number | null>(null);
+
+  // Late absence notice → half credits
+  const [lateNoticeEnabled, setLateNoticeEnabled] = useState(false);
+  const [lateNoticeMinutes, setLateNoticeMinutes] = useState(15);
+  const [halfCredits, setHalfCredits] = useState<HalfCredit[]>([]);
+  const [lateNoticeBooking, setLateNoticeBooking] = useState<BookingRecord | null>(null);
+  const [noticeMinutes, setNoticeMinutes] = useState("0");
+  const [lateNoticeError, setLateNoticeError] = useState<string | null>(null);
+  const [redeemCredit, setRedeemCredit] = useState<HalfCredit | null>(null);
+  const [redeemAmount, setRedeemAmount] = useState("");
+  const [redeemReference, setRedeemReference] = useState("");
+  const [redeemError, setRedeemError] = useState<string | null>(null);
+  const [halfCreditBusy, setHalfCreditBusy] = useState(false);
   const [recurringCancelBooking, setRecurringCancelBooking] = useState<BookingRecord | null>(null);
 
   // Mini booking calendar
@@ -554,6 +605,18 @@ const AdminStudentProfilePage = () => {
     } finally {
       setLoading(false);
     }
+    // Half credits fetched separately so a failure (e.g. migration 019 not yet applied) doesn't block the page
+    try {
+      const [hcRes, settingsRes] = await Promise.all([
+        axios.get(`${base}/api/admin/students/${id}/half-credits`, { headers }),
+        axios.get(`${base}/api/admin/company-settings`, { headers }),
+      ]);
+      setHalfCredits(hcRes.data);
+      setLateNoticeEnabled(!!settingsRes.data.late_notice_enabled);
+      setLateNoticeMinutes(Number(settingsRes.data.late_notice_minutes ?? 15));
+    } catch (err) {
+      console.error("Error fetching half credits:", err);
+    }
   };
 
   useEffect(() => { fetchData(); }, [id]);
@@ -577,18 +640,27 @@ const AdminStudentProfilePage = () => {
       fetchData();
     } catch (err) {
       console.error("Error cancelling booking:", err);
+      alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to cancel class");
     } finally {
       setCancellingId(null);
     }
   };
 
   const handleEditAttendance = async (booking: BookingRecord, attendance: string) => {
+    if (attendance === "late_notice") {
+      setNoticeMinutes("0");
+      setLateNoticeError(null);
+      setLateNoticeBooking(booking);
+      return;
+    }
     const label = { present: "Present", student_absent: "Student Absent", teacher_absent: "Teacher Absent" }[attendance];
     const sessionNote = attendance === "teacher_absent"
       ? "\n\n1 session will be refunded to the student's package."
       : booking.teacher_absent
         ? "\n\nThe session refunded for the teacher absence will be deducted again."
-        : "";
+        : booking.absence_notice_at
+          ? "\n\nThe half credit from the late notice will be removed."
+          : "";
     if (!confirm(`Change attendance for ${fmtDate(booking.appointment_date, "MMM d, yyyy h:mm a")} to "${label}"?${sessionNote}`)) return;
     setEditingAttendanceId(booking.id);
     try {
@@ -598,6 +670,56 @@ const AdminStudentProfilePage = () => {
       alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to update attendance");
     } finally {
       setEditingAttendanceId(null);
+    }
+  };
+
+  const handleSubmitLateNotice = async () => {
+    if (!lateNoticeBooking) return;
+    setHalfCreditBusy(true);
+    setLateNoticeError(null);
+    try {
+      const res = await axios.put(`${base}/api/admin/bookings/${lateNoticeBooking.id}/attendance`,
+        { attendance: "late_notice", notice_minutes: Number(noticeMinutes) }, { headers });
+      setLateNoticeBooking(null);
+      alert(res.data.message);
+      fetchData();
+    } catch (err) {
+      setLateNoticeError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to record late notice");
+    } finally {
+      setHalfCreditBusy(false);
+    }
+  };
+
+  const openRedeem = (credit: HalfCredit) => {
+    setRedeemAmount(Number(credit.value_amount).toFixed(2));
+    setRedeemReference("");
+    setRedeemError(null);
+    setRedeemCredit(credit);
+  };
+
+  const handleRedeemPayment = async () => {
+    if (!redeemCredit) return;
+    setHalfCreditBusy(true);
+    setRedeemError(null);
+    try {
+      await axios.post(`${base}/api/admin/half-credits/${redeemCredit.id}/redeem-payment`,
+        { amount_paid: redeemAmount, reference: redeemReference }, { headers });
+      setRedeemCredit(null);
+      fetchData();
+    } catch (err) {
+      setRedeemError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to redeem half credit");
+    } finally {
+      setHalfCreditBusy(false);
+    }
+  };
+
+  const handleVoidHalfCredit = async (credit: HalfCredit) => {
+    if (!confirm("Void this half credit? Use this only if it was recorded by mistake. No sessions change.")) return;
+    try {
+      await axios.post(`${base}/api/admin/half-credits/${credit.id}/void`, {}, { headers });
+      fetchData();
+    } catch (err) {
+      alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to void half credit");
     }
   };
 
@@ -1139,6 +1261,88 @@ const AdminStudentProfilePage = () => {
           </Card>
         )}
 
+        {/* Half credits (late absence notices) */}
+        {(lateNoticeEnabled || halfCredits.length > 0) && (
+          <Card className="glow-card border-0 rounded-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-500" /> Half credits
+                {halfCredits.some((c) => c.status === "open") && (
+                  <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
+                    {halfCredits.filter((c) => c.status === "open").length} open
+                  </Badge>
+                )}
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                A late absence notice (within {lateNoticeMinutes} min of class start) keeps half a class.
+                Two open halves on the same package combine into 1 class automatically, or the
+                student pays half the class price to redeem one. Not refundable; open halves
+                expire once the package is used up.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {halfCredits.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No half credits yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Class</TableHead>
+                        <TableHead>Notified</TableHead>
+                        <TableHead>Package</TableHead>
+                        <TableHead>Value</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {halfCredits.map((c) => (
+                        <TableRow key={c.id}>
+                          <TableCell className="text-xs whitespace-nowrap">
+                            {c.appointment_date ? fmtDate(c.appointment_date, "MMM d, yyyy h:mm a") : "—"}
+                            {c.student_name && c.student_id !== Number(id) && (
+                              <span className="block text-muted-foreground">{c.student_name}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs whitespace-nowrap">
+                            {c.absence_notice_at ? fmtDate(c.absence_notice_at, "h:mm a") : "—"}
+                          </TableCell>
+                          <TableCell className="text-xs">{c.package_name}</TableCell>
+                          <TableCell className="text-xs whitespace-nowrap">{fmtMoney(c.value_amount, c.currency)}</TableCell>
+                          <TableCell>
+                            <span className={`text-xs px-2 py-1 rounded-full font-medium ${halfCreditStatus[c.status].className}`}>
+                              {halfCreditStatus[c.status].label}
+                            </span>
+                            {c.status === "paid" && (
+                              <span className="block text-[11px] text-muted-foreground mt-1">
+                                {fmtMoney(c.amount_paid, c.currency)}{c.payment_reference ? ` · ${c.payment_reference}` : ""}
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right whitespace-nowrap">
+                            {c.status === "open" && can("students.add_sessions") && (
+                              <Button size="sm" variant="outline" className="h-7 text-xs mr-1" onClick={() => openRedeem(c)}>
+                                Redeem by payment
+                              </Button>
+                            )}
+                            {c.status === "open" && can("students.deduct_sessions") && (
+                              <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                                onClick={() => handleVoidHalfCredit(c)}>
+                                Void
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Booking History */}
         {(() => {
           const filteredBookings = bookings.filter((b) => {
@@ -1288,7 +1492,13 @@ const AdminStudentProfilePage = () => {
                         </span>
                       </TableCell>
                       <TableCell>
-                        {!!b.student_absent && (
+                        {!!b.student_absent && b.absence_notice_at && (
+                          <span className="text-xs px-2 py-1 rounded-full font-medium bg-amber-100 text-amber-800 mr-1"
+                            title={`Student notified at ${fmtDate(b.absence_notice_at, "h:mm a")}`}>
+                            Late notice ½
+                          </span>
+                        )}
+                        {!!b.student_absent && !b.absence_notice_at && (
                           <span className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-700 mr-1">
                             Student Absent
                           </span>
@@ -1350,8 +1560,9 @@ const AdminStudentProfilePage = () => {
                                   { value: "present", label: "Present" },
                                   { value: "student_absent", label: "Student Absent" },
                                   { value: "teacher_absent", label: "Teacher Absent" },
+                                  ...(lateNoticeEnabled ? [{ value: "late_notice", label: "Late notice (½ credit)" }] : []),
                                 ]
-                                  .filter((o) => o.value !== (b.teacher_absent ? "teacher_absent" : b.student_absent ? "student_absent" : "present"))
+                                  .filter((o) => o.value !== attendanceOf(b))
                                   .map((o) => (
                                     <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                                   ))}
@@ -1771,6 +1982,70 @@ const AdminStudentProfilePage = () => {
       </Dialog>
 
       {/* Session Adjustment Dialog */}
+      {/* Late absence notice — record when the student told the team */}
+      <Dialog open={!!lateNoticeBooking} onOpenChange={(o) => { if (!o) setLateNoticeBooking(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Late absence notice</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              Class: {lateNoticeBooking ? fmtDate(lateNoticeBooking.appointment_date, "MMM d, yyyy h:mm a") : ""}
+            </p>
+            <div>
+              <Label className="text-xs">How many minutes after class start did the student notify you?</Label>
+              <Input type="number" min="0" max={lateNoticeMinutes} value={noticeMinutes}
+                onChange={(e) => setNoticeMinutes(e.target.value)} className="mt-1" />
+              <p className="text-xs text-muted-foreground mt-1">
+                Within {lateNoticeMinutes} minutes = half credit (0.5 class). Later than that counts as fully absent.
+              </p>
+            </div>
+            {lateNoticeError && <p className="text-xs text-destructive">{lateNoticeError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLateNoticeBooking(null)}>Cancel</Button>
+            <Button onClick={handleSubmitLateNotice} disabled={halfCreditBusy || noticeMinutes === ""}>
+              {halfCreditBusy && <Loader2 className="h-4 w-4 mr-1 animate-spin" />} Record late notice
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Redeem a half credit by payment */}
+      <Dialog open={!!redeemCredit} onOpenChange={(o) => { if (!o) setRedeemCredit(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Redeem half credit by payment</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              Confirm the student paid the other half of the class price. 1 full class will be added
+              to <span className="font-medium text-foreground">{redeemCredit?.package_name}</span>.
+            </p>
+            <div>
+              <Label className="text-xs">Amount paid{redeemCredit?.currency ? ` (${redeemCredit.currency})` : ""}</Label>
+              <Input type="number" min="0" step="0.01" value={redeemAmount}
+                onChange={(e) => setRedeemAmount(e.target.value)} className="mt-1" />
+              <p className="text-xs text-muted-foreground mt-1">
+                Half the class price: {redeemCredit ? fmtMoney(redeemCredit.value_amount, redeemCredit.currency) : ""}
+              </p>
+            </div>
+            <div>
+              <Label className="text-xs">Payment reference (optional)</Label>
+              <Input value={redeemReference} onChange={(e) => setRedeemReference(e.target.value)}
+                placeholder="e.g. transaction number" className="mt-1" />
+            </div>
+            {redeemError && <p className="text-xs text-destructive">{redeemError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRedeemCredit(null)}>Cancel</Button>
+            <Button onClick={handleRedeemPayment} disabled={halfCreditBusy}>
+              {halfCreditBusy && <Loader2 className="h-4 w-4 mr-1 animate-spin" />} Confirm payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <SessionAdjustDialog
         mode={showAdjust}
         studentPackageId={activePackage?.id ?? null}

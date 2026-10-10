@@ -64,6 +64,8 @@ interface CompanySettings {
   cancellation_penalty_enabled: boolean;
   payment_method: "encasher" | "communication_platform" | null;
   show_class_adjustments: boolean;
+  late_notice_enabled: boolean;
+  late_notice_minutes: number;
 }
 
 const CURRENCIES: { code: string; symbol: string; name: string }[] = [
@@ -113,6 +115,8 @@ const PackageSetupPage = () => {
     cancellation_penalty_enabled: false,
     payment_method: null,
     show_class_adjustments: true,
+    late_notice_enabled: false,
+    late_notice_minutes: 15,
   });
   const [loading, setLoading] = useState(true);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -138,7 +142,12 @@ const PackageSetupPage = () => {
         ),
       ]);
       setPackages(pkgRes.data);
-      setSettings(settingsRes.data);
+      setSettings((prev) => ({
+        ...prev,
+        ...settingsRes.data,
+        late_notice_enabled: !!settingsRes.data.late_notice_enabled,
+        late_notice_minutes: Number(settingsRes.data.late_notice_minutes ?? 15),
+      }));
       // setQrPreview(settingsRes.data.payment_qr_image || null);
     } catch (err) {
       console.error(err);
@@ -265,6 +274,8 @@ const PackageSetupPage = () => {
           cancellation_penalty_enabled: settings.cancellation_penalty_enabled,
           payment_method: settings.payment_method,
           show_class_adjustments: settings.show_class_adjustments,
+          late_notice_enabled: settings.late_notice_enabled,
+          late_notice_minutes: settings.late_notice_minutes,
         },
         { headers },
       );
@@ -525,6 +536,48 @@ const PackageSetupPage = () => {
                     }))
                   }
                 />
+              </div>
+              <div className="border-t pt-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm">Late absence notice gives a half credit</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      If a student tells you they can't attend within the first
+                      minutes of class, they keep half a class (0.5). Two halves
+                      make one class, or the student pays half the class price to
+                      redeem one. Half credits are not refundable.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={settings.late_notice_enabled}
+                    onCheckedChange={(v) =>
+                      setSettings((prev) => ({ ...prev, late_notice_enabled: v }))
+                    }
+                  />
+                </div>
+                {settings.late_notice_enabled && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Notice window (minutes after class start)
+                    </Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="60"
+                      value={settings.late_notice_minutes}
+                      onChange={(e) =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          late_notice_minutes: Number(e.target.value),
+                        }))
+                      }
+                      className="mt-1"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      A notice after this many minutes counts as fully absent. Default: 15.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 

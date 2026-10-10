@@ -13,6 +13,7 @@ const { generateTempPassword } = require("../utils/tempPassword");
 const { phtNowSql } = require("../utils/phtTime");
 const { attendeeSql, canUsePackageSql, canUsePackage, packageStudentIds } = require("../utils/sharedPackages");
 const { findAvailableTeachers } = require("../utils/teacherAvailability");
+const { HalfCreditError, resolveLateNotice, createHalfCredit, removeHalfCreditForBooking, notifyHalfCredit, fmtMoney } = require("../utils/halfCredits");
 
 /** Format a stored PHT datetime string for notification messages without UTC shift. */
 function fmtAppt(dtStr) {
@@ -1130,7 +1131,8 @@ router.post("/teacher-leaves/:id/approve", authenticateToken, requireRole('compa
        JOIN student_packages sp ON b.student_package_id = sp.id
        JOIN users u ON u.id = ${attendeeSql()}
        WHERE b.teacher_id = ? AND DATE(b.appointment_date) = ? AND b.company_id = ?
-         AND b.status NOT IN ('done','cancelled')`,
+         AND b.status NOT IN ('done','cancelled')
+         AND b.absence_notice_at IS NULL`,
       [leave.teacher_id, leaveDateStr, companyId]
     );
 
@@ -1201,11 +1203,16 @@ router.post("/teacher-leaves/:id/reject", authenticateToken, requireRole('compan
 // Get company settings (accessible by company_admin and student roles)
 router.get('/company-settings', authenticateToken, async (req, res) => {
   try {
-    const [[company]] = await pool.query(
-      'SELECT allow_student_pick_teacher, payment_qr_image, cancellation_hours, cancellation_penalty_enabled, payment_method, show_class_adjustments FROM companies WHERE id = ?',
-      [req.user.company_id]
-    );
-    res.json(company || { allow_student_pick_teacher: true, payment_qr_image: null, cancellation_hours: 1, cancellation_penalty_enabled: false, payment_method: null, show_class_adjustments: true });
+    const baseCols = 'allow_student_pick_teacher, payment_qr_image, cancellation_hours, cancellation_penalty_enabled, payment_method, show_class_adjustments';
+    let company;
+    try {
+      [[company]] = await pool.query(`SELECT ${baseCols}, late_notice_enabled, late_notice_minutes FROM companies WHERE id = ?`, [req.user.company_id]);
+    } catch (err) {
+      // Migration 019 columns are added at boot; until then every dashboard still needs these settings
+      if (err.code !== 'ER_BAD_FIELD_ERROR') throw err;
+      [[company]] = await pool.query(`SELECT ${baseCols} FROM companies WHERE id = ?`, [req.user.company_id]);
+    }
+    res.json(company || { allow_student_pick_teacher: true, payment_qr_image: null, cancellation_hours: 1, cancellation_penalty_enabled: false, payment_method: null, show_class_adjustments: true, late_notice_enabled: false, late_notice_minutes: 15 });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -1214,7 +1221,7 @@ router.get('/company-settings', authenticateToken, async (req, res) => {
 // Update company settings (company_admin only)
 router.put('/company-settings', authenticateToken, requireRole('company_admin'), requirePermission('packages.edit_settings'), async (req, res) => {
   try {
-    const { allow_student_pick_teacher, payment_qr_image, cancellation_hours, cancellation_penalty_enabled, payment_method, show_class_adjustments } = req.body;
+    const { allow_student_pick_teacher, payment_qr_image, cancellation_hours, cancellation_penalty_enabled, payment_method, show_class_adjustments, late_notice_enabled, late_notice_minutes } = req.body;
 
     // Validate cancellation_hours
     const parsedHours = parseInt(cancellation_hours);
@@ -1224,16 +1231,24 @@ router.put('/company-settings', authenticateToken, requireRole('company_admin'),
       }
     }
 
+    // Late absence notice window (minutes after class start)
+    const parsedNoticeMin = parseInt(late_notice_minutes);
+    if (late_notice_minutes !== undefined && late_notice_minutes !== null) {
+      if (isNaN(parsedNoticeMin) || parsedNoticeMin < 1 || parsedNoticeMin > 60) {
+        return res.status(400).json({ message: 'Late notice window must be between 1 and 60 minutes.' });
+      }
+    }
+
     const validPaymentMethods = ['encasher', 'communication_platform', null];
     if (payment_method !== undefined && !validPaymentMethods.includes(payment_method)) {
       return res.status(400).json({ message: 'Invalid payment method.' });
     }
 
     await pool.query(
-      'UPDATE companies SET allow_student_pick_teacher = ?, payment_qr_image = ?, cancellation_hours = ?, cancellation_penalty_enabled = ?, payment_method = ?, show_class_adjustments = ? WHERE id = ?',
-      [allow_student_pick_teacher, payment_qr_image ?? null, isNaN(parsedHours) ? 1 : parsedHours, cancellation_penalty_enabled ?? false, payment_method ?? null, show_class_adjustments ?? true, req.user.company_id]
+      'UPDATE companies SET allow_student_pick_teacher = ?, payment_qr_image = ?, cancellation_hours = ?, cancellation_penalty_enabled = ?, payment_method = ?, show_class_adjustments = ?, late_notice_enabled = COALESCE(?, late_notice_enabled), late_notice_minutes = COALESCE(?, late_notice_minutes) WHERE id = ?',
+      [allow_student_pick_teacher, payment_qr_image ?? null, isNaN(parsedHours) ? 1 : parsedHours, cancellation_penalty_enabled ?? false, payment_method ?? null, show_class_adjustments ?? true, late_notice_enabled ?? null, isNaN(parsedNoticeMin) ? null : parsedNoticeMin, req.user.company_id]
     );
-    await logAction(req.user.company_id, req.user.id, 'company_settings_updated', 'company', req.user.company_id, { allow_student_pick_teacher, cancellation_hours, cancellation_penalty_enabled, payment_method, show_class_adjustments });
+    await logAction(req.user.company_id, req.user.id, 'company_settings_updated', 'company', req.user.company_id, { allow_student_pick_teacher, cancellation_hours, cancellation_penalty_enabled, payment_method, show_class_adjustments, late_notice_enabled, late_notice_minutes });
     res.json({ message: 'Settings updated' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
@@ -1333,7 +1348,7 @@ router.get('/students/:id', authenticateToken, requireRole('company_admin'), asy
 
     const [bookings] = await pool.query(
       `SELECT b.id, b.appointment_date, b.status, b.class_mode, b.meeting_link,
-              b.student_absent, b.teacher_absent, b.teacher_id, b.booking_group_id,
+              b.student_absent, b.teacher_absent, b.absence_notice_at, b.teacher_id, b.booking_group_id,
               b.recurring_schedule_id,
               u.name AS teacher_name,
               CASE WHEN cr.id IS NOT NULL THEN TRUE ELSE FALSE END AS has_report
@@ -1619,9 +1634,11 @@ router.put('/bookings/:bookingId/assign-teacher', authenticateToken, requireRole
 // before "Mark as absent" went through). Applies to every slot of the class.
 // Teacher absent refunds the class's session, so switching into/out of it
 // refunds/re-deducts 1 session — same as the student-side no-show report.
+// Late notice (company policy, see utils/halfCredits.js) is student-absent plus
+// a half credit; `notice_minutes` = minutes after class start the student told us.
 router.put('/bookings/:bookingId/attendance', authenticateToken, requireRole('company_admin'), requirePermission('students.edit'), async (req, res) => {
-  const ATTENDANCE = ['present', 'student_absent', 'teacher_absent'];
-  const { attendance } = req.body;
+  const ATTENDANCE = ['present', 'student_absent', 'teacher_absent', 'late_notice'];
+  const { attendance, notice_minutes } = req.body;
   if (!ATTENDANCE.includes(attendance)) return res.status(400).json({ message: 'Invalid attendance value.' });
 
   const companyId = req.user.company_id;
@@ -1643,17 +1660,33 @@ router.put('/bookings/:bookingId/attendance', authenticateToken, requireRole('co
       : { sql: 'id = ? AND company_id = ?', params: [booking.id, companyId] };
 
     const [[prev]] = await connection.query(
-      `SELECT MAX(student_absent) AS student_absent, MAX(teacher_absent) AS teacher_absent FROM bookings WHERE ${scope.sql}`,
+      `SELECT MAX(student_absent) AS student_absent, MAX(teacher_absent) AS teacher_absent,
+              MAX(absence_notice_at) AS absence_notice_at FROM bookings WHERE ${scope.sql}`,
       scope.params
     );
     const wasTeacherAbsent = !!prev.teacher_absent;
-    const previous = wasTeacherAbsent ? 'teacher_absent' : prev.student_absent ? 'student_absent' : 'present';
+    const previous = wasTeacherAbsent ? 'teacher_absent'
+      : prev.student_absent ? (prev.absence_notice_at ? 'late_notice' : 'student_absent')
+      : 'present';
     if (previous === attendance) { await connection.rollback(); return res.json({ message: 'Attendance unchanged' }); }
+
+    // Half credit bookkeeping: leaving late notice removes its (still open)
+    // credit; entering it validates the notice time and creates one.
+    let halfCredit = null;
+    let noticeAt = null;
+    if (previous === 'late_notice') {
+      await removeHalfCreditForBooking(connection, booking, companyId);
+    }
+    if (attendance === 'late_notice') {
+      const notice = await resolveLateNotice(connection, booking, companyId, notice_minutes);
+      noticeAt = notice.noticeAt;
+      halfCredit = await createHalfCredit(connection, { companyId, booking, firstBookingId: notice.firstBookingId, userId: req.user.id });
+    }
 
     const isTeacherAbsent = attendance === 'teacher_absent';
     await connection.query(
-      `UPDATE bookings SET student_absent = ?, teacher_absent = ? WHERE ${scope.sql}`,
-      [attendance === 'student_absent', isTeacherAbsent, ...scope.params]
+      `UPDATE bookings SET student_absent = ?, teacher_absent = ?, absence_notice_at = ? WHERE ${scope.sql}`,
+      [attendance === 'student_absent' || attendance === 'late_notice', isTeacherAbsent, noticeAt, ...scope.params]
     );
 
     let sessionChange = 0;
@@ -1666,12 +1699,20 @@ router.put('/bookings/:bookingId/attendance', authenticateToken, requireRole('co
     }
 
     await connection.commit();
-    await logAction(companyId, req.user.id, 'booking_attendance_edited', 'booking', booking.id, { previous, attendance, session_change: sessionChange });
+    await logAction(companyId, req.user.id, 'booking_attendance_edited', 'booking', booking.id, {
+      previous, attendance, session_change: sessionChange,
+      ...(halfCredit && { notice_at: noticeAt, half_credit_id: halfCredit.creditId, half_credit_combined: halfCredit.combined }),
+    });
+    if (halfCredit) notifyHalfCredit({ companyId, booking, halfCredit, excludeUserId: req.user.id });
 
     const sessionMsg = sessionChange > 0 ? ' 1 session refunded.' : sessionChange < 0 ? ' 1 session deducted.' : '';
-    res.json({ message: `Attendance updated.${sessionMsg}` });
+    const halfMsg = !halfCredit ? ''
+      : halfCredit.combined ? ' Half credit added and combined with an earlier one — 1 class returned to the package.'
+      : ' Half credit (0.5 class) added.';
+    res.json({ message: `Attendance updated.${sessionMsg}${halfMsg}` });
   } catch (err) {
     await connection.rollback();
+    if (err instanceof HalfCreditError) return res.status(400).json({ message: err.message });
     console.error(err);
     res.status(500).json({ message: 'Server error' });
   } finally {
@@ -2659,6 +2700,119 @@ router.post("/student-packages/:id/adjust-sessions", authenticateToken, requireR
     try { await connection.rollback(); } catch (_) {}
     connection.release();
     console.error("Session adjustment error:", err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ── Half credits (late absence notice, see utils/halfCredits.js) ─────────────
+
+// All half credits on packages this student owns or shares, plus any they earned.
+router.get('/students/:id/half-credits', authenticateToken, requireRole('company_admin'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const studentId = req.params.id;
+    const [rows] = await pool.query(
+      `SELECT hc.id, hc.student_package_id, hc.student_id, hc.booking_id, hc.status, hc.value_amount, hc.currency,
+              hc.combined_with_id, hc.amount_paid, hc.payment_reference, hc.redeemed_at, hc.created_at,
+              b.appointment_date, b.absence_notice_at, tp.package_name,
+              u.name AS student_name, rb.name AS redeemed_by_name, cb.name AS created_by_name
+       FROM half_credits hc
+       JOIN student_packages sp ON sp.id = hc.student_package_id
+       JOIN tutorial_packages tp ON tp.id = sp.package_id
+       LEFT JOIN bookings b ON b.id = hc.booking_id
+       LEFT JOIN users u ON u.id = hc.student_id
+       LEFT JOIN users rb ON rb.id = hc.redeemed_by
+       LEFT JOIN users cb ON cb.id = hc.created_by
+       WHERE hc.company_id = ? AND (hc.student_id = ? OR ${canUsePackageSql('sp')})
+       ORDER BY hc.created_at DESC, hc.id DESC`,
+      [companyId, studentId, studentId, studentId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Redeem one open half credit by the student paying the other half of the class
+// price (confirmed by the admin). Returns 1 whole session to the same package.
+router.post('/half-credits/:id/redeem-payment', authenticateToken, requireRole('company_admin'), requirePermission('students.add_sessions'), async (req, res) => {
+  const companyId = req.user.company_id;
+  const { amount_paid, reference } = req.body;
+  const amount = amount_paid === undefined || amount_paid === null || amount_paid === '' ? null : Number(amount_paid);
+  if (amount !== null && (isNaN(amount) || amount < 0)) {
+    return res.status(400).json({ message: 'Amount paid must be a positive number.' });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [[credit]] = await connection.query(
+      `SELECT hc.*, sp.sessions_remaining FROM half_credits hc
+       JOIN student_packages sp ON sp.id = hc.student_package_id
+       WHERE hc.id = ? AND hc.company_id = ? FOR UPDATE`,
+      [req.params.id, companyId]
+    );
+    if (!credit) { await connection.rollback(); return res.status(404).json({ message: 'Half credit not found' }); }
+    if (credit.status !== 'open') {
+      await connection.rollback();
+      return res.status(400).json({ message: `This half credit is already ${credit.status}.` });
+    }
+
+    const paid = amount ?? Number(credit.value_amount);
+    const ref = reference ? String(reference).trim().slice(0, 255) : null;
+    await connection.query(
+      `UPDATE half_credits SET status = 'paid', amount_paid = ?, payment_reference = ?, redeemed_by = ?, redeemed_at = NOW() WHERE id = ?`,
+      [paid, ref, req.user.id, credit.id]
+    );
+    await connection.query(
+      'UPDATE student_packages SET sessions_remaining = sessions_remaining + 1 WHERE id = ? AND company_id = ?',
+      [credit.student_package_id, companyId]
+    );
+    await connection.query(
+      `INSERT INTO session_adjustments (company_id, student_package_id, adjusted_by, adjustment, remarks, created_at)
+       VALUES (?, ?, ?, 1, ?, NOW())`,
+      [companyId, credit.student_package_id, req.user.id,
+       `Half credit redeemed — student paid ${fmtMoney(paid, credit.currency)}${ref ? ` (ref: ${ref})` : ''}`]
+    );
+    await connection.commit();
+
+    const studentIds = await packageStudentIds(credit.student_package_id);
+    for (const id of studentIds) {
+      notify({
+        userId: id, companyId, type: 'half_credit_paid', title: 'Half credit redeemed',
+        message: `Your payment of ${fmtMoney(paid, credit.currency)} was confirmed. Your half credit is now 1 full class in your package.`,
+        link: '/studentdashboard',
+      });
+    }
+    await logAction(companyId, req.user.id, 'half_credit_paid', 'half_credit', credit.id, {
+      student_id: credit.student_id, student_package_id: credit.student_package_id,
+      amount_paid: paid, value_amount: Number(credit.value_amount), reference: ref,
+    });
+    res.json({ message: 'Payment confirmed — 1 class added to the package.', sessions_remaining: credit.sessions_remaining + 1 });
+  } catch (err) {
+    await connection.rollback();
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  } finally {
+    connection.release();
+  }
+});
+
+// Void an open half credit recorded by mistake. No session change.
+router.post('/half-credits/:id/void', authenticateToken, requireRole('company_admin'), requirePermission('students.deduct_sessions'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const [result] = await pool.query(
+      `UPDATE half_credits SET status = 'voided', redeemed_by = ?, redeemed_at = NOW()
+       WHERE id = ? AND company_id = ? AND status = 'open'`,
+      [req.user.id, req.params.id, companyId]
+    );
+    if (result.affectedRows === 0) return res.status(400).json({ message: 'Only an open half credit can be voided.' });
+    await logAction(companyId, req.user.id, 'half_credit_voided', 'half_credit', Number(req.params.id), {});
+    res.json({ message: 'Half credit voided.' });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ message: 'Server error' });
   }
 });

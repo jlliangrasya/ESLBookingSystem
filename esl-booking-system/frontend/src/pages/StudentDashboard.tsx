@@ -69,6 +69,7 @@ interface Booking {
   meeting_link: string | null;
   teacher_absent: boolean;
   student_absent: boolean;
+  absence_notice_at?: string | null;
   recurring_schedule_id: number | null;
 }
 
@@ -76,8 +77,16 @@ interface Absence {
   id: number;
   appointment_date: string;
   student_absent: boolean;
+  absence_notice_at?: string | null;
   teacher_absent: boolean;
   teacher_name: string | null;
+}
+
+interface HalfCredit {
+  id: number;
+  status: "open" | "combined" | "paid" | "expired";
+  value_amount: string | number;
+  currency: string | null;
 }
 
 interface WaitlistEntry {
@@ -156,6 +165,8 @@ const StudentDashboard = () => {
   const authContext = useContext(AuthContext);
   const token = authContext?.token ?? null;
 
+  const [halfCredits, setHalfCredits] = useState<HalfCredit[]>([]);
+
   const fetchStudentData = async () => {
     if (!token) return;
     try {
@@ -170,6 +181,11 @@ const StudentDashboard = () => {
       setPackageDetails(dashRes.data.package || null);
       setAbsences(dashRes.data.absences || []);
       setCancellationHours(settingsRes.data.cancellation_hours ?? 1);
+      // Half credits are optional extras — never let them break the dashboard
+      axios.get(`${import.meta.env.VITE_API_URL}/api/student/half-credits`,
+        { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => setHalfCredits(r.data || []))
+        .catch(() => setHalfCredits([]));
 
       const todayStr = new Date().toLocaleDateString("en-CA");
       const processedBookings: Record<string, string[]> = {};
@@ -775,6 +791,18 @@ const StudentDashboard = () => {
                 </div>
               </CardHeader>
               <CardContent>
+                {(() => {
+                  const open = halfCredits.filter((c) => c.status === "open");
+                  if (open.length === 0) return null;
+                  const c = open[0];
+                  const amount = `${c.currency ? c.currency + " " : ""}${Number(c.value_amount || 0).toFixed(2)}`;
+                  return (
+                    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                      <p className="font-medium">{t("student.halfCredits")}: {open.length} × ½</p>
+                      <p className="text-xs mt-1">{t("student.halfCreditsHint", { count: open.length, amount })}</p>
+                    </div>
+                  );
+                })()}
                 {filteredAbsences.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-6">No absences for this period.</p>
                 ) : (
@@ -795,9 +823,15 @@ const StudentDashboard = () => {
                           <TableCell className="text-sm">{a.teacher_name || "—"}</TableCell>
                           <TableCell>
                             {!!a.student_absent && (
-                              <span className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-700">
-                                {t("student.youAbsent")}
-                              </span>
+                              a.absence_notice_at ? (
+                                <span className="text-xs px-2 py-1 rounded-full font-medium bg-amber-100 text-amber-800">
+                                  {t("student.lateNotice")}
+                                </span>
+                              ) : (
+                                <span className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-700">
+                                  {t("student.youAbsent")}
+                                </span>
+                              )
                             )}
                             {!!a.teacher_absent && (
                               <span className="text-xs px-2 py-1 rounded-full font-medium bg-red-100 text-red-700 ml-1">
@@ -1230,9 +1264,15 @@ const StudentDashboard = () => {
                   {/* Absence indicators / action */}
                   {!!b.student_absent && (
                     <div className="pt-1">
-                      <span className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-700">
-                        {t("student.youMarkedAbsent")}
-                      </span>
+                      {b.absence_notice_at ? (
+                        <span className="text-xs px-2 py-1 rounded-full font-medium bg-amber-100 text-amber-800">
+                          {t("student.lateNotice")}
+                        </span>
+                      ) : (
+                        <span className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-700">
+                          {t("student.youMarkedAbsent")}
+                        </span>
+                      )}
                     </div>
                   )}
                   {b.teacher_absent ? (

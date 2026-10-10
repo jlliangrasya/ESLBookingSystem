@@ -286,6 +286,7 @@ const AdminDashboard = () => {
       fetchDashboardData();
     } catch (error) {
       console.error("Error cancelling class:", error);
+      alert((error as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to cancel class");
     }
   };
 

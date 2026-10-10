@@ -161,6 +161,39 @@ const MIGRATIONS = [
     check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admin_permissions' AND COLUMN_NAME = 'muted_notifications'",
     up: 'ALTER TABLE admin_permissions ADD COLUMN muted_notifications TEXT NULL',
   },
+  // ── 019: Late absence notice → half credits ───────────────────────────────
+  {
+    name: 'companies.late_notice_enabled column',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'late_notice_enabled'",
+    up: 'ALTER TABLE companies ADD COLUMN late_notice_enabled BOOLEAN NOT NULL DEFAULT FALSE',
+  },
+  {
+    name: 'companies.late_notice_minutes column',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'late_notice_minutes'",
+    up: 'ALTER TABLE companies ADD COLUMN late_notice_minutes INT NOT NULL DEFAULT 15',
+  },
+  {
+    name: 'bookings.absence_notice_at column',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'absence_notice_at'",
+    up: 'ALTER TABLE bookings ADD COLUMN absence_notice_at DATETIME NULL',
+  },
+  {
+    name: 'half_credits table',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'half_credits'",
+    up: `CREATE TABLE IF NOT EXISTS half_credits (
+      id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, student_package_id INT NOT NULL,
+      student_id INT NOT NULL, booking_id INT NULL,
+      status ENUM('open','combined','paid','expired','voided') NOT NULL DEFAULT 'open',
+      value_amount DECIMAL(10,2) NOT NULL DEFAULT 0, currency VARCHAR(10) NULL,
+      combined_with_id INT NULL, amount_paid DECIMAL(10,2) NULL, payment_reference VARCHAR(255) NULL,
+      redeemed_by INT NULL, redeemed_at DATETIME NULL, created_by INT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_hc_package (company_id, student_package_id, status),
+      INDEX idx_hc_student (student_id), INDEX idx_hc_booking (booking_id),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (student_package_id) REFERENCES student_packages(id) ON DELETE CASCADE,
+      FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL)`,
+  },
 ];
 
 async function main() {

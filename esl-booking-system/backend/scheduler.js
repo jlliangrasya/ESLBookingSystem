@@ -5,6 +5,7 @@ const { sendMail } = require('./utils/mailer');
 const logger = require('./utils/logger');
 const { phtNowSql, phtTodaySql, formatPHT } = require('./utils/phtTime');
 const { attendeeSql } = require('./utils/sharedPackages');
+const { expireUsedUpPackages } = require('./utils/halfCredits');
 
 // ── Reliability notes (Render free tier) ─────────────────────────────────────
 // The free tier idle-sleeps the process after ~15 min without inbound HTTP
@@ -476,6 +477,15 @@ async function runDatabaseBackup() {
     }
 }
 
+// ── Half credit expiry (daily) ───────────────────────────────────────────────
+// Open half credits (late absence notices) expire once their package is used up:
+// 0 sessions left and nothing still booked. Runs late in the day so a package
+// whose last class was today has the evening to be renewed or redeemed.
+async function runHalfCreditExpiry() {
+    const expired = await expireUsedUpPackages();
+    logger.info(`[Scheduler] Half credits expired: ${expired}`);
+}
+
 // ── Daily job sweep ───────────────────────────────────────────────────────────
 // Daily jobs run at a target PHT hour, but through claimDailyRun() rather than
 // a one-shot cron tick: the sweep runs every 15 min and on boot, so if the
@@ -485,6 +495,7 @@ const DAILY_JOBS = [
     { name: 'billing_checks', targetHourPHT: 10, run: runBillingChecks },        // was 2:00 UTC
     { name: 'database_backup', targetHourPHT: 11, run: runDatabaseBackup },      // was 3:00 UTC
     { name: 'onboarding_followup', targetHourPHT: 17, run: runOnboardingFollowUp }, // was 9:00 UTC
+    { name: 'half_credit_expiry', targetHourPHT: 23, run: runHalfCreditExpiry },
 ];
 
 async function runDailyJobsSweep() {

@@ -71,7 +71,7 @@ router.get('/dashboard', authenticateToken, requireRole('student'), async (req, 
         // Fetch bookings from ALL student packages for this student
         const [bookingRows] = await pool.query(
             `SELECT b.id, b.appointment_date, b.status, b.class_mode, b.meeting_link,
-                    b.teacher_absent, b.student_absent, b.recurring_schedule_id,
+                    b.teacher_absent, b.student_absent, b.absence_notice_at, b.recurring_schedule_id,
                     u.name AS teacher_name
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
@@ -108,7 +108,7 @@ router.get('/dashboard', authenticateToken, requireRole('student'), async (req, 
 
         // Absence history for this student
         const [absences] = await pool.query(
-            `SELECT b.id, b.appointment_date, b.student_absent, b.teacher_absent,
+            `SELECT b.id, b.appointment_date, b.student_absent, b.absence_notice_at, b.teacher_absent,
                     u.name AS teacher_name
              FROM bookings b
              JOIN student_packages sp ON b.student_package_id = sp.id
@@ -227,6 +227,28 @@ router.get('/stats', authenticateToken, requireRole('student'), async (req, res)
             upcoming_count: Number(upcoming_count),
             sessions_remaining: activePkg ? Number(activePkg.sessions_remaining) : 0,
         });
+    } catch (err) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Half credits from late absence notices on packages this student can use
+router.get('/half-credits', authenticateToken, requireRole('student'), async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const [rows] = await pool.query(
+            `SELECT hc.id, hc.student_package_id, hc.status, hc.value_amount, hc.currency,
+                    hc.amount_paid, hc.redeemed_at, hc.created_at,
+                    b.appointment_date, b.absence_notice_at, tp.package_name
+             FROM half_credits hc
+             JOIN student_packages sp ON sp.id = hc.student_package_id
+             JOIN tutorial_packages tp ON tp.id = sp.package_id
+             LEFT JOIN bookings b ON b.id = hc.booking_id
+             WHERE hc.company_id = ? AND ${canUsePackageSql('sp')} AND hc.status <> 'voided'
+             ORDER BY hc.created_at DESC, hc.id DESC`,
+            [req.user.company_id, userId, userId]
+        );
+        res.json(rows);
     } catch (err) {
         res.status(500).json({ message: 'Server error' });
     }

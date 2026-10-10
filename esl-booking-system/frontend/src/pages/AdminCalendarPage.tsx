@@ -405,6 +405,7 @@ const AdminCalendarPage = () => {
       fetchBookableStudents();
     } catch (err) {
       console.error("Error cancelling booking:", err);
+      alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to cancel class");
     } finally {
       setCancellingId(null);
     }

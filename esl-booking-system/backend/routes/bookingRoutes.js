@@ -454,6 +454,8 @@ router.delete("/api/bookings/:id", authenticateToken, async (req, res) => {
             [id, companyId]
         );
         if (!booking) return res.status(404).json({ message: "Booking not found" });
+        // A late-notice class already earned a half credit — refunding it too would double-count
+        if (booking.absence_notice_at) return res.status(400).json({ message: "This class has a late absence notice (half credit) recorded, so it can't be cancelled. Change its attendance first if the notice was a mistake." });
 
         // Check cancellation window
         const [[company]] = await pool.query(
@@ -730,6 +732,11 @@ router.post("/api/bookings/cancel/:id", authenticateToken, requireRole('company_
              WHERE b.id = ? AND b.company_id = ?`,
             [id, companyId]
         );
+        // A late-notice class already earned a half credit — refunding it too would double-count.
+        // (Cancel-all skips such classes below instead of refusing.)
+        if (!cancelAll && booking && booking.absence_notice_at && booking.status !== 'cancelled') {
+            return res.status(400).json({ message: "This class has a late absence notice (half credit) recorded, so it can't be cancelled. Change its attendance first if the notice was a mistake." });
+        }
 
         if (cancelAll && booking && booking.recurring_schedule_id) {
             // Cancel this session and all future bookings in the recurring series
@@ -738,7 +745,8 @@ router.post("/api/bookings/cancel/:id", authenticateToken, requireRole('company_
                  FROM bookings
                  WHERE recurring_schedule_id = ? AND company_id = ?
                    AND appointment_date >= ?
-                   AND status NOT IN ('done', 'cancelled')`,
+                   AND status NOT IN ('done', 'cancelled')
+                   AND absence_notice_at IS NULL`,
                 [booking.recurring_schedule_id, companyId, booking.appointment_date]
             );
 
@@ -753,7 +761,8 @@ router.post("/api/bookings/cancel/:id", authenticateToken, requireRole('company_
                     `UPDATE bookings SET status = 'cancelled'
                      WHERE recurring_schedule_id = ? AND company_id = ?
                        AND appointment_date >= ?
-                       AND status NOT IN ('done', 'cancelled')`,
+                       AND status NOT IN ('done', 'cancelled')
+                       AND absence_notice_at IS NULL`,
                     [booking.recurring_schedule_id, companyId, booking.appointment_date]
                 );
                 await pool.query(
