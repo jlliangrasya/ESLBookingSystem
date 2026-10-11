@@ -30,6 +30,10 @@ export function useCompanySwitcher() {
   const enabled = Boolean(superToken);
   const currentCompanyId = impersonator ? auth?.user?.company_id ?? null : null;
 
+  const [reloadKey, setReloadKey] = useState(0);
+  // Call after a company's status/plan changes so it appears without a page reload
+  const refresh = () => setReloadKey((k) => k + 1);
+
   useEffect(() => {
     if (!superToken) {
       setCompanies([]);
@@ -41,7 +45,7 @@ export function useCompanySwitcher() {
       })
       .then((res) => setCompanies(res.data))
       .catch(() => setCompanies([]));
-  }, [base, superToken]);
+  }, [base, superToken, reloadKey]);
 
   const switchTo = async (company: SwitchableCompany) => {
     if (!auth || !superToken || switchingId !== null || company.id === currentCompanyId) return;
@@ -84,6 +88,7 @@ export function useCompanySwitcher() {
     switchingId,
     switchTo,
     backToSuperAdmin,
+    refresh,
   };
 }
 

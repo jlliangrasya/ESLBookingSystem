@@ -194,6 +194,12 @@ const SuperAdminDashboard = () => {
   const [lockLoading, setLockLoading] = useState<number | null>(null);
   const [markPaidLoading, setMarkPaidLoading] = useState<number | null>(null);
 
+  // Reactivate / Change Plan dialog (mark paid on a plan, or assign a trial)
+  const [subCompany, setSubCompany] = useState<Company | null>(null);
+  const [subForm, setSubForm] = useState({ mode: "paid" as "paid" | "trial", plan_id: "", trial_days: "30", notes: "" });
+  const [subLoading, setSubLoading] = useState(false);
+  const [subError, setSubError] = useState("");
+
   // Backup logs
   const [backupLogs, setBackupLogs] = useState<BackupLog[]>([]);
   const [backupLogsLoading, setBackupLogsLoading] = useState(false);
@@ -308,14 +314,48 @@ const SuperAdminDashboard = () => {
   };
 
   useEffect(() => { fetchData(); }, []);
+  // Keep the open SOA panel in step with refreshed company data (status, due dates)
+  useEffect(() => {
+    setSoaCompany(prev => prev ? companies.find(c => c.id === prev.id) ?? prev : prev);
+  }, [companies]);
   useEffect(() => { if (page === "accounts") fetchAllUsers(); }, [page]);
 
   // ── Company actions ──────────────────────────────────────────────────────────
+  // Status/plan changes also change which companies the switcher can enter
+  const afterCompanyChange = () => { fetchData(); companySwitcher.refresh(); };
+
+  const openSubscription = (company: Company) => {
+    const paidPlans = plans.filter(p => p.is_active && p.name !== "Free Trial");
+    const current = paidPlans.find(p => p.name === company.plan_name);
+    setSubForm({ mode: "paid", plan_id: String((current ?? paidPlans[0])?.id ?? ""), trial_days: "30", notes: "" });
+    setSubError("");
+    setSubCompany(company);
+  };
+  const handleSubscriptionSubmit = async () => {
+    if (!subCompany) return;
+    setSubLoading(true);
+    setSubError("");
+    try {
+      await axios.post(`${import.meta.env.VITE_API_URL}/api/companies/${subCompany.id}/subscription`, {
+        mode: subForm.mode,
+        plan_id: subForm.mode === "paid" ? Number(subForm.plan_id) : undefined,
+        trial_days: subForm.mode === "trial" ? Number(subForm.trial_days) : undefined,
+        notes: subForm.notes || undefined,
+      }, { headers });
+      const id = subCompany.id;
+      setSubCompany(null);
+      afterCompanyChange();
+      if (selectedCompanyId === id) fetchCompanyProfile(id);
+      if (soaCompany?.id === id) fetchPaymentHistory(id);
+    } catch (err) {
+      setSubError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Could not update the plan.");
+    } finally { setSubLoading(false); }
+  };
   const handleApprove = async (id: number) => {
     setActionLoading(id);
     try {
       await axios.post(`${import.meta.env.VITE_API_URL}/api/companies/${id}/approve`, {}, { headers });
-      fetchData();
+      afterCompanyChange();
     } catch (err) { console.error(err); } finally { setActionLoading(null); }
   };
   const handleReject = async (id: number) => {
@@ -329,35 +369,38 @@ const SuperAdminDashboard = () => {
     setActionLoading(id);
     try {
       await axios.post(`${import.meta.env.VITE_API_URL}/api/companies/${id}/suspend`, {}, { headers });
-      fetchData();
+      afterCompanyChange();
     } catch (err) { console.error(err); } finally { setActionLoading(null); }
   };
   const handleLock = async (id: number) => {
     setLockLoading(id);
     try {
       await axios.post(`${import.meta.env.VITE_API_URL}/api/companies/${id}/lock`, {}, { headers });
-      fetchData();
+      afterCompanyChange();
     } catch (err) { console.error(err); } finally { setLockLoading(null); }
   };
   const handleUnlock = async (id: number) => {
     setLockLoading(id);
     try {
       await axios.post(`${import.meta.env.VITE_API_URL}/api/companies/${id}/unlock`, {}, { headers });
-      fetchData();
+      afterCompanyChange();
     } catch (err) { console.error(err); } finally { setLockLoading(null); }
   };
   const handleMarkPaid = async (id: number, notes?: string) => {
     setMarkPaidLoading(id);
     try {
       await axios.post(`${import.meta.env.VITE_API_URL}/api/companies/${id}/mark-paid`, { notes: notes || undefined }, { headers });
-      fetchData();
+      afterCompanyChange();
       if (selectedCompanyId === id) fetchCompanyProfile(id);
       if (soaCompany?.id === id) {
         fetchPaymentHistory(id);
         setSoaCompany(prev => prev ? { ...prev, last_paid_at: new Date().toISOString() } : prev);
         setMarkPaidNotes("");
       }
-    } catch (err) { console.error(err); } finally { setMarkPaidLoading(null); }
+    } catch (err) {
+      console.error(err);
+      alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Could not record the payment.");
+    } finally { setMarkPaidLoading(null); }
   };
   const handleApproveUpgrade = async (id: number) => {
     setUpgradeActionLoading(id);
@@ -573,8 +616,13 @@ const SuperAdminDashboard = () => {
                 </Button>
               )}
               {company.status === "suspended" && (
-                <Button size="sm" onClick={() => handleApprove(company.id)} disabled={actionLoading === company.id}>
+                <Button size="sm" onClick={() => openSubscription(company)}>
                   Reactivate
+                </Button>
+              )}
+              {company.status !== "suspended" && company.status !== "rejected" && (
+                <Button size="sm" variant="outline" onClick={() => openSubscription(company)}>
+                  Change Plan
                 </Button>
               )}
             </div>
@@ -959,7 +1007,13 @@ const SuperAdminDashboard = () => {
               </div>
 
               {/* Mark Paid action */}
-              {(soaCompany.status === "active" || soaCompany.status === "locked") && (
+              {/* Free Trial has nothing to bill; suspended needs a plan to come back on */}
+              {(soaCompany.status === "suspended" || soaCompany.plan_name === "Free Trial") && soaCompany.status !== "rejected" && (
+                <Button size="sm" className="w-full" onClick={() => openSubscription(soaCompany)}>
+                  {soaCompany.status === "suspended" ? "Reactivate — Paid Plan or Trial" : "Move to a Paid Plan"}
+                </Button>
+              )}
+              {(soaCompany.status === "active" || soaCompany.status === "locked") && soaCompany.plan_name !== "Free Trial" && (
                 <div className="border rounded-lg p-3 space-y-2">
                   <p className="text-xs font-medium text-muted-foreground">Record a payment</p>
                   <input
@@ -1246,8 +1300,13 @@ const SuperAdminDashboard = () => {
                               </Button>
                             )}
                             {company.status === "suspended" && (
-                              <Button size="sm" className="text-xs" onClick={() => handleApprove(company.id)} disabled={actionLoading === company.id}>
+                              <Button size="sm" className="text-xs" onClick={() => openSubscription(company)}>
                                 Reactivate
+                              </Button>
+                            )}
+                            {company.status !== "suspended" && company.status !== "rejected" && (
+                              <Button size="sm" variant="outline" className="text-xs" onClick={() => openSubscription(company)}>
+                                Plan
                               </Button>
                             )}
                           </div>
@@ -1571,6 +1630,80 @@ const SuperAdminDashboard = () => {
           {page === "backup" && renderBackupPage()}
         </div>
       </div>
+
+      {/* Reactivate / Change Plan Modal */}
+      <Dialog open={subCompany !== null} onOpenChange={open => { if (!open) setSubCompany(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {subCompany?.status === "suspended" ? "Reactivate" : "Change Plan"} — {subCompany?.company_name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { mode: "paid", title: "Paid plan", hint: "Records a payment, next due in 1 month" },
+                { mode: "trial", title: "Trial", hint: "Free access until the trial ends" },
+              ] as const).map(opt => (
+                <button key={opt.mode} type="button"
+                  onClick={() => setSubForm(f => ({ ...f, mode: opt.mode }))}
+                  className={`text-left rounded-lg border p-3 transition-colors ${subForm.mode === opt.mode ? "border-primary bg-primary/5" : "border-border hover:bg-muted"}`}>
+                  <p className="text-sm font-semibold">{opt.title}</p>
+                  <p className="text-xs text-muted-foreground">{opt.hint}</p>
+                </button>
+              ))}
+            </div>
+
+            {subForm.mode === "paid" ? (
+              <>
+                <div>
+                  <Label>Plan</Label>
+                  <Select value={subForm.plan_id} onValueChange={v => setSubForm(f => ({ ...f, plan_id: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Select a plan" /></SelectTrigger>
+                    <SelectContent>
+                      {plans.filter(p => p.is_active && p.name !== "Free Trial").map(p => (
+                        <SelectItem key={p.id} value={String(p.id)}>
+                          {p.name} — ₱{Number(p.price_monthly).toLocaleString()}/mo
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Payment notes (optional)</Label>
+                  <Input value={subForm.notes} onChange={e => setSubForm(f => ({ ...f, notes: e.target.value }))} placeholder="e.g. GCash ref 1234" />
+                </div>
+              </>
+            ) : (
+              <div>
+                <Label>Trial length (days)</Label>
+                <Input type="number" min="1" max="365" value={subForm.trial_days}
+                  onChange={e => setSubForm(f => ({ ...f, trial_days: e.target.value }))} />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Moves the company to the Free Trial plan, ending{" "}
+                  {Number(subForm.trial_days) >= 1
+                    ? new Date(Date.now() + Number(subForm.trial_days) * 86400000).toLocaleDateString()
+                    : "—"}.
+                </p>
+              </div>
+            )}
+
+            {subCompany?.status === "pending" && (
+              <p className="text-xs text-muted-foreground">This company is still pending — it stays pending until you approve it.</p>
+            )}
+            {subError && <p className="text-sm text-red-600">{subError}</p>}
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setSubCompany(null)}>Cancel</Button>
+            <Button onClick={handleSubscriptionSubmit}
+              disabled={subLoading || (subForm.mode === "paid"
+                ? !subForm.plan_id
+                : !(Number(subForm.trial_days) >= 1 && Number(subForm.trial_days) <= 365))}>
+              {subLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : subForm.mode === "paid" ? "Mark Paid & Activate" : "Start Trial"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Plan Modal */}
       <Dialog open={showPlanModal} onOpenChange={setShowPlanModal}>

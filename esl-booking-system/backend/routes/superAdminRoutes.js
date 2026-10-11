@@ -145,6 +145,7 @@ router.post('/upgrade-requests/:id/approve', authenticateToken, requireRole('sup
              next_due_date = DATE_ADD(NOW(), INTERVAL 1 MONTH) WHERE id = ?`,
             [request.subscription_plan_id, superAdminId, request.company_id]
         );
+        invalidateAuthCache(null, request.company_id);
 
         // Mark request approved
         await pool.query(

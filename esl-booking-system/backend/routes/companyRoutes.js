@@ -331,6 +331,7 @@ router.post('/:id/suspend', authenticateToken, requireRole('super_admin'), async
     try {
         const { id } = req.params;
         await pool.query(`UPDATE companies SET status = 'suspended' WHERE id = ?`, [id]);
+        invalidateAuthCache(null, Number(id));
         await logAction(null, req.user.id, 'company_suspended', 'company', Number(id), {});
         res.json({ message: 'Company suspended' });
     } catch (err) {
@@ -343,8 +344,110 @@ router.post('/:id/reactivate', authenticateToken, requireRole('super_admin'), as
     try {
         const { id } = req.params;
         await pool.query(`UPDATE companies SET status = 'active' WHERE id = ?`, [id]);
+        invalidateAuthCache(null, Number(id));
         res.json({ message: 'Company reactivated' });
     } catch (err) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// SUPER ADMIN: Put a company on a paid plan or a trial. This is how a suspended,
+// locked or expired company gets reactivated: flipping status alone isn't enough,
+// because an expired trial_ends_at / overdue next_due_date keeps it blocked
+// (authMiddleware, company switcher) and the scheduler would re-suspend it.
+//   mode 'paid'  → body { plan_id, notes? }      records a payment, billing runs 1 month from today
+//   mode 'trial' → body { trial_days, plan_id? } plan defaults to "Free Trial", no billing date
+// Pending companies keep 'pending' — this never skips the student-invite approval gate.
+router.post('/:id/subscription', authenticateToken, requireRole('super_admin'), async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        const { mode, notes } = req.body;
+        if (!['paid', 'trial'].includes(mode)) return res.status(400).json({ message: 'Invalid mode' });
+
+        const [[company]] = await pool.query('SELECT id, company_name, status FROM companies WHERE id = ?', [id]);
+        if (!company) return res.status(404).json({ message: 'Company not found' });
+        if (company.status === 'rejected') return res.status(400).json({ message: 'Rejected companies cannot be assigned a plan' });
+
+        let plan;
+        if (req.body.plan_id) {
+            [[plan]] = await pool.query('SELECT * FROM subscription_plans WHERE id = ?', [req.body.plan_id]);
+        } else if (mode === 'trial') {
+            [[plan]] = await pool.query("SELECT * FROM subscription_plans WHERE name = 'Free Trial' LIMIT 1");
+        }
+        if (!plan) return res.status(400).json({ message: 'Plan not found' });
+        if (!plan.is_active) return res.status(400).json({ message: 'That plan is disabled' });
+        if (mode === 'paid' && plan.name === 'Free Trial') {
+            return res.status(400).json({ message: 'Use trial mode for the Free Trial plan' });
+        }
+
+        const newStatus = company.status === 'pending' ? 'pending' : 'active';
+        let message;
+
+        if (mode === 'paid') {
+            // Billing restarts from today: a reactivated company shouldn't land on a
+            // due date that's already past (the scheduler would re-suspend it overnight).
+            // Dates come from the DB clock, same as CURDATE() everywhere else.
+            const connection = await pool.getConnection();
+            try {
+                await connection.beginTransaction();
+                await connection.query(
+                    `INSERT INTO company_payments (company_id, amount, payment_date, period_start, period_end, notes, recorded_by)
+                     VALUES (?, ?, CURDATE(), CURDATE(), DATE_ADD(CURDATE(), INTERVAL 1 MONTH), ?, ?)`,
+                    [id, plan.price_monthly, notes || null, req.user.id]
+                );
+                await connection.query(
+                    `UPDATE companies SET subscription_plan_id = ?, status = ?, trial_ends_at = NULL,
+                     last_paid_at = NOW(), next_due_date = DATE_ADD(CURDATE(), INTERVAL 1 MONTH) WHERE id = ?`,
+                    [plan.id, newStatus, id]
+                );
+                await connection.commit();
+            } catch (err) {
+                await connection.rollback();
+                throw err;
+            } finally {
+                connection.release();
+            }
+            message = `${company.company_name} is now on ${plan.name}, next due in 1 month`;
+        } else {
+            const days = Number(req.body.trial_days);
+            if (!Number.isInteger(days) || days < 1 || days > 365) {
+                return res.status(400).json({ message: 'Trial days must be between 1 and 365' });
+            }
+            // next_due_date must be NULL: the scheduler only expires trials that have
+            // no billing date, and would otherwise suspend on a stale overdue date.
+            await pool.query(
+                `UPDATE companies SET subscription_plan_id = ?, status = ?, next_due_date = NULL,
+                 trial_ends_at = DATE_ADD(NOW(), INTERVAL ? DAY) WHERE id = ?`,
+                [plan.id, newStatus, days, id]
+            );
+            message = `${company.company_name} is now on a ${days}-day trial (${plan.name})`;
+        }
+
+        invalidateAuthCache(null, id);
+
+        const [[owner]] = await pool.query(
+            `SELECT id FROM users WHERE company_id = ? AND role = 'company_admin'
+             ORDER BY is_owner DESC, id ASC LIMIT 1`,
+            [id]
+        );
+        if (owner) {
+            await notify({
+                userId: owner.id, companyId: id,
+                type: mode === 'paid' ? 'payment_confirmed' : 'account_unlocked',
+                title: mode === 'paid' ? 'Subscription active' : 'Trial started',
+                message: mode === 'paid'
+                    ? `Your payment has been confirmed. You're on the ${plan.name} plan for the next month.`
+                    : `Your account is on a ${Number(req.body.trial_days)}-day trial. Enjoy!`,
+            });
+        }
+
+        await logAction(id, req.user.id, mode === 'paid' ? 'company_marked_paid' : 'company_trial_assigned', 'company', id, {
+            company_name: company.company_name, plan: plan.name, previous_status: company.status,
+            ...(mode === 'trial' ? { trial_days: Number(req.body.trial_days) } : {}),
+        });
+        res.json({ message });
+    } catch (err) {
+        console.error(err);
         res.status(500).json({ message: 'Server error' });
     }
 });
@@ -357,6 +460,7 @@ router.post('/:id/lock', authenticateToken, requireRole('super_admin'), async (r
         if (!company) return res.status(404).json({ message: 'Company not found' });
 
         await pool.query("UPDATE companies SET status = 'locked' WHERE id = ?", [id]);
+        invalidateAuthCache(null, Number(id));
 
         const [[owner]] = await pool.query(
             "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin' AND is_owner = TRUE LIMIT 1", [id]
@@ -381,6 +485,7 @@ router.post('/:id/unlock', authenticateToken, requireRole('super_admin'), async 
     try {
         const { id } = req.params;
         await pool.query("UPDATE companies SET status = 'active', trial_ends_at = NULL WHERE id = ?", [id]);
+        invalidateAuthCache(null, Number(id));
 
         const [[owner]] = await pool.query(
             "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin' AND is_owner = TRUE LIMIT 1", [id]
@@ -407,12 +512,15 @@ router.post('/:id/mark-paid', authenticateToken, requireRole('super_admin'), asy
         const { notes } = req.body;
 
         const [[company]] = await pool.query(`
-            SELECT c.company_name, c.next_due_date, sp.price_monthly
+            SELECT c.company_name, c.next_due_date, sp.price_monthly, sp.name AS plan_name
             FROM companies c
             JOIN subscription_plans sp ON c.subscription_plan_id = sp.id
             WHERE c.id = ?
         `, [id]);
         if (!company) return res.status(404).json({ message: 'Company not found' });
+        if (company.plan_name === 'Free Trial') {
+            return res.status(400).json({ message: 'This company is on the Free Trial. Move it to a paid plan instead.' });
+        }
 
         // Payment period: from current next_due_date (or today) + 1 month
         const periodStart = company.next_due_date
@@ -438,6 +546,7 @@ router.post('/:id/mark-paid', authenticateToken, requireRole('super_admin'), asy
              WHERE id = ?`,
             [id]
         );
+        invalidateAuthCache(null, Number(id));
 
         const [[owner]] = await pool.query(
             "SELECT id FROM users WHERE company_id = ? AND role = 'company_admin' AND is_owner = TRUE LIMIT 1", [id]
