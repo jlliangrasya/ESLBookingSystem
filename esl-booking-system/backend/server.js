@@ -296,6 +296,8 @@ async function runAutoMigrations() {
     ['companies', 'late_notice_enabled', 'BOOLEAN NOT NULL DEFAULT FALSE'],
     ['companies', 'late_notice_minutes', 'INT NOT NULL DEFAULT 15'],
     ['bookings', 'absence_notice_at', 'DATETIME NULL'],
+    // Migration 020: the public plan list filters on this.
+    ['subscription_plans', 'is_public', 'BOOLEAN NOT NULL DEFAULT TRUE'],
   ];
   for (const [table, col, def] of addTableCols) {
     try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); }

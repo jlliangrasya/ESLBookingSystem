@@ -28,9 +28,11 @@ const router = express.Router();
 const AUTO_APPROVE_COMPANIES = process.env.AUTO_APPROVE_COMPANIES === 'true';
 
 // PUBLIC: List subscription plans (for registration page)
+// Private plans (is_public = FALSE) are custom deals the super admin assigns
+// directly to one company, so they never appear here.
 router.get('/subscription-plans', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM subscription_plans WHERE is_active = TRUE ORDER BY price_monthly ASC');
+        const [rows] = await pool.query('SELECT * FROM subscription_plans WHERE is_active = TRUE AND is_public = TRUE ORDER BY price_monthly ASC');
         res.json(rows);
     } catch (err) {
         res.status(500).json({ message: 'Server error' });
@@ -68,7 +70,8 @@ router.post('/register', async (req, res) => {
         }
 
         const [[plan]] = await connection.query('SELECT * FROM subscription_plans WHERE id = ?', [subscription_plan_id]);
-        if (!plan) {
+        // A private plan id must not be usable just by guessing it.
+        if (!plan || !plan.is_active || !plan.is_public) {
             await connection.rollback();
             return res.status(400).json({ message: 'Invalid subscription plan' });
         }
@@ -575,6 +578,11 @@ router.post('/upgrade-request', authenticateToken.basic, requireRole('company_ad
         if (!subscription_plan_id) {
             return res.status(400).json({ message: 'subscription_plan_id is required' });
         }
+        // Private plans are assigned by the super admin, not requested.
+        const [[requested]] = await pool.query(
+            'SELECT id FROM subscription_plans WHERE id = ? AND is_active = TRUE AND is_public = TRUE', [subscription_plan_id]
+        );
+        if (!requested) return res.status(400).json({ message: 'Invalid subscription plan' });
 
         // Check for existing pending request
         const [[existing]] = await pool.query(

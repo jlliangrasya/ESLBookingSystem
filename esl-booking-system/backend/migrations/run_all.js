@@ -194,6 +194,12 @@ const MIGRATIONS = [
       FOREIGN KEY (student_package_id) REFERENCES student_packages(id) ON DELETE CASCADE,
       FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL)`,
   },
+  // ── 020: Private (unlisted) subscription plans ────────────────────────────
+  {
+    name: 'subscription_plans.is_public column',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'subscription_plans' AND COLUMN_NAME = 'is_public'",
+    up: 'ALTER TABLE subscription_plans ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT TRUE',
+  },
 ];
 
 async function main() {

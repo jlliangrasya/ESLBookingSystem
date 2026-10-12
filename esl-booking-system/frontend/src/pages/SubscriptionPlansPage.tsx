@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, PackagePlus, Pencil, AlertCircle, Building2 } from "lucide-react";
+import { Loader2, PackagePlus, Pencil, AlertCircle, Building2, EyeOff } from "lucide-react";
 
 interface Plan {
   id: number;
@@ -21,10 +22,11 @@ interface Plan {
   price_monthly: number;
   description: string | null;
   is_active: boolean;
+  is_public: boolean;
   company_count: number;
 }
 
-const emptyForm = { name: "", max_students: "", max_teachers: "", max_admins: "", price_monthly: "", description: "" };
+const emptyForm = { name: "", max_students: "", max_teachers: "", max_admins: "", price_monthly: "", description: "", is_public: true };
 
 const SubscriptionPlansPage = () => {
   const authContext = useContext(AuthContext);
@@ -70,6 +72,8 @@ const SubscriptionPlansPage = () => {
       max_admins: String(plan.max_admins ?? 5),
       price_monthly: String(plan.price_monthly),
       description: plan.description ?? "",
+      // MySQL BOOLEAN comes back as 0/1
+      is_public: Number(plan.is_public) !== 0,
     });
     setFormError(null);
     setShowModal(true);
@@ -86,6 +90,7 @@ const SubscriptionPlansPage = () => {
         max_admins: Number(form.max_admins) || 5,
         price_monthly: Number(form.price_monthly),
         description: form.description.trim() || null,
+        is_public: form.is_public,
       };
       if (editPlan) {
         await axios.put(`${import.meta.env.VITE_API_URL}/api/super-admin/plans/${editPlan.id}`, payload, { headers });
@@ -199,7 +204,16 @@ const SubscriptionPlansPage = () => {
                   ) : (
                     plans.map((plan) => (
                       <TableRow key={plan.id}>
-                        <TableCell className="font-medium">{plan.name}</TableCell>
+                        <TableCell className="font-medium">
+                          <span className="flex items-center gap-1.5">
+                            {plan.name}
+                            {Number(plan.is_public) === 0 && (
+                              <Badge variant="secondary" className="text-[10px] gap-1" title="Hidden from registration and upgrade pages">
+                                <EyeOff className="h-3 w-3" /> Private
+                              </Badge>
+                            )}
+                          </span>
+                        </TableCell>
                         <TableCell>{plan.max_students}</TableCell>
                         <TableCell>{plan.max_teachers}</TableCell>
                         <TableCell>{plan.max_admins ?? 5}</TableCell>
@@ -291,6 +305,15 @@ const SubscriptionPlansPage = () => {
             <div>
               <Label>Description (optional)</Label>
               <Input value={form.description} placeholder="Brief description" onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))} />
+            </div>
+            <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
+              <div>
+                <Label>Show on public pages</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Turn off for a private plan made for one company. It stays active, but only you can assign it (Change Plan on the company).
+                </p>
+              </div>
+              <Switch checked={form.is_public} onCheckedChange={(v) => setForm(f => ({ ...f, is_public: v }))} />
             </div>
           </div>
           <DialogFooter className="mt-4">

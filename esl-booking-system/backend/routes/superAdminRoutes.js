@@ -48,13 +48,13 @@ router.get('/plans', authenticateToken, requireRole('super_admin'), async (req, 
 
 // Create a new subscription plan
 router.post('/plans', authenticateToken, requireRole('super_admin'), async (req, res) => {
-    const { name, max_students, max_teachers, max_admins, price_monthly, description } = req.body;
+    const { name, max_students, max_teachers, max_admins, price_monthly, description, is_public } = req.body;
     if (!name || !max_students || !max_teachers || price_monthly === undefined)
         return res.status(400).json({ message: 'Missing required fields' });
     try {
         const [result] = await pool.query(
-            'INSERT INTO subscription_plans (name, max_students, max_teachers, max_admins, price_monthly, description) VALUES (?, ?, ?, ?, ?, ?)',
-            [name, max_students, max_teachers, max_admins ?? 5, price_monthly, description || null]
+            'INSERT INTO subscription_plans (name, max_students, max_teachers, max_admins, price_monthly, description, is_public) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [name, max_students, max_teachers, max_admins ?? 5, price_monthly, description || null, is_public !== false]
         );
         res.status(201).json({ message: 'Plan created', id: result.insertId });
     } catch (err) {
@@ -64,11 +64,12 @@ router.post('/plans', authenticateToken, requireRole('super_admin'), async (req,
 
 // Update a subscription plan
 router.put('/plans/:id', authenticateToken, requireRole('super_admin'), async (req, res) => {
-    const { name, max_students, max_teachers, max_admins, price_monthly, description } = req.body;
+    const { name, max_students, max_teachers, max_admins, price_monthly, description, is_public } = req.body;
     try {
         await pool.query(
-            'UPDATE subscription_plans SET name=?, max_students=?, max_teachers=?, max_admins=?, price_monthly=?, description=? WHERE id=?',
-            [name, max_students, max_teachers, max_admins ?? 5, price_monthly, description || null, req.params.id]
+            // is_public is optional: leave visibility alone when the caller doesn't send it
+            'UPDATE subscription_plans SET name=?, max_students=?, max_teachers=?, max_admins=?, price_monthly=?, description=?, is_public=COALESCE(?, is_public) WHERE id=?',
+            [name, max_students, max_teachers, max_admins ?? 5, price_monthly, description || null, typeof is_public === 'boolean' ? is_public : null, req.params.id]
         );
         res.json({ message: 'Plan updated' });
     } catch (err) {

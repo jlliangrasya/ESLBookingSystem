@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Building2, Users, Clock, CheckCircle, LogOut, Loader2,
@@ -65,6 +66,7 @@ interface Plan {
   price_monthly: number;
   description: string | null;
   is_active: boolean;
+  is_public: boolean;
 }
 interface UpgradeRequest {
   id: number;
@@ -150,7 +152,7 @@ const roleBadge = (role: string) => {
   return map[role] ?? "bg-gray-100 text-gray-700";
 };
 
-const emptyPlanForm = { name: "", max_students: "", max_teachers: "", max_admins: "", price_monthly: "", description: "" };
+const emptyPlanForm = { name: "", max_students: "", max_teachers: "", max_admins: "", price_monthly: "", description: "", is_public: true };
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 const SuperAdminDashboard = () => {
@@ -324,12 +326,25 @@ const SuperAdminDashboard = () => {
   // Status/plan changes also change which companies the switcher can enter
   const afterCompanyChange = () => { fetchData(); companySwitcher.refresh(); };
 
-  const openSubscription = (company: Company) => {
-    const paidPlans = plans.filter(p => p.is_active && p.name !== "Free Trial");
-    const current = paidPlans.find(p => p.name === company.plan_name);
-    setSubForm({ mode: "paid", plan_id: String((current ?? paidPlans[0])?.id ?? ""), trial_days: "30", notes: "" });
+  // is_active arrives as 1/0 (or "1"/"0") from MySQL, not a real boolean
+  const isPaidPlan = (p: Plan) => Number(p.is_active) === 1 && p.name.trim().toLowerCase() !== "free trial";
+  const paidPlans = plans.filter(isPaidPlan);
+
+  const openSubscription = async (company: Company) => {
+    const pick = (list: Plan[]) => {
+      const paid = list.filter(isPaidPlan);
+      const current = paid.find(p => p.name === company.plan_name);
+      return String((current ?? paid[0])?.id ?? "");
+    };
+    setSubForm({ mode: "paid", plan_id: pick(plans), trial_days: "30", notes: "" });
     setSubError("");
     setSubCompany(company);
+    // Reload plans so the dropdown never opens empty on a stale or failed initial load
+    try {
+      const res = await axios.get<Plan[]>(`${import.meta.env.VITE_API_URL}/api/super-admin/plans`, { headers });
+      setPlans(res.data);
+      setSubForm(f => (f.plan_id ? f : { ...f, plan_id: pick(res.data) }));
+    } catch (err) { console.error(err); }
   };
   const handleSubscriptionSubmit = async () => {
     if (!subCompany) return;
@@ -431,13 +446,13 @@ const SuperAdminDashboard = () => {
   const openAddPlan = () => { setEditPlan(null); setPlanForm(emptyPlanForm); setShowPlanModal(true); };
   const openEditPlan = (plan: Plan) => {
     setEditPlan(plan);
-    setPlanForm({ name: plan.name, max_students: String(plan.max_students), max_teachers: String(plan.max_teachers), max_admins: String(plan.max_admins ?? 5), price_monthly: String(plan.price_monthly), description: plan.description || "" });
+    setPlanForm({ name: plan.name, max_students: String(plan.max_students), max_teachers: String(plan.max_teachers), max_admins: String(plan.max_admins ?? 5), price_monthly: String(plan.price_monthly), description: plan.description || "", is_public: Number(plan.is_public) !== 0 });
     setShowPlanModal(true);
   };
   const handlePlanSubmit = async () => {
     setPlanLoading(true);
     try {
-      const payload = { name: planForm.name, max_students: Number(planForm.max_students), max_teachers: Number(planForm.max_teachers), max_admins: Number(planForm.max_admins) || 5, price_monthly: Number(planForm.price_monthly), description: planForm.description || null };
+      const payload = { name: planForm.name, max_students: Number(planForm.max_students), max_teachers: Number(planForm.max_teachers), max_admins: Number(planForm.max_admins) || 5, price_monthly: Number(planForm.price_monthly), description: planForm.description || null, is_public: planForm.is_public };
       if (editPlan) await axios.put(`${import.meta.env.VITE_API_URL}/api/super-admin/plans/${editPlan.id}`, payload, { headers });
       else await axios.post(`${import.meta.env.VITE_API_URL}/api/super-admin/plans`, payload, { headers });
       setShowPlanModal(false);
@@ -911,7 +926,12 @@ const SuperAdminDashboard = () => {
                 <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground text-sm py-8">No plans yet</TableCell></TableRow>
               ) : plans.map(plan => (
                 <TableRow key={plan.id}>
-                  <TableCell className="font-medium">{plan.name}</TableCell>
+                  <TableCell className="font-medium">
+                    {plan.name}
+                    {Number(plan.is_public) === 0 && (
+                      <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600" title="Hidden from registration and upgrade pages">Private</span>
+                    )}
+                  </TableCell>
                   <TableCell>{plan.max_students}</TableCell>
                   <TableCell>{plan.max_teachers}</TableCell>
                   <TableCell>{plan.max_admins ?? 5}</TableCell>
@@ -1658,16 +1678,22 @@ const SuperAdminDashboard = () => {
               <>
                 <div>
                   <Label>Plan</Label>
-                  <Select value={subForm.plan_id} onValueChange={v => setSubForm(f => ({ ...f, plan_id: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Select a plan" /></SelectTrigger>
-                    <SelectContent>
-                      {plans.filter(p => p.is_active && p.name !== "Free Trial").map(p => (
-                        <SelectItem key={p.id} value={String(p.id)}>
-                          {p.name} — ₱{Number(p.price_monthly).toLocaleString()}/mo
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {paidPlans.length === 0 ? (
+                    <p className="text-sm text-muted-foreground border rounded-md px-3 py-2">
+                      No active paid plans. Create or enable one under Subscription Plans first.
+                    </p>
+                  ) : (
+                    <Select value={subForm.plan_id} onValueChange={v => setSubForm(f => ({ ...f, plan_id: v }))}>
+                      <SelectTrigger className="w-full"><SelectValue placeholder="Select a plan" /></SelectTrigger>
+                      <SelectContent position="popper">
+                        {paidPlans.map(p => (
+                          <SelectItem key={p.id} value={String(p.id)}>
+                            {p.name} — ₱{Number(p.price_monthly).toLocaleString()}/mo{Number(p.is_public) === 0 ? " (private)" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div>
                   <Label>Payment notes (optional)</Label>
@@ -1737,6 +1763,15 @@ const SuperAdminDashboard = () => {
             <div>
               <Label>Description (optional)</Label>
               <Input value={planForm.description} onChange={e => setPlanForm(f => ({ ...f, description: e.target.value }))} placeholder="Brief description" />
+            </div>
+            <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
+              <div>
+                <Label>Show on public pages</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Turn off for a private plan made for one company. It stays active, but only you can assign it (Change Plan on the company).
+                </p>
+              </div>
+              <Switch checked={planForm.is_public} onCheckedChange={v => setPlanForm(f => ({ ...f, is_public: v }))} />
             </div>
           </div>
           <DialogFooter className="mt-4">
