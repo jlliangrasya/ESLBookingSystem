@@ -19,6 +19,8 @@
     "date-fns-tz": "^3.2.0",
     "i18next": "^25.8.18",
     "i18next-browser-languagedetector": "^8.2.1",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.575.0",
     "radix-ui": "^1.4.3",
     "react": "^19.0.0",

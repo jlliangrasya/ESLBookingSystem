@@ -21,6 +21,7 @@ import {
   ArrowLeft, UserCircle, CalendarDays, Loader2, Pencil, Save, Eye, EyeOff,
   BookOpen, KeyRound, ChevronLeft, ChevronRight, Timer, CheckCircle2,
   UserX, Users, FileText, Heart, Search, Calculator, Copy, Check,
+  Plus, X, Download,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly } from "@/utils/timezone";
 import ReportModal from "@/components/ReportModal";
@@ -169,8 +170,21 @@ const rateValue = (v: string) => {
   return Number.isFinite(n) && n > 0 ? n : 0;
 };
 
+// Extra pay lines (bonus, allowance, deduction…) typed in for this payroll only
+interface SalaryAdjustment {
+  id: number;
+  label: string;
+  amount: string;
+}
+
+// Like rateValue but keeps negatives, so a line can also be a deduction
+const amountValue = (v: string) => {
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
 const peso = (n: number) =>
-  `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  `${n < 0 ? "-" : ""}₱${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const AdminTeacherProfilePage = () => {
   const { id } = useParams<{ id: string }>();
@@ -237,6 +251,14 @@ const AdminTeacherProfilePage = () => {
       /* storage unavailable — rates just won't persist */
     }
   }, [id, salaryRates]);
+  const [salaryAdjustments, setSalaryAdjustments] = useState<SalaryAdjustment[]>([]);
+  const [downloadingPayroll, setDownloadingPayroll] = useState(false);
+  const addSalaryAdjustment = () =>
+    setSalaryAdjustments(prev => [...prev, { id: Date.now(), label: "", amount: "" }]);
+  const updateSalaryAdjustment = (adjId: number, patch: Partial<SalaryAdjustment>) =>
+    setSalaryAdjustments(prev => prev.map(a => (a.id === adjId ? { ...a, ...patch } : a)));
+  const removeSalaryAdjustment = (adjId: number) =>
+    setSalaryAdjustments(prev => prev.filter(a => a.id !== adjId));
 
   // Report view modal
   const [reportModal, setReportModal] = useState<{ open: boolean; bookingId: number; studentName: string; classDate: string }>({
@@ -737,7 +759,31 @@ const AdminTeacherProfilePage = () => {
             { key: "absentFifty" as const, label: "50-min absence", count: absentFiftyCount, rate: rateValue(salaryRates.absentFifty) },
             { key: "absentTwentyFive" as const, label: "25-min absence", count: absentTwentyFiveCount, rate: rateValue(salaryRates.absentTwentyFive) },
           ];
-          const salaryTotal = salaryRows.reduce((sum, r) => sum + r.count * r.rate, 0);
+          const classesTotal = salaryRows.reduce((sum, r) => sum + r.count * r.rate, 0);
+          const adjustmentsTotal = salaryAdjustments.reduce((sum, a) => sum + amountValue(a.amount), 0);
+          const salaryTotal = classesTotal + adjustmentsTotal;
+          const handleDownloadPayroll = async () => {
+            if (!teacher) return;
+            setDownloadingPayroll(true);
+            try {
+              // Loaded on demand so jsPDF stays out of the main bundle
+              const { downloadPayrollPdf } = await import("@/utils/payrollPdf");
+              downloadPayrollPdf(
+                {
+                  teacherName: teacher.name,
+                  teacherEmail: teacher.email,
+                  periodLabel: label,
+                  classRows: salaryRows.map(r => ({ label: r.label, count: r.count, rate: r.rate })),
+                  adjustments: salaryAdjustments
+                    .filter(a => a.label.trim() || amountValue(a.amount) !== 0)
+                    .map(a => ({ label: a.label.trim() || "Other", amount: amountValue(a.amount) })),
+                },
+                `payroll_${teacher.name.replace(/\s+/g, "_")}_${fromStr}_to_${toStr}.pdf`,
+              );
+            } finally {
+              setDownloadingPayroll(false);
+            }
+          };
           const uncountedAbsences = absencesList.length - absentFiftyCount - absentTwentyFiveCount;
           const rangeDrillTitles = {
             fifty: "50-min Completed Classes",
@@ -838,6 +884,52 @@ const AdminTeacherProfilePage = () => {
                           <span className="font-medium tabular-nums">{peso(row.count * row.rate)}</span>
                         </div>
                       ))}
+
+                      {/* Extra lines: bonus, allowance, deduction (negative value)… */}
+                      {salaryAdjustments.map(adj => (
+                        <div key={adj.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                          <Input
+                            aria-label="What"
+                            placeholder="What (e.g. Bonus)"
+                            value={adj.label}
+                            onChange={(e) => updateSalaryAdjustment(adj.id, { label: e.target.value })}
+                            className="h-7 text-xs flex-1 min-w-0"
+                          />
+                          <div className="relative w-28 shrink-0">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">₱</span>
+                            <Input
+                              aria-label="Value"
+                              type="number"
+                              step="0.01"
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              value={adj.amount}
+                              onChange={(e) => updateSalaryAdjustment(adj.id, { amount: e.target.value })}
+                              className="h-7 text-xs pl-5 text-right"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            aria-label="Remove item"
+                            onClick={() => removeSalaryAdjustment(adj.id)}
+                            className="text-muted-foreground hover:text-red-500 shrink-0 cursor-pointer"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                      <div className="px-3 py-1.5">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs text-primary px-2"
+                          onClick={addSalaryAdjustment}
+                        >
+                          <Plus className="h-3.5 w-3.5 mr-1" /> Add item
+                        </Button>
+                        <span className="text-[10px] text-muted-foreground">Use a negative value for deductions.</span>
+                      </div>
+
                       <div className="flex items-center justify-between px-3 py-2 bg-primary/5">
                         <span className="text-sm font-semibold">Total Salary</span>
                         <span className="text-base font-bold text-primary tabular-nums">{peso(salaryTotal)}</span>
@@ -849,6 +941,20 @@ const AdminTeacherProfilePage = () => {
                         Note: {uncountedAbsences} absence{uncountedAbsences !== 1 ? "s" : ""} in this range {uncountedAbsences !== 1 ? "are" : "is"} neither 50 nor 25 minutes, so {uncountedAbsences !== 1 ? "they are" : "it is"} not included in the total.
                       </p>
                     )}
+
+                    <div className="flex justify-end">
+                      <Button
+                        size="sm"
+                        className="h-8 text-xs"
+                        disabled={!teacher || downloadingPayroll}
+                        onClick={handleDownloadPayroll}
+                      >
+                        {downloadingPayroll
+                          ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                          : <Download className="h-3.5 w-3.5 mr-1" />}
+                        Download Payroll PDF
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>

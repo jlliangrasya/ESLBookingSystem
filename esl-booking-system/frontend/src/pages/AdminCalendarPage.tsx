@@ -927,15 +927,17 @@ const AdminCalendarPage = () => {
                                   ? `Teacher note: ${note.note_icon ? note.note_icon + " " : ""}${note.note_text}${noteSpan > 1 ? ` · ${fmt12(time)} – ${fmt12(addMinutes(time, noteSpan * 30))}` : ""}`
                                   : isPast ? undefined : isOpen ? "Open — click to book a class" : "Closed — click to open this slot"
                               }
-                              style={noteBg ? { backgroundColor: noteBg, color: getContrastText(noteBg) } : undefined}
+                              // Past notes keep their text but drop the teacher's color and go gray
+                              style={noteBg && !isPast ? { backgroundColor: noteBg, color: getContrastText(noteBg) } : undefined}
                               className={`p-1 text-center border transition-colors ${
-                                isPast ? "bg-gray-50 text-gray-300 cursor-not-allowed"
+                                isPast && note ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                : isPast ? "bg-gray-50 text-gray-300 cursor-not-allowed"
                                 : noteBg ? "hover:brightness-95 cursor-pointer"
                                 : isOpen ? "bg-green-100 text-green-700 hover:bg-green-200 cursor-pointer"
                                 : "bg-gray-100 text-gray-400 hover:bg-gray-200 cursor-pointer"
                               }${selectedRing} ${isRowHighlighted ? ROW_HIGHLIGHT : ""}`}
                             >
-                              {isToggling ? "..." : isPast ? "" : note ? (
+                              {isToggling ? "..." : note ? (
                                 <span className="block">
                                   <span className={`text-[10px] font-semibold block ${noteSpan > 1 ? "break-words" : "truncate"}`}>
                                     {note.note_icon ? `${note.note_icon} ` : ""}{note.note_text}
@@ -946,7 +948,7 @@ const AdminCalendarPage = () => {
                                     </span>
                                   )}
                                 </span>
-                              ) : isOpen ? "✓" : "+"}
+                              ) : isPast ? "" : isOpen ? "✓" : "+"}
                             </td>
                           );
                         })}
