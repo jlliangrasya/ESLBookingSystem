@@ -14,8 +14,9 @@ import {
 } from "@/components/ui/select";
 import { StudentPackagePicker } from "@/components/StudentPackagePicker";
 import { SubstituteTeacherDialog } from "@/components/SubstituteTeacherDialog";
+import { AvailableSlotsDialog } from "@/components/AvailableSlotsDialog";
 import {
-  CalendarRange, ChevronLeft, ChevronRight, Loader2, GraduationCap,
+  CalendarRange, ChevronLeft, ChevronRight, Loader2, GraduationCap, ListChecks,
 } from "lucide-react";
 import { localToMysql } from "@/utils/timezone";
 import { isValidHex, getContrastText, DEFAULT_NOTE_COLOR } from "@/utils/noteColors";
@@ -201,6 +202,9 @@ const AdminCalendarPage = () => {
   // Substitute teacher
   const [substituteBookingId, setSubstituteBookingId] = useState<number | null>(null);
   const [substituteNotice, setSubstituteNotice] = useState<string | null>(null);
+
+  // Shareable list of the week's open slots
+  const [showAvailable, setShowAvailable] = useState(false);
 
   const teacher = teachers[teacherIdx] ?? null;
 
@@ -819,6 +823,13 @@ const AdminCalendarPage = () => {
                   >
                     This Week
                   </Button>
+                  <Button
+                    variant="outline" size="sm" className="h-7 px-2 text-xs"
+                    onClick={() => setShowAvailable(true)}
+                    title="List this week's open slots to send to students"
+                  >
+                    <ListChecks className="h-3.5 w-3.5 mr-1" /> Available Slots
+                  </Button>
                 </div>
                 <Button variant="outline" size="sm" onClick={() => setWeekStart(addDays(weekStart, 7))}>
                   Next <ChevronRight className="h-4 w-4 ml-1" />
@@ -1130,6 +1141,16 @@ const AdminCalendarPage = () => {
             </div>
           </DialogContent>
         </Dialog>
+      )}
+
+      {showAvailable && teacher && (
+        <AvailableSlotsDialog
+          teachers={teachers}
+          currentTeacherId={teacher.id}
+          weekStart={weekStart}
+          headers={headers}
+          onClose={() => setShowAvailable(false)}
+        />
       )}
 
       {substituteBookingId !== null && (
