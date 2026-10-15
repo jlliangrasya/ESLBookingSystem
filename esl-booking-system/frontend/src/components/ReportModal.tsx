@@ -131,7 +131,11 @@ const ReportModal: React.FC<ReportModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent
+        className="sm:max-w-3xl"
+        // Clicking outside shouldn't discard a report being written
+        onInteractOutside={readOnly ? undefined : (e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>
             {readOnly ? "Class Report" : isEditing ? "Edit Report" : "Class Report"} — {studentName}

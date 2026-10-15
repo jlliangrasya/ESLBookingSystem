@@ -682,12 +682,19 @@ router.get('/feedback', authenticateToken, requireRole('teacher'), async (req, r
 });
 
 // GET /api/teacher/completed-classes?month=&year= — completed classes for a specific month
+// GET /api/teacher/completed-classes?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD — or an inclusive date range
 router.get('/completed-classes', authenticateToken, requireRole('teacher'), async (req, res) => {
     try {
         const teacherId = req.user.id;
         const companyId = req.user.company_id;
         const month = parseInt(req.query.month) || new Date().getMonth() + 1;
         const year = parseInt(req.query.year) || new Date().getFullYear();
+        const isDate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+        const useRange = isDate(req.query.startDate) && isDate(req.query.endDate);
+        const dateFilter = useRange
+            ? 'DATE(b.appointment_date) BETWEEN ? AND ?'
+            : 'YEAR(b.appointment_date) = ? AND MONTH(b.appointment_date) = ?';
+        const dateParams = useRange ? [req.query.startDate, req.query.endDate] : [year, month];
 
         const [rows] = await pool.query(`
             SELECT b.id, b.appointment_date, b.status, b.student_absent, b.teacher_absent,
@@ -700,9 +707,9 @@ router.get('/completed-classes', authenticateToken, requireRole('teacher'), asyn
             JOIN tutorial_packages tp ON sp.package_id = tp.id
             LEFT JOIN class_reports cr ON cr.booking_id = b.id
             WHERE b.teacher_id = ? AND b.company_id = ? AND b.status = 'done'
-              AND YEAR(b.appointment_date) = ? AND MONTH(b.appointment_date) = ?
+              AND ${dateFilter}
             ORDER BY b.appointment_date ASC
-        `, [teacherId, companyId, year, month]);
+        `, [teacherId, companyId, ...dateParams]);
 
         res.json(groupMultiSlotBookings(rows).reverse());
     } catch (err) {

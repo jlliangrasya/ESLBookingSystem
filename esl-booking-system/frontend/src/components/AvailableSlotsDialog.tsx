@@ -135,21 +135,22 @@ export function AvailableSlotsDialog({ teachers, currentTeacherId, weekStart, he
     }
   };
 
+  // flex-1 so each pair splits its row evenly once it goes full-width on phones
   const toggleBtn = (active: boolean) =>
-    `h-7 px-2 text-xs ${active ? "" : "text-muted-foreground"}`;
+    `h-8 sm:h-7 flex-1 px-2 text-xs ${active ? "" : "text-muted-foreground"}`;
 
   return (
     <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Available Slots</DialogTitle>
         </DialogHeader>
-        <p className="text-xs text-muted-foreground -mt-2">
+        <p className="text-xs text-muted-foreground -mt-2 text-center sm:text-left">
           Open, unbooked slots for {weekLabel}. Copy and send them to students.
         </p>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex rounded-md border p-0.5">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+          <div className="flex w-full sm:w-auto rounded-md border p-0.5">
             <Button size="sm" variant={scope === "one" ? "default" : "ghost"} className={toggleBtn(scope === "one")} onClick={() => setScope("one")}>
               This teacher
             </Button>
@@ -157,7 +158,7 @@ export function AvailableSlotsDialog({ teachers, currentTeacherId, weekStart, he
               All teachers
             </Button>
           </div>
-          <div className="flex rounded-md border p-0.5">
+          <div className="flex w-full sm:w-auto rounded-md border p-0.5">
             <Button size="sm" variant={style === "ranges" ? "default" : "ghost"} className={toggleBtn(style === "ranges")} onClick={() => setStyle("ranges")}>
               Time ranges
             </Button>
@@ -167,7 +168,7 @@ export function AvailableSlotsDialog({ teachers, currentTeacherId, weekStart, he
           </div>
         </div>
 
-        <div className="max-h-[50vh] overflow-y-auto rounded-md border bg-muted/30 p-3 text-sm">
+        <div className="max-h-[45vh] sm:max-h-[50vh] overflow-y-auto rounded-md border bg-muted/30 p-2 sm:p-3 text-sm">
           {loading ? (
             <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
           ) : sections.length === 0 ? (
@@ -180,10 +181,10 @@ export function AvailableSlotsDialog({ teachers, currentTeacherId, weekStart, he
                     {s.teacher.name}
                     <span className="ml-2 text-xs font-normal text-muted-foreground">{s.count} slot{s.count === 1 ? "" : "s"}</span>
                   </p>
-                  <ul className="space-y-1">
+                  <ul className="space-y-2 sm:space-y-1">
                     {s.days.map(d => (
-                      <li key={d.label} className="flex gap-2">
-                        <span className="w-24 shrink-0 font-medium text-muted-foreground">{d.label}</span>
+                      <li key={d.label} className="flex flex-col sm:flex-row gap-1 sm:gap-2">
+                        <span className="sm:w-24 shrink-0 font-medium text-muted-foreground">{d.label}</span>
                         <span className="flex flex-wrap gap-1">
                           {d.items.map(item => (
                             <span key={item} className="rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-700">{item}</span>
@@ -200,8 +201,8 @@ export function AvailableSlotsDialog({ teachers, currentTeacherId, weekStart, he
         {error && <p className="text-xs text-red-600">{error}</p>}
 
         <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
-          <Button size="sm" onClick={handleCopy} disabled={loading || sections.length === 0}>
+          <Button variant="ghost" size="sm" className="w-full sm:w-auto" onClick={onClose}>Close</Button>
+          <Button size="sm" className="w-full sm:w-auto" onClick={handleCopy} disabled={loading || sections.length === 0}>
             {copied
               ? <><Check className="h-4 w-4 mr-1" /> Copied</>
               : <><Copy className="h-4 w-4 mr-1" /> Copy as text</>}

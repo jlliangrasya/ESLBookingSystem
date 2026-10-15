@@ -809,12 +809,14 @@ const AdminCalendarPage = () => {
                   <button className="text-xs underline" onClick={() => setSubstituteNotice(null)}>Dismiss</button>
                 </div>
               )}
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between gap-2 mb-4">
                 <Button variant="outline" size="sm" onClick={() => setWeekStart(addDays(weekStart, -7))}>
                   <ChevronLeft className="h-4 w-4 mr-1" /> Prev
                 </Button>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">
+                {/* On phones the week label and its buttons wrap into a centered stack
+                    between Prev and Next instead of pushing them off-screen. */}
+                <div className="flex flex-1 min-w-0 flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
+                  <span className="text-sm font-medium text-center">
                     {format(weekStart, "MMM d")} – {format(addDays(weekStart, 6), "MMM d, yyyy")}
                   </span>
                   <Button

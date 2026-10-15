@@ -168,6 +168,14 @@ interface Health {
   attended: number;
 }
 
+/** Format a plain yyyy-MM-dd as "Oct 15, 2026" without any timezone shift */
+const fmtYmd = (ymd: string) =>
+  new Date(`${ymd}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
 const MONTHS = [
   "January",
   "February",
@@ -470,6 +478,12 @@ const TeacherDashboard = () => {
   // Classes page — completed filter
   const [classesMonth, setClassesMonth] = useState(new Date().getMonth() + 1);
   const [classesYear, setClassesYear] = useState(new Date().getFullYear());
+  // "month" (default) or a custom inclusive date range (yyyy-MM-dd)
+  const [classesFilterMode, setClassesFilterMode] = useState<"month" | "range">(
+    "month",
+  );
+  const [classesRangeStart, setClassesRangeStart] = useState("");
+  const [classesRangeEnd, setClassesRangeEnd] = useState("");
   const [filteredCompleted, setFilteredCompleted] = useState<
     CompletedBooking[]
   >([]);
@@ -693,14 +707,33 @@ const TeacherDashboard = () => {
     }
   };
 
-  const fetchFilteredCompleted = async (
+  const fetchFilteredCompleted = async ({
+    mode = classesFilterMode,
     month = classesMonth,
     year = classesYear,
-  ) => {
+    start = classesRangeStart,
+    end = classesRangeEnd,
+  }: {
+    mode?: "month" | "range";
+    month?: number;
+    year?: number;
+    start?: string;
+    end?: string;
+  } = {}) => {
+    // Wait for a complete, valid range before querying
+    if (mode === "range" && (!start || !end || start > end)) {
+      setFilteredCompleted([]);
+      return;
+    }
+    const query =
+      mode === "range"
+        ? `startDate=${start}&endDate=${end}`
+        : `month=${month}&year=${year}`;
     setFilteredLoading(true);
+    setCompletedPage(1);
     try {
       const res = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/teacher/completed-classes?month=${month}&year=${year}`,
+        `${import.meta.env.VITE_API_URL}/api/teacher/completed-classes?${query}`,
         { headers },
       );
       setFilteredCompleted(res.data);
@@ -1137,7 +1170,7 @@ const TeacherDashboard = () => {
 
   // Load filtered completed when navigating to classes page
   useEffect(() => {
-    if (page === "classes") fetchFilteredCompleted(classesMonth, classesYear);
+    if (page === "classes") fetchFilteredCompleted();
   }, [page]);
 
   // Computed — use fmtDate for consistent date handling (appointment_date is stored as display time)
@@ -3105,13 +3138,68 @@ const TeacherDashboard = () => {
                   <FileText className="h-4 w-4 text-primary" /> Completed
                   Classes
                 </CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Select
+                    value={classesFilterMode}
+                    onValueChange={(v) => {
+                      const mode = v as "month" | "range";
+                      setClassesFilterMode(mode);
+                      if (mode === "month") {
+                        fetchFilteredCompleted({ mode });
+                        return;
+                      }
+                      // Seed the range with the month currently being viewed
+                      const start =
+                        classesRangeStart ||
+                        new Date(classesYear, classesMonth - 1, 1).toLocaleDateString("en-CA");
+                      const end =
+                        classesRangeEnd ||
+                        new Date(classesYear, classesMonth, 0).toLocaleDateString("en-CA");
+                      setClassesRangeStart(start);
+                      setClassesRangeEnd(end);
+                      fetchFilteredCompleted({ mode, start, end });
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-sm w-28">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="month">Monthly</SelectItem>
+                      <SelectItem value="range">Range</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {classesFilterMode === "range" ? (
+                    <>
+                      <Input
+                        type="date"
+                        value={classesRangeStart}
+                        max={classesRangeEnd || undefined}
+                        onChange={(e) => {
+                          setClassesRangeStart(e.target.value);
+                          fetchFilteredCompleted({ start: e.target.value });
+                        }}
+                        className="h-8 text-sm w-40"
+                      />
+                      <span className="text-sm text-muted-foreground">to</span>
+                      <Input
+                        type="date"
+                        value={classesRangeEnd}
+                        min={classesRangeStart || undefined}
+                        onChange={(e) => {
+                          setClassesRangeEnd(e.target.value);
+                          fetchFilteredCompleted({ end: e.target.value });
+                        }}
+                        className="h-8 text-sm w-40"
+                      />
+                    </>
+                  ) : (
+                  <>
                   <Select
                     value={String(classesMonth)}
                     onValueChange={(v) => {
                       const m = parseInt(v);
                       setClassesMonth(m);
-                      fetchFilteredCompleted(m, classesYear);
+                      fetchFilteredCompleted({ month: m });
                     }}
                   >
                     <SelectTrigger className="h-8 text-sm w-36">
@@ -3130,7 +3218,7 @@ const TeacherDashboard = () => {
                     onValueChange={(v) => {
                       const y = parseInt(v);
                       setClassesYear(y);
-                      fetchFilteredCompleted(classesMonth, y);
+                      fetchFilteredCompleted({ year: y });
                     }}
                   >
                     <SelectTrigger className="h-8 text-sm w-28">
@@ -3147,6 +3235,8 @@ const TeacherDashboard = () => {
                       ))}
                     </SelectContent>
                   </Select>
+                  </>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -3181,8 +3271,13 @@ const TeacherDashboard = () => {
                               colSpan={6}
                               className="text-center text-muted-foreground text-sm py-8"
                             >
-                              No completed classes in {MONTHS[classesMonth - 1]}{" "}
-                              {classesYear}
+                              {classesFilterMode === "range"
+                                ? classesRangeStart && classesRangeEnd
+                                  ? classesRangeStart > classesRangeEnd
+                                    ? "Start date must be on or before the end date"
+                                    : `No completed classes from ${fmtYmd(classesRangeStart)} to ${fmtYmd(classesRangeEnd)}`
+                                  : "Pick a start and end date"
+                                : `No completed classes in ${MONTHS[classesMonth - 1]} ${classesYear}`}
                             </TableCell>
                           </TableRow>
                         ) : (
@@ -4370,8 +4465,7 @@ const TeacherDashboard = () => {
           setReportModal((prev) => ({ ...prev, open: false }));
           setPostDoneReport(null);
           fetchData();
-          if (page === "classes")
-            fetchFilteredCompleted(classesMonth, classesYear);
+          if (page === "classes") fetchFilteredCompleted();
         }}
         bookingId={postDoneReport?.bookingId ?? reportModal.bookingId}
         studentId={postDoneReport?.studentId ?? reportModal.studentId}

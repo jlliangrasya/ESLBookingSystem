@@ -37,6 +37,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  LabelList,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -502,29 +503,63 @@ const AdminDashboard = () => {
             <div className="px-4 py-3 border-b brand-gradient-subtle">
               <h2 className="font-semibold text-sm text-gray-800">Teacher Workload (Next 7 Days)</h2>
             </div>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Teacher</TableHead>
-                    <TableHead className="text-center">Today</TableHead>
-                    <TableHead className="text-center">Next 7 Days</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {analytics.teacherWorkload.map((t) => (
-                    <TableRow key={t.id} className={t.next7days === 0 ? "bg-amber-50/50" : ""}>
-                      <TableCell className="font-medium text-sm">{t.name}</TableCell>
-                      <TableCell className="text-center">{t.today}</TableCell>
-                      <TableCell className="text-center">
-                        {t.next7days === 0
-                          ? <span className="text-xs text-amber-600 font-medium">No upcoming classes</span>
-                          : <span className="font-semibold">{t.next7days}</span>}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            <div className="p-4">
+              <ResponsiveContainer
+                width="100%"
+                height={Math.max(160, analytics.teacherWorkload.length * 56 + 70)}
+              >
+                <BarChart
+                  layout="vertical"
+                  data={analytics.teacherWorkload}
+                  margin={{ top: 4, right: 32, left: 8, bottom: 20 }}
+                  barCategoryGap="20%"
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    allowDecimals={false}
+                    tick={{ fontSize: 11 }}
+                    label={{
+                      value: "Number of classes",
+                      position: "insideBottom",
+                      offset: -12,
+                      fontSize: 12,
+                      fill: "#6b7280",
+                    }}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={120}
+                    tick={{ fontSize: 12, fill: "#374151" }}
+                    tickFormatter={(name: string) =>
+                      name.length > 16 ? `${name.slice(0, 15)}…` : name
+                    }
+                  />
+                  <Tooltip
+                    formatter={(value, label) => [
+                      `${value} class${Number(value) !== 1 ? "es" : ""}`,
+                      label,
+                    ]}
+                  />
+                  <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="today" name="Today" fill="#E76F7A" radius={[0, 4, 4, 0]}>
+                    <LabelList dataKey="today" position="right" fontSize={11} fill="#374151" />
+                  </Bar>
+                  <Bar dataKey="next7days" name="Next 7 Days" fill="#4A9EAF" radius={[0, 4, 4, 0]}>
+                    <LabelList dataKey="next7days" position="right" fontSize={11} fill="#374151" />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              {analytics.teacherWorkload.some((t) => t.next7days === 0) && (
+                <p className="mt-2 text-xs text-amber-600 font-medium">
+                  No upcoming classes:{" "}
+                  {analytics.teacherWorkload
+                    .filter((t) => t.next7days === 0)
+                    .map((t) => t.name)
+                    .join(", ")}
+                </p>
+              )}
             </div>
           </div>
         )}
