@@ -25,6 +25,8 @@ import {
   CalendarDays,
   AlertCircle,
   Clock,
+  CheckCircle2,
+  ChevronDown,
 } from "lucide-react";
 import {
   BarChart,
@@ -70,7 +72,15 @@ interface Student {
   nationality: string;
   age: number;
   created_at: string;
+  is_active?: boolean | number;
+  package_name: string | null;
+  payment_status: "paid" | "unpaid" | null;
+  unused_sessions: number | null;
 }
+
+// Students at or below this many classes left (remaining + still booked) are
+// flagged on the dashboard so the admin can follow up on a renewal.
+const LOW_CLASS_COUNT = 4;
 
 interface Booking {
   id: number;
@@ -128,6 +138,7 @@ const AdminDashboard = () => {
   const [showFeedback, setShowFeedback] = useState(false);
   const [todayPage, setTodayPage] = useState(1);
   const todayPerPage = 10;
+  const [todayOpen, setTodayOpen] = useState(false);
 
   interface AnalyticsData {
     sessionsPerMonth: { month: string; sessions: number }[];
@@ -143,6 +154,7 @@ const AdminDashboard = () => {
       adminsCount: number;
       classesToday: number;
       classesThisWeek: number;
+      doneThisWeek: number;
       classesThisMonth: number;
       maxStudents: number;
       maxTeachers: number;
@@ -151,7 +163,7 @@ const AdminDashboard = () => {
       unassignedBookings: number;
       trialEndsAt: string | null;
     };
-    teacherWorkload: { id: number; name: string; today: number; next7days: number }[];
+    teacherWorkload: { id: number; name: string; bookedThisWeek: number; doneThisWeek: number; today: number }[];
   }
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [teacherCount, setTeacherCount] = useState<number | null>(null);
@@ -295,6 +307,19 @@ const AdminDashboard = () => {
     (sp) => sp.payment_status === "unpaid" && sp.sessions_remaining > 0,
   );
 
+  // Paid-package students running low, including those who just used their last
+  // class, so the admin can follow up on renewals. Fewest classes left first.
+  const lowClassStudents = students
+    .filter(
+      (s) =>
+        (s.is_active === undefined || !!s.is_active) &&
+        s.payment_status === "paid" &&
+        Number(s.unused_sessions ?? 0) <= LOW_CLASS_COUNT,
+    )
+    .sort((a, b) => Number(a.unused_sessions ?? 0) - Number(b.unused_sessions ?? 0));
+  // Once the company has a real enrolment, the sample row would only confuse.
+  const hasEnrolledStudents = students.some((s) => s.payment_status === "paid");
+
   const todayKey = fmtDate(new Date().toISOString(), "yyyy-MM-dd");
   const todayBookings = groupMultiSlotBookings(
     bookings.filter((b) => fmtDate(b.appointment_date, "yyyy-MM-dd") === todayKey),
@@ -343,7 +368,7 @@ const AdminDashboard = () => {
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-8 gap-4">
           <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
             <div className="p-2.5 bg-[#D0E8F0] rounded-xl shrink-0">
               <Users className="h-5 w-5 text-[#2E6B9E]" />
@@ -438,6 +463,17 @@ const AdminDashboard = () => {
             </div>
           </div>
           <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
+            <div className="p-2.5 bg-green-100 rounded-xl shrink-0">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 font-medium">Done This Week</p>
+              <p className="text-2xl font-bold text-gray-800 tabular-nums">
+                {analytics?.totals.doneThisWeek ?? "—"}
+              </p>
+            </div>
+          </div>
+          <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
             <div className="p-2.5 bg-indigo-100 rounded-xl shrink-0">
               <CalendarDays className="h-5 w-5 text-indigo-600" />
             </div>
@@ -497,16 +533,197 @@ const AdminDashboard = () => {
           </div>
         )}
 
+        {/* Low class count (left) + Pending Enrollees (right) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          {/* Students with low class count */}
+          <div id="low-class-students-card" className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card flex flex-col">
+            <div className="px-4 py-3 border-b brand-gradient-subtle flex items-center justify-between gap-2">
+              <h2 className="font-semibold text-sm text-gray-800">
+                Students with {LOW_CLASS_COUNT} or Fewer Classes Left
+              </h2>
+              {lowClassStudents.length > 0 && (
+                <Badge variant="destructive" className="text-xs tabular-nums">
+                  {lowClassStudents.length}
+                </Badge>
+              )}
+            </div>
+            <div className="overflow-auto max-h-80">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Student</TableHead>
+                    <TableHead>Package</TableHead>
+                    <TableHead className="text-center">Classes Left</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {lowClassStudents.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-6 text-sm text-muted-foreground">
+                        No students are running low on classes.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    lowClassStudents.map((s) => {
+                      const left = Number(s.unused_sessions ?? 0);
+                      return (
+                        <TableRow key={s.id}>
+                          <TableCell className="text-sm font-medium">{s.name}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="text-xs">
+                              {s.package_name || "—"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span
+                              className={`inline-block min-w-8 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${left === 0 ? "bg-red-100 text-red-700" : left <= 2 ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-700"}`}
+                            >
+                              {left}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => navigate(`/admin/students/${s.id}`)}
+                            >
+                              View Student
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          {/* Pending Enrollees */}
+          <div id="pending-enrollees-card" className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card flex flex-col">
+            <div className="px-4 py-3 border-b brand-gradient-subtle flex items-center justify-between gap-2">
+              <h2 className="font-semibold text-sm text-gray-800">
+                Pending Enrollees
+              </h2>
+              {pendingEnrollees.length > 0 && (
+                <Badge className="text-xs tabular-nums">{pendingEnrollees.length}</Badge>
+              )}
+            </div>
+            <div className="overflow-auto max-h-80">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Student</TableHead>
+                    <TableHead>Package</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pendingEnrollees.length === 0 && hasEnrolledStudents ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center py-6 text-sm text-muted-foreground">
+                        No pending enrollees.
+                      </TableCell>
+                    </TableRow>
+                  ) : pendingEnrollees.length === 0 ? (
+                    <>
+                      <TableRow className="opacity-40 pointer-events-none select-none">
+                        <TableCell className="text-sm font-medium">Sample Student</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="text-xs">Basic English 10</Badge>
+                        </TableCell>
+                        <TableCell className="text-right space-x-1">
+                          <Button size="sm" variant="default" className="bg-green-600 h-7 px-2 text-xs" disabled>Confirm</Button>
+                          <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" disabled>Reject</Button>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center py-2">
+                          <p className="text-xs text-muted-foreground italic">
+                            When a student enrolls in a package, they appear here — confirm payment to activate their account.
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    </>
+                  ) : (
+                    pendingEnrollees.map((enrollee) => (
+                      <TableRow key={enrollee.id}>
+                        <TableCell className="text-sm font-medium">
+                          {enrollee.student_name ||
+                            students.find((s) => s.id === enrollee.student_id)
+                              ?.name ||
+                            "Unknown"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="text-xs">
+                            {enrollee.package_name || `#${enrollee.package_id}`}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right space-x-1">
+                          {enrollee.receipt_image && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs"
+                              onClick={() =>
+                                setReceiptImage(enrollee.receipt_image)
+                              }
+                            >
+                              <Eye className="h-3 w-3 mr-1" />
+                              {enrollee.receipt_image.startsWith("data:")
+                                ? "Receipt"
+                                : "Details"}
+                            </Button>
+                          )}
+                          {!enrollee.receipt_image && enrollee.purchased_at && (
+                            <span className="text-xs text-muted-foreground mr-2">
+                              {fmtDate(enrollee.purchased_at, "MMM d, h:mm a")}
+                            </span>
+                          )}
+                          {can("dashboard.confirm_payments") ? (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="default"
+                                className="bg-green-600 hover:bg-green-700 h-7 px-2 text-xs"
+                                onClick={() => handleConfirm(enrollee.id)}
+                              >
+                                Confirm
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => handleReject(enrollee.id)}
+                              >
+                                Reject
+                              </Button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </div>
+
         {/* Teacher Workload — Issue #10 */}
         {analytics?.teacherWorkload && analytics.teacherWorkload.length > 0 && (
           <div className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
             <div className="px-4 py-3 border-b brand-gradient-subtle">
-              <h2 className="font-semibold text-sm text-gray-800">Teacher Workload (Next 7 Days)</h2>
+              <h2 className="font-semibold text-sm text-gray-800">Teacher Workload (This Week)</h2>
             </div>
             <div className="p-4">
               <ResponsiveContainer
                 width="100%"
-                height={Math.max(160, analytics.teacherWorkload.length * 56 + 70)}
+                height={Math.max(160, analytics.teacherWorkload.length * 76 + 70)}
               >
                 <BarChart
                   layout="vertical"
@@ -543,19 +760,22 @@ const AdminDashboard = () => {
                     ]}
                   />
                   <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="bookedThisWeek" name="Classes Booked This Week" fill="#4A9EAF" radius={[0, 4, 4, 0]}>
+                    <LabelList dataKey="bookedThisWeek" position="right" fontSize={11} fill="#374151" />
+                  </Bar>
+                  <Bar dataKey="doneThisWeek" name="Classes Done This Week" fill="#22A06B" radius={[0, 4, 4, 0]}>
+                    <LabelList dataKey="doneThisWeek" position="right" fontSize={11} fill="#374151" />
+                  </Bar>
                   <Bar dataKey="today" name="Today" fill="#E76F7A" radius={[0, 4, 4, 0]}>
                     <LabelList dataKey="today" position="right" fontSize={11} fill="#374151" />
                   </Bar>
-                  <Bar dataKey="next7days" name="Next 7 Days" fill="#4A9EAF" radius={[0, 4, 4, 0]}>
-                    <LabelList dataKey="next7days" position="right" fontSize={11} fill="#374151" />
-                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
-              {analytics.teacherWorkload.some((t) => t.next7days === 0) && (
+              {analytics.teacherWorkload.some((t) => Number(t.bookedThisWeek) === 0) && (
                 <p className="mt-2 text-xs text-amber-600 font-medium">
-                  No upcoming classes:{" "}
+                  No classes booked this week:{" "}
                   {analytics.teacherWorkload
-                    .filter((t) => t.next7days === 0)
+                    .filter((t) => Number(t.bookedThisWeek) === 0)
                     .map((t) => t.name)
                     .join(", ")}
                 </p>
@@ -564,99 +784,107 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {/* Pending Enrollees */}
-        <div id="pending-enrollees-card" className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
-          <div className="px-4 py-3 border-b brand-gradient-subtle">
-            <h2 className="font-semibold text-sm text-gray-800">
-              Pending Enrollees
-            </h2>
-          </div>
+        {/* Today's Upcoming Classes — collapsed to a strip by default */}
+        <div id="todays-classes-card" className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
+          <button
+            type="button"
+            onClick={() => setTodayOpen((o) => !o)}
+            aria-expanded={todayOpen}
+            className={`w-full px-4 py-2.5 brand-gradient-subtle flex items-center justify-between gap-2 text-left ${todayOpen ? "border-b" : ""}`}
+          >
+            <span className="flex items-center gap-2">
+              <span className="font-semibold text-sm text-gray-800">
+                Today's Upcoming Classes
+              </span>
+              <Badge className="text-xs tabular-nums">{todayBookings.length}</Badge>
+            </span>
+            <span className="flex items-center gap-2 text-xs text-muted-foreground">
+              {new Date().toLocaleDateString("en-US", {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              })}
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${todayOpen ? "rotate-180" : ""}`}
+              />
+            </span>
+          </button>
+          {todayOpen && (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Student</TableHead>
-                  <TableHead>Package</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
+                  <TableHead>Time</TableHead>
+                  <TableHead>Teacher</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pendingEnrollees.length === 0 ? (
+                {todayBookings.length === 0 ? (
                   <>
                     <TableRow className="opacity-40 pointer-events-none select-none">
                       <TableCell className="text-sm font-medium">Sample Student</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className="text-xs">Basic English 10</Badge>
-                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">9:00 AM</TableCell>
+                      <TableCell className="text-sm">Sample Teacher</TableCell>
+                      <TableCell><Badge variant="secondary" className="text-xs">confirmed</Badge></TableCell>
                       <TableCell className="text-right space-x-1">
-                        <Button size="sm" variant="default" className="bg-green-600 h-7 px-2 text-xs" disabled>Confirm</Button>
-                        <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" disabled>Reject</Button>
+                        <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled>View Student</Button>
+                        <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" disabled>Cancel</Button>
                       </TableCell>
                     </TableRow>
                     <TableRow>
-                      <TableCell colSpan={3} className="text-center py-2">
+                      <TableCell colSpan={5} className="text-center py-2">
                         <p className="text-xs text-muted-foreground italic">
-                          When a student enrolls in a package, they appear here — confirm payment to activate their account.
+                          Today's booked classes appear here. After a class is done, the teacher marks attendance and writes a class report.
                         </p>
                       </TableCell>
                     </TableRow>
                   </>
                 ) : (
-                  pendingEnrollees.map((enrollee) => (
-                    <TableRow key={enrollee.id}>
+                  todayBookings.slice((todayPage - 1) * todayPerPage, todayPage * todayPerPage).map((b) => (
+                    <TableRow key={b.id}>
                       <TableCell className="text-sm font-medium">
-                        {enrollee.student_name ||
-                          students.find((s) => s.id === enrollee.student_id)
-                            ?.name ||
-                          "Unknown"}
+                        {b.student_name}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {fmtDate(b.appointment_date, "h:mm a")}
+                        {(b.slot_count ?? 1) > 1 && (
+                          <span className="ml-1 text-xs text-muted-foreground">({(b.slot_count ?? 1) * 30}min)</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {b.teacher_name || "—"}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="text-xs">
-                          {enrollee.package_name || `#${enrollee.package_id}`}
+                        <Badge
+                          variant="secondary"
+                          className="text-xs capitalize"
+                        >
+                          {b.status}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right space-x-1">
-                        {enrollee.receipt_image && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs"
+                          onClick={() =>
+                            navigate(`/admin/students/${b.student_id}`)
+                          }
+                        >
+                          View Student
+                        </Button>
+                        {can("dashboard.cancel_classes") && (
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant="destructive"
                             className="h-7 px-2 text-xs"
-                            onClick={() =>
-                              setReceiptImage(enrollee.receipt_image)
-                            }
+                            onClick={() => handleCancelBooking(b)}
                           >
-                            <Eye className="h-3 w-3 mr-1" />
-                            {enrollee.receipt_image.startsWith("data:")
-                              ? "Receipt"
-                              : "Details"}
+                            Cancel
                           </Button>
-                        )}
-                        {!enrollee.receipt_image && enrollee.purchased_at && (
-                          <span className="text-xs text-muted-foreground mr-2">
-                            {fmtDate(enrollee.purchased_at, "MMM d, h:mm a")}
-                          </span>
-                        )}
-                        {can("dashboard.confirm_payments") ? (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="default"
-                              className="bg-green-600 hover:bg-green-700 h-7 px-2 text-xs"
-                              onClick={() => handleConfirm(enrollee.id)}
-                            >
-                              Confirm
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              className="h-7 px-2 text-xs"
-                              onClick={() => handleReject(enrollee.id)}
-                            >
-                              Reject
-                            </Button>
-                          </>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </TableCell>
                     </TableRow>
@@ -664,160 +892,25 @@ const AdminDashboard = () => {
                 )}
               </TableBody>
             </Table>
-          </div>
-        </div>
-
-        {/* Schedule Summary + Today's Upcoming Classes */}
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="stat-card bg-white rounded-xl border shadow-sm p-3 pl-5 text-center">
-              <p className="text-xs text-gray-500 font-medium mb-1">
-                Today's Classes
-              </p>
-              <p className="text-xl font-bold text-amber-600">
-                {analytics?.totals.classesToday ?? todayBookings.length}
-              </p>
-            </div>
-            <div className="stat-card bg-white rounded-xl border shadow-sm p-3 pl-5 text-center">
-              <p className="text-xs text-gray-500 font-medium mb-1">
-                This Week
-              </p>
-              <p className="text-xl font-bold text-blue-600">
-                {analytics?.totals.classesThisWeek ?? "—"}
-              </p>
-            </div>
-            <div className="stat-card bg-white rounded-xl border shadow-sm p-3 pl-5 text-center">
-              <p className="text-xs text-gray-500 font-medium mb-1">
-                This Month
-              </p>
-              <p className="text-xl font-bold text-indigo-600">
-                {analytics?.totals.classesThisMonth ?? "—"}
-              </p>
-            </div>
-            <div className="stat-card bg-white rounded-xl border shadow-sm p-3 pl-5 text-center">
-              <p className="text-xs text-gray-500 font-medium mb-1">
-                Total Done
-              </p>
-              <p className="text-xl font-bold text-emerald-600">
-                {analytics?.totals.totalSessions ?? "—"}
-              </p>
-            </div>
-          </div>
-
-          <div id="todays-classes-card" className="bg-white rounded-xl border shadow-sm overflow-hidden glow-card">
-            <div className="px-4 py-3 border-b brand-gradient-subtle flex items-center justify-between">
-              <h2 className="font-semibold text-sm text-gray-800">
-                Today's Upcoming Classes
-              </h2>
-              <span className="text-xs text-muted-foreground">
-                {new Date().toLocaleDateString("en-US", {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                })}
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Student</TableHead>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Teacher</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {todayBookings.length === 0 ? (
-                    <>
-                      <TableRow className="opacity-40 pointer-events-none select-none">
-                        <TableCell className="text-sm font-medium">Sample Student</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">9:00 AM</TableCell>
-                        <TableCell className="text-sm">Sample Teacher</TableCell>
-                        <TableCell><Badge variant="secondary" className="text-xs">confirmed</Badge></TableCell>
-                        <TableCell className="text-right space-x-1">
-                          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled>View Student</Button>
-                          <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" disabled>Cancel</Button>
-                        </TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center py-2">
-                          <p className="text-xs text-muted-foreground italic">
-                            Today's booked classes appear here. After a class is done, the teacher marks attendance and writes a class report.
-                          </p>
-                        </TableCell>
-                      </TableRow>
-                    </>
-                  ) : (
-                    todayBookings.slice((todayPage - 1) * todayPerPage, todayPage * todayPerPage).map((b) => (
-                      <TableRow key={b.id}>
-                        <TableCell className="text-sm font-medium">
-                          {b.student_name}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {fmtDate(b.appointment_date, "h:mm a")}
-                          {(b.slot_count ?? 1) > 1 && (
-                            <span className="ml-1 text-xs text-muted-foreground">({(b.slot_count ?? 1) * 30}min)</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {b.teacher_name || "—"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="secondary"
-                            className="text-xs capitalize"
-                          >
-                            {b.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right space-x-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2 text-xs"
-                            onClick={() =>
-                              navigate(`/admin/students/${b.student_id}`)
-                            }
-                          >
-                            View Student
-                          </Button>
-                          {can("dashboard.cancel_classes") && (
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              className="h-7 px-2 text-xs"
-                              onClick={() => handleCancelBooking(b)}
-                            >
-                              Cancel
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-              {todayBookings.length > todayPerPage && (
-                <div className="flex items-center justify-between px-4 py-2 border-t">
-                  <span className="text-xs text-muted-foreground">
-                    Showing {(todayPage - 1) * todayPerPage + 1}–{Math.min(todayPage * todayPerPage, todayBookings.length)} of {todayBookings.length}
-                  </span>
-                  <div className="flex gap-1">
-                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs"
-                      disabled={todayPage <= 1} onClick={() => setTodayPage(p => p - 1)}>
-                      Previous
-                    </Button>
-                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs"
-                      disabled={todayPage * todayPerPage >= todayBookings.length} onClick={() => setTodayPage(p => p + 1)}>
-                      Next
-                    </Button>
-                  </div>
+            {todayBookings.length > todayPerPage && (
+              <div className="flex items-center justify-between px-4 py-2 border-t">
+                <span className="text-xs text-muted-foreground">
+                  Showing {(todayPage - 1) * todayPerPage + 1}–{Math.min(todayPage * todayPerPage, todayBookings.length)} of {todayBookings.length}
+                </span>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="outline" className="h-7 px-2 text-xs"
+                    disabled={todayPage <= 1} onClick={() => setTodayPage(p => p - 1)}>
+                    Previous
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7 px-2 text-xs"
+                    disabled={todayPage * todayPerPage >= todayBookings.length} onClick={() => setTodayPage(p => p + 1)}>
+                    Next
+                  </Button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
+          )}
         </div>
 
         {/* Analytics Charts */}

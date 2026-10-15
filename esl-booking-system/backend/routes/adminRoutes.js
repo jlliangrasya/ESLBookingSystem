@@ -2484,6 +2484,7 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
          (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND status = 'cancelled') AS totalCancelled,
          (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND DATE(appointment_date) = CURDATE() AND status != 'cancelled') AS classesToday,
          (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND YEARWEEK(appointment_date, 1) = YEARWEEK(CURDATE(), 1) AND status != 'cancelled') AS classesThisWeek,
+         (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND YEARWEEK(appointment_date, 1) = YEARWEEK(CURDATE(), 1) AND status = 'done') AS doneThisWeek,
          (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND YEAR(appointment_date) = YEAR(CURDATE()) AND MONTH(appointment_date) = MONTH(CURDATE()) AND status != 'cancelled') AS classesThisMonth,
          (SELECT IFNULL(SUM(tp.price), 0) FROM student_packages sp
           JOIN tutorial_packages tp ON sp.package_id = tp.id
@@ -2499,26 +2500,30 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
        FROM companies c
        JOIN subscription_plans sp ON c.subscription_plan_id = sp.id
        WHERE c.id = ?`,
-      [companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId]
+      [companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId]
     );
 
-    // Per-teacher workload (next 7 days) — count distinct classes, not individual slots
+    // Per-teacher workload (this Mon–Sun week + today) — count distinct classes, not individual slots
     const [teacherWorkload] = await pool.query(
       `SELECT u.id, u.name,
          (SELECT COUNT(DISTINCT COALESCE(b1.booking_group_id, CAST(b1.id AS CHAR)))
           FROM bookings b1
           WHERE b1.teacher_id = u.id AND b1.company_id = u.company_id
-            AND DATE(b1.appointment_date) = CURDATE()
-            AND b1.status NOT IN ('cancelled')) AS today,
+            AND YEARWEEK(b1.appointment_date, 1) = YEARWEEK(CURDATE(), 1)
+            AND b1.status != 'cancelled') AS bookedThisWeek,
          (SELECT COUNT(DISTINCT COALESCE(b2.booking_group_id, CAST(b2.id AS CHAR)))
           FROM bookings b2
           WHERE b2.teacher_id = u.id AND b2.company_id = u.company_id
-            AND b2.appointment_date >= NOW()
-            AND b2.appointment_date < DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-            AND b2.status NOT IN ('cancelled','done')) AS next7days
+            AND YEARWEEK(b2.appointment_date, 1) = YEARWEEK(CURDATE(), 1)
+            AND b2.status = 'done') AS doneThisWeek,
+         (SELECT COUNT(DISTINCT COALESCE(b3.booking_group_id, CAST(b3.id AS CHAR)))
+          FROM bookings b3
+          WHERE b3.teacher_id = u.id AND b3.company_id = u.company_id
+            AND DATE(b3.appointment_date) = CURDATE()
+            AND b3.status != 'cancelled') AS today
        FROM users u
        WHERE u.company_id = ? AND u.role = 'teacher' AND u.is_active = TRUE
-       ORDER BY next7days DESC`,
+       ORDER BY bookedThisWeek DESC, u.name ASC`,
       [companyId]
     );
 
