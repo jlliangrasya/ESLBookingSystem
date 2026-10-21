@@ -912,6 +912,272 @@ router.get("/teachers/:id/schedule", authenticateToken, requireRole('company_adm
   }
 });
 
+/** Shift a YYYY-MM-DD string by whole days without touching time zones. */
+function shiftDate(dateStr, days) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+const MAX_COPY_WEEKS = 12;
+
+/**
+ * Copy one week of a teacher's classes onto later weeks — for plotting students'
+ * regular schedules. Each class lands on the same weekday and time. A class is
+ * skipped (never forced) when its target slots aren't all open, the teacher or
+ * student is already busy, the teacher is on leave, it's in the past, or the
+ * student has no package with sessions left. `dry_run: true` runs every check
+ * inside a transaction that is rolled back, so the preview matches the real run.
+ */
+router.post("/teachers/:id/copy-week", authenticateToken, requireRole('company_admin'), requirePermission('calendar.book_classes'), async (req, res) => {
+  const companyId = req.user.company_id;
+  const teacherId = Number(req.params.id);
+  const { source_week_start, target_week_starts, dry_run } = req.body;
+
+  if (!DATE_RE.test(source_week_start || '')) {
+    return res.status(400).json({ message: 'source_week_start must be YYYY-MM-DD' });
+  }
+  if (!Array.isArray(target_week_starts) || target_week_starts.length === 0) {
+    return res.status(400).json({ message: 'Pick at least one week to copy to' });
+  }
+  if (target_week_starts.length > MAX_COPY_WEEKS) {
+    return res.status(400).json({ message: `You can copy to at most ${MAX_COPY_WEEKS} weeks at a time` });
+  }
+  const targets = [...new Set(target_week_starts)].sort();
+  if (targets.some(t => !DATE_RE.test(t) || t === source_week_start)) {
+    return res.status(400).json({ message: 'Target weeks must be YYYY-MM-DD and differ from the source week' });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    const [[teacher]] = await connection.query(
+      "SELECT id, name FROM users WHERE id = ? AND company_id = ? AND role = 'teacher'",
+      [teacherId, companyId]
+    );
+    if (!teacher) return res.status(404).json({ message: 'Teacher not found' });
+
+    // The source week's classes, one row per slot. Done classes count too — a class
+    // already taught this week is still part of the student's regular schedule.
+    const [rows] = await connection.query(`
+      SELECT b.id, DATE_FORMAT(b.appointment_date, '%Y-%m-%d %H:%i:%s') AS appt,
+             b.booking_group_id, b.student_package_id,
+             ${attendeeSql()} AS attendee_id, u.name AS student_name, u.is_active,
+             tp.duration_minutes
+      FROM bookings b
+      JOIN student_packages sp ON b.student_package_id = sp.id
+      JOIN users u ON u.id = ${attendeeSql()}
+      JOIN tutorial_packages tp ON sp.package_id = tp.id
+      WHERE b.teacher_id = ? AND b.company_id = ? AND b.status != 'cancelled'
+        AND b.appointment_date >= ? AND b.appointment_date < DATE_ADD(?, INTERVAL 7 DAY)
+      ORDER BY b.appointment_date ASC
+    `, [teacherId, companyId, source_week_start, source_week_start]);
+
+    // Fold multi-slot classes into one entry each
+    const classes = [];
+    const byGroup = new Map();
+    for (const r of rows) {
+      const time = r.appt.slice(11, 19);
+      if (r.booking_group_id && byGroup.has(r.booking_group_id)) {
+        byGroup.get(r.booking_group_id).times.push(time);
+        continue;
+      }
+      const cls = {
+        date: r.appt.slice(0, 10), times: [time],
+        attendee_id: r.attendee_id, student_name: r.student_name, is_active: !!r.is_active,
+        student_package_id: r.student_package_id, duration_minutes: r.duration_minutes,
+      };
+      if (r.booking_group_id) byGroup.set(r.booking_group_id, cls);
+      classes.push(cls);
+    }
+    if (classes.length === 0) {
+      return res.json({ created: [], skipped: [], message: 'No classes in this week to copy' });
+    }
+
+    // Load everything the checks need in one go — a round trip per class per week adds
+    // up to thousands of queries against a remote DB. Padded by a day either side so the
+    // 30-minute overlap window can see classes just across the range edges.
+    const rangeStart = shiftDate(targets[0], -1);
+    const rangeEnd = shiftDate(targets[targets.length - 1], 8);
+    const studentIds = [...new Set(classes.map(c => Number(c.attendee_id)))];
+    const toMin = dt => Date.parse(`${dt.replace(' ', 'T')}Z`) / 60000;
+
+    // A real run locks the packages it may draw from before reading what's free
+    await connection.beginTransaction();
+
+    const [leaveRows] = await connection.query(
+      `SELECT DATE_FORMAT(leave_date, '%Y-%m-%d') AS d FROM teacher_leaves
+       WHERE teacher_id = ? AND company_id = ? AND status IN ('pending','approved')
+         AND leave_date >= ? AND leave_date < ?`,
+      [teacherId, companyId, rangeStart, rangeEnd]
+    );
+    const [openRows] = await connection.query(
+      `SELECT DATE_FORMAT(slot_date, '%Y-%m-%d') AS d, TIME_FORMAT(slot_time, '%H:%i') AS t
+       FROM teacher_available_slots
+       WHERE company_id = ? AND teacher_id = ? AND slot_date >= ? AND slot_date < ?`,
+      [companyId, teacherId, rangeStart, rangeEnd]
+    );
+    const [teacherRows] = await connection.query(
+      `SELECT DATE_FORMAT(b.appointment_date, '%Y-%m-%d %H:%i:%s') AS appt, ${attendeeSql()} AS attendee_id
+       FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id
+       WHERE b.teacher_id = ? AND b.company_id = ? AND b.status NOT IN ('cancelled','done')
+         AND b.appointment_date >= ? AND b.appointment_date < ?`,
+      [teacherId, companyId, rangeStart, rangeEnd]
+    );
+    const [studentRows] = await connection.query(
+      `SELECT DATE_FORMAT(b.appointment_date, '%Y-%m-%d %H:%i:%s') AS appt, ${attendeeSql()} AS attendee_id
+       FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id
+       WHERE ${attendeeSql()} IN (?) AND b.company_id = ? AND b.status NOT IN ('cancelled','done')
+         AND b.appointment_date >= ? AND b.appointment_date < ?`,
+      [studentIds, companyId, rangeStart, rangeEnd]
+    );
+    // Every paid package with sessions left that each student may book on (owned or shared)
+    const [pkgRows] = await connection.query(
+      `SELECT pu.student_id, sp.id, sp.sessions_remaining, COALESCE(tp.duration_minutes, 25) AS duration
+       FROM student_packages sp
+       JOIN (
+         SELECT id AS student_package_id, student_id FROM student_packages WHERE company_id = ?
+         UNION
+         SELECT student_package_id, student_id FROM student_package_members WHERE company_id = ?
+       ) pu ON pu.student_package_id = sp.id
+       JOIN tutorial_packages tp ON sp.package_id = tp.id
+       WHERE sp.company_id = ? AND sp.payment_status = 'paid' AND sp.sessions_remaining > 0
+         AND pu.student_id IN (?)
+       ORDER BY sp.purchased_at ASC, sp.id ASC`,
+      [companyId, companyId, companyId, studentIds]
+    );
+    if (!dry_run && pkgRows.length > 0) {
+      const ids = [...new Set(pkgRows.map(p => p.id))];
+      const [locked] = await connection.query(
+        'SELECT id, sessions_remaining FROM student_packages WHERE id IN (?) FOR UPDATE', [ids]
+      );
+      // Re-read under the lock so a booking made a moment ago is counted
+      for (const l of locked) for (const p of pkgRows) if (p.id === l.id) p.sessions_remaining = l.sessions_remaining;
+    }
+
+    const leaveDates = new Set(leaveRows.map(r => r.d));
+    const openSet = new Set(openRows.map(r => `${r.d}|${r.t}`));
+    const teacherBusy = teacherRows.map(r => ({ min: toMin(r.appt), attendee_id: Number(r.attendee_id) }));
+    const studentBusy = new Map(studentIds.map(id => [id, []]));
+    for (const r of studentRows) studentBusy.get(Number(r.attendee_id))?.push(toMin(r.appt));
+    // A shared package is listed once per student, so its remaining count lives in one place
+    const remaining = new Map(pkgRows.map(p => [p.id, p.sessions_remaining]));
+    const pkgsByStudent = new Map();
+    for (const p of pkgRows) {
+      const sid = Number(p.student_id);
+      if (!pkgsByStudent.has(sid)) pkgsByStudent.set(sid, []);
+      pkgsByStudent.get(sid).push(p);
+    }
+
+    const crypto = require('crypto');
+    const created = [];
+    const skipped = [];
+    const inserts = [];
+    const used = new Map(); // package id -> sessions this run takes from it
+
+    for (const target of targets) {
+      const offset = Math.round((Date.parse(`${target}T00:00:00Z`) - Date.parse(`${source_week_start}T00:00:00Z`)) / 86400000);
+      for (const cls of classes) {
+        const attendeeId = Number(cls.attendee_id);
+        const date = shiftDate(cls.date, offset);
+        const slotList = cls.times.map(t => `${date} ${t}`);
+        const entry = { date, time: cls.times[0].slice(0, 5), student_id: attendeeId, student_name: cls.student_name, slots: slotList.length };
+        const skip = reason => skipped.push({ ...entry, reason });
+
+        if (isPastSlot(date, cls.times[0])) { skip('In the past'); continue; }
+        if (!cls.is_active) { skip('Student is inactive'); continue; }
+        if (leaveDates.has(date)) { skip('Teacher is on leave'); continue; }
+
+        let reason = null;
+        for (const slotDt of slotList) {
+          const m = toMin(slotDt);
+          const clash = teacherBusy.find(b => Math.abs(b.min - m) < 30);
+          if (clash) { reason = clash.attendee_id === attendeeId ? 'Already scheduled' : 'Slot already booked'; break; }
+          if (!openSet.has(`${date}|${slotDt.slice(11, 16)}`)) {
+            reason = `${fmtAppt(slotDt).split(' ').slice(3).join(' ')} slot is not open`;
+            break;
+          }
+          if (studentBusy.get(attendeeId).some(x => Math.abs(x - m) < 30)) {
+            reason = 'Student has another class then';
+            break;
+          }
+        }
+        if (reason) { skip(reason); continue; }
+
+        // Same package if it still has sessions; otherwise another paid package of the
+        // same class length (e.g. a renewal), oldest first so packages are used in order.
+        const candidates = (pkgsByStudent.get(attendeeId) || []).filter(p => remaining.get(p.id) > 0);
+        const pkg = candidates.find(p => p.id === cls.student_package_id)
+          || candidates.find(p => Number(p.duration) === (cls.duration_minutes || 25));
+        if (!pkg) { skip('No sessions remaining'); continue; }
+
+        remaining.set(pkg.id, remaining.get(pkg.id) - 1);
+        used.set(pkg.id, (used.get(pkg.id) || 0) + 1);
+        const groupId = slotList.length > 1 ? crypto.randomUUID() : null;
+        for (const slotDt of slotList) {
+          inserts.push([companyId, pkg.id, attendeeId, teacherId, slotDt, 'confirmed', 1, groupId]);
+          teacherBusy.push({ min: toMin(slotDt), attendee_id: attendeeId });
+          studentBusy.get(attendeeId).push(toMin(slotDt));
+        }
+        created.push(entry);
+      }
+    }
+
+    if (dry_run || created.length === 0) {
+      await connection.rollback();
+      return res.json({ dry_run: !!dry_run, created, skipped });
+    }
+
+    await connection.query(
+      `INSERT INTO bookings (company_id, student_package_id, attendee_id, teacher_id, appointment_date, status, rescheduled_by_admin, booking_group_id)
+       VALUES ?`,
+      [inserts]
+    );
+    for (const [pkgId, n] of used) {
+      await connection.query(
+        'UPDATE student_packages SET sessions_remaining = GREATEST(0, sessions_remaining - ?) WHERE id = ? AND company_id = ?',
+        [n, pkgId, companyId]
+      );
+    }
+    await connection.commit();
+
+    if (created.length > 0) {
+      // One summary per person instead of a notification per class
+      const range = (list) => {
+        const dates = list.map(c => c.date).sort();
+        const f = d => fmtAppt(`${d} 00:00:00`).split(' ').slice(0, 3).join(' ');
+        return dates.length === 1 ? f(dates[0]) : `${f(dates[0])} – ${f(dates[dates.length - 1])}`;
+      };
+      notify({
+        userId: teacherId, companyId, type: 'booking_created',
+        title: 'Classes scheduled',
+        message: `Admin scheduled ${created.length} class${created.length === 1 ? '' : 'es'} for you (${range(created)}).`,
+      });
+      const byStudent = new Map();
+      for (const c of created) {
+        if (!byStudent.has(c.student_id)) byStudent.set(c.student_id, []);
+        byStudent.get(c.student_id).push(c);
+      }
+      for (const [studentId, list] of byStudent) {
+        notify({
+          userId: studentId, companyId, type: 'booking_created',
+          title: 'Classes scheduled',
+          message: `${list.length} class${list.length === 1 ? ' has' : 'es have'} been scheduled for you with ${teacher.name} (${range(list)}).`,
+        });
+      }
+    }
+
+    await logAction(companyId, req.user.id, 'admin_week_copied', 'user', teacherId, {
+      source_week_start, target_week_starts: targets, created: created.length, skipped: skipped.length,
+    });
+    res.json({ created, skipped });
+  } catch (err) {
+    try { await connection.rollback(); } catch (_) {}
+    console.error('copy-week error:', err);
+    res.status(500).json({ message: 'Server error' });
+  } finally {
+    connection.release();
+  }
+});
+
 // ——— Admin (sub-admin) Management ———
 
 /**

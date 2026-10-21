@@ -15,8 +15,9 @@ import {
 import { StudentPackagePicker } from "@/components/StudentPackagePicker";
 import { SubstituteTeacherDialog } from "@/components/SubstituteTeacherDialog";
 import { AvailableSlotsDialog } from "@/components/AvailableSlotsDialog";
+import { CopyWeekDialog } from "@/components/CopyWeekDialog";
 import {
-  CalendarRange, ChevronLeft, ChevronRight, Loader2, GraduationCap, ListChecks,
+  CalendarRange, ChevronLeft, ChevronRight, Loader2, GraduationCap, ListChecks, CopyPlus,
 } from "lucide-react";
 import { localToMysql } from "@/utils/timezone";
 import { isValidHex, getContrastText, DEFAULT_NOTE_COLOR } from "@/utils/noteColors";
@@ -205,6 +206,8 @@ const AdminCalendarPage = () => {
 
   // Shareable list of the week's open slots
   const [showAvailable, setShowAvailable] = useState(false);
+  // Copy this week's classes onto later weeks
+  const [showCopyWeek, setShowCopyWeek] = useState(false);
 
   const teacher = teachers[teacherIdx] ?? null;
 
@@ -832,6 +835,15 @@ const AdminCalendarPage = () => {
                   >
                     <ListChecks className="h-3.5 w-3.5 mr-1" /> Available Slots
                   </Button>
+                  {canBook && (
+                    <Button
+                      variant="outline" size="sm" className="h-7 px-2 text-xs"
+                      onClick={() => setShowCopyWeek(true)}
+                      title="Book this week's classes again in the following weeks"
+                    >
+                      <CopyPlus className="h-3.5 w-3.5 mr-1" /> Copy Week
+                    </Button>
+                  )}
                 </div>
                 <Button variant="outline" size="sm" onClick={() => setWeekStart(addDays(weekStart, 7))}>
                   Next <ChevronRight className="h-4 w-4 ml-1" />
@@ -1152,6 +1164,17 @@ const AdminCalendarPage = () => {
           weekStart={weekStart}
           headers={headers}
           onClose={() => setShowAvailable(false)}
+        />
+      )}
+
+      {showCopyWeek && teacher && (
+        <CopyWeekDialog
+          teacherId={teacher.id}
+          teacherName={teacher.name}
+          weekStart={weekStart}
+          headers={headers}
+          onClose={() => setShowCopyWeek(false)}
+          onCopied={() => { fetchGrid(); fetchBookableStudents(); }}
         />
       )}
 
