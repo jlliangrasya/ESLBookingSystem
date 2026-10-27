@@ -15,7 +15,6 @@ import WaveDivider from "@/components/WaveDivider";
 import ScrollReveal from "@/components/ScrollReveal";
 import { Building2, ArrowRight } from "lucide-react";
 import InstallAppButton from "@/components/InstallAppButton";
-import ThemeToggle from "@/components/ThemeToggle";
 
 const roleHome: Record<string, string> = {
   super_admin: '/super-admin',
@@ -45,7 +44,6 @@ const Home = () => {
           <div className="flex items-center gap-3">
             <LanguageToggle variant="white" />
             <InstallAppButton variant="white" />
-            <ThemeToggle variant="white" />
             <Button
               size="sm"
               className="bg-white/15 text-white border border-white/40 hover:bg-white/25 transition-colors backdrop-blur-sm"

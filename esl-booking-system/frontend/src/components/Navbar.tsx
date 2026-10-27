@@ -16,7 +16,7 @@ import { usePermissions } from "@/context/PermissionsContext";
 import NotificationBell from "@/components/NotificationBell";
 import LanguageToggle from "@/components/LanguageToggle";
 import InstallAppButton from "@/components/InstallAppButton";
-import ThemeToggle from "@/components/ThemeToggle";
+import { ThemeMenuItem, ThemeMenuRow } from "@/components/ThemeToggle";
 import { useStartTour } from "@/components/AdminTour";
 import { OnboardingProgressBar } from "@/components/OnboardingChecklist";
 import { useLinkedAccounts, roleLabel } from "@/hooks/useLinkedAccounts";
@@ -133,7 +133,6 @@ const NavBar: React.FC = () => {
             </button>
           )}
           <InstallAppButton variant="white" />
-          <ThemeToggle variant="white" />
           <LanguageToggle variant="white" />
           <NotificationBell variant="white" />
 
@@ -192,7 +191,9 @@ const NavBar: React.FC = () => {
                   </span>
                 </DropdownMenuItem>
               ))}
-              {(role === "company_admin" || role === "teacher") && <DropdownMenuSeparator />}
+              <DropdownMenuSeparator />
+              <ThemeMenuItem />
+              <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleLogout}
                 className="cursor-pointer text-destructive focus:text-destructive flex items-center gap-2"
@@ -207,7 +208,6 @@ const NavBar: React.FC = () => {
         {/* Mobile: action buttons + hamburger */}
         <div className="flex min-[620px]:hidden items-center gap-2">
           <InstallAppButton variant="white" />
-          <ThemeToggle variant="white" />
           <NotificationBell variant="white" />
           <Button
             variant="ghost"
@@ -279,6 +279,7 @@ const NavBar: React.FC = () => {
             </button>
           ))}
 
+          <ThemeMenuRow />
           <div className="flex items-center gap-3 px-4 py-2">
             <LanguageToggle variant="white" />
           </div>

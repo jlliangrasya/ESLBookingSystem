@@ -17,7 +17,7 @@ import {
   UserCog, CreditCard, AlertCircle, Database, Menu, X, User, ClipboardList,
 } from "lucide-react";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useCompanySwitcher, CompanySwitcherMenuItems, CompanySwitcherMobile } from "@/components/CompanySwitcher";
 import {
@@ -26,7 +26,7 @@ import {
 } from "recharts";
 import BrandLogo from "@/components/BrandLogo";
 import NotificationBell from "@/components/NotificationBell";
-import ThemeToggle from "@/components/ThemeToggle";
+import { ThemeMenuItem, ThemeMenuRow } from "@/components/ThemeToggle";
 import AnnouncementPanel from "@/components/AnnouncementPanel";
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
@@ -1571,7 +1571,6 @@ const SuperAdminDashboard = () => {
                 </button>
               ))}
 
-              <ThemeToggle variant="white" />
               <NotificationBell variant="white" />
 
               {/* Profile dropdown — company switcher + logout */}
@@ -1594,6 +1593,9 @@ const SuperAdminDashboard = () => {
                       Activity Log
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <ThemeMenuItem />
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={handleLogout}
                     className="cursor-pointer text-destructive focus:text-destructive flex items-center gap-2"
@@ -1632,9 +1634,7 @@ const SuperAdminDashboard = () => {
                 </button>
               ))}
               <CompanySwitcherMobile switcher={companySwitcher} onDone={() => setMobileMenuOpen(false)} />
-              <div className="flex items-center gap-3 px-4 py-2">
-                <ThemeToggle variant="white" />
-              </div>
+              <ThemeMenuRow />
               <button
                 onClick={() => { setMobileMenuOpen(false); handleLogout(); }}
                 className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-[#fecaca] hover:bg-white/10 w-full transition-colors"
