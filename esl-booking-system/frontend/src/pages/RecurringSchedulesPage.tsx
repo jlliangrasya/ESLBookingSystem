@@ -233,13 +233,13 @@ const RecurringSchedulesPage: React.FC = () => {
   const estimatedClasses = selectedDays.length * (parseInt(numWeeks) || 4);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50">
       <NavBar />
       <div className="max-w-5xl mx-auto p-4 sm:p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <CalendarDays className="h-6 w-6 text-blue-600" />
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Recurring Schedules</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Recurring Schedules</h1>
           </div>
           {canCreate && (
             <Button onClick={() => { setCreateOpen(true); setCreateResult(null); }} className="gap-1">
@@ -359,7 +359,7 @@ const RecurringSchedulesPage: React.FC = () => {
               </div>
 
               {selectedPkg && selectedDays.length > 0 && (
-                <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded text-sm space-y-1">
+                <div className="p-3 bg-blue-50 rounded text-sm space-y-1">
                   <p><strong>Preview:</strong> ~{estimatedClasses} classes over {numWeeks} weeks</p>
                   <p>Duration: {selectedPkg.duration_minutes} min ({Math.max(1, Math.ceil(selectedPkg.duration_minutes / 30))} slot{Math.ceil(selectedPkg.duration_minutes / 30) > 1 ? 's' : ''} per class)</p>
                   <p>Sessions available: <strong>{selectedPkg.sessions_remaining}</strong></p>

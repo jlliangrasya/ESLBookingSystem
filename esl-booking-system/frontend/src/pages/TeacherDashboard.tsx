@@ -42,6 +42,7 @@ import {
 import BrandLogo from "@/components/BrandLogo";
 import NotificationBell from "@/components/NotificationBell";
 import InstallAppButton from "@/components/InstallAppButton";
+import ThemeToggle from "@/components/ThemeToggle";
 import ReportModal from "@/components/ReportModal";
 import { fmtDate, fmtDateOnly, TIMEZONES } from "@/utils/timezone";
 import {
@@ -2035,6 +2036,7 @@ const TeacherDashboard = () => {
               Teacher
             </Badge>
             <InstallAppButton variant="white" />
+            <ThemeToggle variant="white" />
             <NotificationBell variant="white" />
             {linkedAccounts.map((acct) => (
               <Button
@@ -2089,6 +2091,7 @@ const TeacherDashboard = () => {
             </div>
             <div className="flex items-center gap-3 px-4 py-2">
               <InstallAppButton variant="white" />
+              <ThemeToggle variant="white" />
             </div>
             {linkedAccounts.map((acct) => (
               <button
@@ -2113,7 +2116,7 @@ const TeacherDashboard = () => {
                 setMobileMenuOpen(false);
                 handleLogout();
               }}
-              className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-red-200 hover:bg-white/10 w-full"
+              className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-[#fecaca] hover:bg-white/10 w-full"
             >
               <LogOut className="h-5 w-5" />{" "}
               <span className="text-sm">Logout</span>

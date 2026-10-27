@@ -106,12 +106,12 @@ const StudentAssignmentsPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50">
       <NavBar />
       <div className="max-w-5xl mx-auto p-4 sm:p-6">
         <div className="flex items-center gap-2 mb-6">
           <FileText className="h-6 w-6 text-blue-600" />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My Assignments</h1>
+          <h1 className="text-2xl font-bold text-gray-900">My Assignments</h1>
         </div>
 
         <Card>
@@ -189,7 +189,7 @@ const StudentAssignmentsPage: React.FC = () => {
                 )}
 
                 {selected.submission_id && (
-                  <Card className="bg-gray-50 dark:bg-gray-800">
+                  <Card className="bg-gray-50">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm">Your Submission</CardTitle>
                     </CardHeader>
@@ -199,11 +199,11 @@ const StudentAssignmentsPage: React.FC = () => {
                         {!!selected.is_late && <Badge className="ml-2 bg-red-100 text-red-700 text-xs">Late</Badge>}
                       </p>
                       {selected.score !== null && (
-                        <div className="p-3 bg-green-50 dark:bg-green-950 rounded">
-                          <p className="font-semibold text-green-700 dark:text-green-300">
+                        <div className="p-3 bg-green-50 rounded">
+                          <p className="font-semibold text-green-700">
                             Score: {selected.score}{selected.max_score ? `/${selected.max_score}` : ''}
                           </p>
-                          {selected.feedback && <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{selected.feedback}</p>}
+                          {selected.feedback && <p className="text-sm text-gray-600 mt-1">{selected.feedback}</p>}
                         </div>
                       )}
                     </CardContent>

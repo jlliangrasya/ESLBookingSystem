@@ -137,13 +137,13 @@ const AnnouncementManagementPage: React.FC = () => {
     new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50">
       <NavBar />
       <div className="max-w-5xl mx-auto p-4 sm:p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <Megaphone className="h-6 w-6 text-blue-600" />
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Announcements</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Announcements</h1>
           </div>
           <Button onClick={openCreate} className="gap-1">
             <Plus className="h-4 w-4" /> New Announcement

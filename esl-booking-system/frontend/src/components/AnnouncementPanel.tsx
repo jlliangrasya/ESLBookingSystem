@@ -82,10 +82,10 @@ const AnnouncementPanel: React.FC = () => {
   return (
     <div className="mb-4">
       <div
-        className="flex items-center justify-between cursor-pointer bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-t-lg px-4 py-2"
+        className="flex items-center justify-between cursor-pointer bg-blue-50 border border-blue-200 rounded-t-lg px-4 py-2"
         onClick={() => setExpanded(!expanded)}
       >
-        <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300 font-medium text-sm">
+        <div className="flex items-center gap-2 text-blue-700 font-medium text-sm">
           <Megaphone className="h-4 w-4" />
           Announcements
           {unreadCount > 0 && (
@@ -110,17 +110,17 @@ const AnnouncementPanel: React.FC = () => {
       </div>
 
       {expanded && (
-        <div className="border border-t-0 border-blue-200 dark:border-blue-800 rounded-b-lg divide-y divide-blue-100 dark:divide-blue-900 max-h-80 overflow-y-auto">
+        <div className="border border-t-0 border-blue-200 rounded-b-lg divide-y divide-blue-100 max-h-80 overflow-y-auto">
           {announcements.map(a => (
             <div
               key={a.id}
-              className={`px-4 py-3 ${!a.is_read ? "bg-blue-50/50 dark:bg-blue-950/50" : "bg-white dark:bg-gray-950"}`}
+              className={`px-4 py-3 ${!a.is_read ? "bg-blue-50/50" : "bg-white"}`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     {!!a.is_pinned && <Pin className="h-3 w-3 text-amber-500 flex-shrink-0" />}
-                    <span className={`text-sm font-semibold ${!a.is_read ? "text-blue-800 dark:text-blue-200" : "text-gray-700 dark:text-gray-300"}`}>
+                    <span className={`text-sm font-semibold ${!a.is_read ? "text-blue-800" : "text-gray-700"}`}>
                       {a.title}
                     </span>
                     {!a.is_read && (
@@ -132,9 +132,9 @@ const AnnouncementPanel: React.FC = () => {
                   </div>
 
                   {expandedId === a.id ? (
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 whitespace-pre-wrap">{a.content}</p>
+                    <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{a.content}</p>
                   ) : (
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 truncate">{a.content}</p>
+                    <p className="text-sm text-gray-600 mt-1 truncate">{a.content}</p>
                   )}
                 </div>
 

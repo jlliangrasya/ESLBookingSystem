@@ -5,7 +5,7 @@ import { Separator } from "@/components/ui/separator";
 const Footer = () => {
   const { t } = useTranslation();
   return (
-    <footer className="bg-gradient-to-b from-slate-900 to-slate-950 text-gray-300 relative overflow-hidden">
+    <footer className="palette-fixed bg-gradient-to-b from-slate-900 to-slate-950 text-gray-300 relative overflow-hidden">
       <div className="max-w-5xl mx-auto px-4 py-10 text-center">
         <div className="flex flex-wrap justify-center gap-6 text-sm">
           <a

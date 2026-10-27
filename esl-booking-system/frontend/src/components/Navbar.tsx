@@ -16,6 +16,7 @@ import { usePermissions } from "@/context/PermissionsContext";
 import NotificationBell from "@/components/NotificationBell";
 import LanguageToggle from "@/components/LanguageToggle";
 import InstallAppButton from "@/components/InstallAppButton";
+import ThemeToggle from "@/components/ThemeToggle";
 import { useStartTour } from "@/components/AdminTour";
 import { OnboardingProgressBar } from "@/components/OnboardingChecklist";
 import { useLinkedAccounts, roleLabel } from "@/hooks/useLinkedAccounts";
@@ -132,6 +133,7 @@ const NavBar: React.FC = () => {
             </button>
           )}
           <InstallAppButton variant="white" />
+          <ThemeToggle variant="white" />
           <LanguageToggle variant="white" />
           <NotificationBell variant="white" />
 
@@ -205,6 +207,7 @@ const NavBar: React.FC = () => {
         {/* Mobile: action buttons + hamburger */}
         <div className="flex min-[620px]:hidden items-center gap-2">
           <InstallAppButton variant="white" />
+          <ThemeToggle variant="white" />
           <NotificationBell variant="white" />
           <Button
             variant="ghost"
@@ -282,7 +285,7 @@ const NavBar: React.FC = () => {
 
           <button
             onClick={() => { setMobileOpen(false); handleLogout(); }}
-            className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-red-200 hover:bg-white/10 w-full transition-colors"
+            className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-[#fecaca] hover:bg-white/10 w-full transition-colors"
           >
             <LogOut className="h-5 w-5" />
             <span className="text-sm font-medium">{t("nav.logout")}</span>

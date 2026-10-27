@@ -26,6 +26,7 @@ import {
 } from "recharts";
 import BrandLogo from "@/components/BrandLogo";
 import NotificationBell from "@/components/NotificationBell";
+import ThemeToggle from "@/components/ThemeToggle";
 import AnnouncementPanel from "@/components/AnnouncementPanel";
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
@@ -1570,6 +1571,7 @@ const SuperAdminDashboard = () => {
                 </button>
               ))}
 
+              <ThemeToggle variant="white" />
               <NotificationBell variant="white" />
 
               {/* Profile dropdown — company switcher + logout */}
@@ -1630,9 +1632,12 @@ const SuperAdminDashboard = () => {
                 </button>
               ))}
               <CompanySwitcherMobile switcher={companySwitcher} onDone={() => setMobileMenuOpen(false)} />
+              <div className="flex items-center gap-3 px-4 py-2">
+                <ThemeToggle variant="white" />
+              </div>
               <button
                 onClick={() => { setMobileMenuOpen(false); handleLogout(); }}
-                className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-red-200 hover:bg-white/10 w-full transition-colors"
+                className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-[#fecaca] hover:bg-white/10 w-full transition-colors"
               >
                 <LogOut className="h-5 w-5" />
                 <span className="text-sm font-medium">Logout</span>

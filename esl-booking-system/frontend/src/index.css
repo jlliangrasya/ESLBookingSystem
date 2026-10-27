@@ -405,40 +405,158 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --surface-subtle: #EEF6FA;              /* pale brand tint behind sections */
 }
 
+/* ─── Dark Mode ──────────────────────────────────────────────────────
+   Toggled by ThemeToggle (adds `.dark` to <html>, saved in localStorage).
+   Pages use hardcoded palette classes (bg-white, text-gray-800, bg-green-50…)
+   rather than `dark:` variants, so instead of annotating every class we
+   remap the palette variables here:
+   - gray/slate scale is flipped (50 = dark surface … 900 = near-white text)
+   - colored 50/100/200 become dark tints, 700/800/900 become light text
+   - 300–600 are left alone so solid buttons (bg-green-600 + white) still work
+   Elements that sit on an always-dark background (footer) opt out with
+   `.palette-fixed`. */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  color-scheme: dark;
+
+  --background: oklch(0.17 0.02 250);
+  --foreground: oklch(0.93 0.01 250);
+  --card: oklch(0.21 0.022 250);
+  --card-foreground: oklch(0.93 0.01 250);
+  --popover: oklch(0.23 0.024 250);
+  --popover-foreground: oklch(0.93 0.01 250);
+  --primary: oklch(0.6 0.11 230);          /* brand blue, lifted for dark bg */
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.28 0.03 240);
+  --secondary-foreground: oklch(0.9 0.02 230);
+  --muted: oklch(0.25 0.022 250);
+  --muted-foreground: oklch(0.72 0.02 250);
+  --accent: oklch(0.29 0.035 235);
+  --accent-foreground: oklch(0.93 0.02 230);
+  --destructive: oklch(0.65 0.2 22);
+  --border: oklch(0.32 0.025 250);
+  --input: oklch(0.34 0.025 250);
+  --ring: oklch(0.6 0.11 230);
+  --chart-1: oklch(0.7 0.18 41);
+  --chart-2: oklch(0.7 0.12 185);
+  --chart-3: oklch(0.65 0.1 230);
+  --chart-4: oklch(0.83 0.17 84);
+  --chart-5: oklch(0.77 0.17 70);
+  --sidebar: oklch(0.21 0.022 250);
+  --sidebar-foreground: oklch(0.93 0.01 250);
+  --sidebar-primary: oklch(0.6 0.11 230);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.28 0.03 240);
+  --sidebar-accent-foreground: oklch(0.93 0.01 250);
+  --sidebar-border: oklch(0.32 0.025 250);
+  --sidebar-ring: oklch(0.6 0.11 230);
+  --surface-subtle: oklch(0.23 0.035 235);
+
+  --color-brand: #4B93C6;
+  --color-brand-dark: #3B7FB0;
+  --color-brand-light: #1F3A55;
+  --color-brand-glow: rgba(75, 147, 198, 0.18);
+  --color-accent-gold-light: #3A2E12;
+
+  /* gray + slate, flipped */
+  --color-gray-50: oklch(0.19 0.02 250);
+  --color-gray-100: oklch(0.24 0.022 250);
+  --color-gray-200: oklch(0.29 0.024 250);
+  --color-gray-300: oklch(0.38 0.025 250);
+  --color-gray-400: oklch(0.55 0.025 250);
+  --color-gray-500: oklch(0.68 0.022 250);
+  --color-gray-600: oklch(0.76 0.02 250);
+  --color-gray-700: oklch(0.83 0.016 250);
+  --color-gray-800: oklch(0.9 0.012 250);
+  --color-gray-900: oklch(0.95 0.008 250);
+  --color-slate-50: var(--color-gray-50);
+  --color-slate-100: var(--color-gray-100);
+  --color-slate-200: var(--color-gray-200);
+  --color-slate-300: var(--color-gray-300);
+  --color-slate-400: var(--color-gray-400);
+  --color-slate-500: var(--color-gray-500);
+  --color-slate-600: var(--color-gray-600);
+  --color-slate-700: var(--color-gray-700);
+  --color-slate-800: var(--color-gray-800);
+  --color-slate-900: var(--color-gray-900);
+
+  /* colored hues: light tints → dark tints, dark text → light text */
+  --color-red-50: color-mix(in oklab, var(--color-red-500) 12%, var(--card));
+  --color-red-100: color-mix(in oklab, var(--color-red-500) 20%, var(--card));
+  --color-red-200: color-mix(in oklab, var(--color-red-500) 34%, var(--card));
+  --color-red-700: var(--color-red-300);
+  --color-red-800: color-mix(in oklab, var(--color-red-300) 65%, white);
+  --color-red-900: color-mix(in oklab, var(--color-red-300) 40%, white);
+  --color-orange-50: color-mix(in oklab, var(--color-orange-500) 12%, var(--card));
+  --color-orange-100: color-mix(in oklab, var(--color-orange-500) 20%, var(--card));
+  --color-orange-200: color-mix(in oklab, var(--color-orange-500) 34%, var(--card));
+  --color-orange-700: var(--color-orange-300);
+  --color-orange-800: color-mix(in oklab, var(--color-orange-300) 65%, white);
+  --color-orange-900: color-mix(in oklab, var(--color-orange-300) 40%, white);
+  --color-amber-50: color-mix(in oklab, var(--color-amber-500) 12%, var(--card));
+  --color-amber-100: color-mix(in oklab, var(--color-amber-500) 20%, var(--card));
+  --color-amber-200: color-mix(in oklab, var(--color-amber-500) 34%, var(--card));
+  --color-amber-700: var(--color-amber-300);
+  --color-amber-800: color-mix(in oklab, var(--color-amber-300) 65%, white);
+  --color-amber-900: color-mix(in oklab, var(--color-amber-300) 40%, white);
+  --color-yellow-50: color-mix(in oklab, var(--color-yellow-500) 12%, var(--card));
+  --color-yellow-100: color-mix(in oklab, var(--color-yellow-500) 20%, var(--card));
+  --color-yellow-200: color-mix(in oklab, var(--color-yellow-500) 34%, var(--card));
+  --color-yellow-700: var(--color-yellow-300);
+  --color-yellow-800: color-mix(in oklab, var(--color-yellow-300) 65%, white);
+  --color-yellow-900: color-mix(in oklab, var(--color-yellow-300) 40%, white);
+  --color-green-50: color-mix(in oklab, var(--color-green-500) 12%, var(--card));
+  --color-green-100: color-mix(in oklab, var(--color-green-500) 20%, var(--card));
+  --color-green-200: color-mix(in oklab, var(--color-green-500) 34%, var(--card));
+  --color-green-700: var(--color-green-300);
+  --color-green-800: color-mix(in oklab, var(--color-green-300) 65%, white);
+  --color-green-900: color-mix(in oklab, var(--color-green-300) 40%, white);
+  --color-emerald-50: color-mix(in oklab, var(--color-emerald-500) 12%, var(--card));
+  --color-emerald-100: color-mix(in oklab, var(--color-emerald-500) 20%, var(--card));
+  --color-emerald-200: color-mix(in oklab, var(--color-emerald-500) 34%, var(--card));
+  --color-emerald-700: var(--color-emerald-300);
+  --color-emerald-800: color-mix(in oklab, var(--color-emerald-300) 65%, white);
+  --color-emerald-900: color-mix(in oklab, var(--color-emerald-300) 40%, white);
+  --color-blue-50: color-mix(in oklab, var(--color-blue-500) 12%, var(--card));
+  --color-blue-100: color-mix(in oklab, var(--color-blue-500) 20%, var(--card));
+  --color-blue-200: color-mix(in oklab, var(--color-blue-500) 34%, var(--card));
+  --color-blue-700: var(--color-blue-300);
+  --color-blue-800: color-mix(in oklab, var(--color-blue-300) 65%, white);
+  --color-blue-900: color-mix(in oklab, var(--color-blue-300) 40%, white);
+  --color-indigo-50: color-mix(in oklab, var(--color-indigo-500) 12%, var(--card));
+  --color-indigo-100: color-mix(in oklab, var(--color-indigo-500) 20%, var(--card));
+  --color-indigo-200: color-mix(in oklab, var(--color-indigo-500) 34%, var(--card));
+  --color-indigo-700: var(--color-indigo-300);
+  --color-indigo-800: color-mix(in oklab, var(--color-indigo-300) 65%, white);
+  --color-indigo-900: color-mix(in oklab, var(--color-indigo-300) 40%, white);
+  --color-violet-50: color-mix(in oklab, var(--color-violet-500) 12%, var(--card));
+  --color-violet-100: color-mix(in oklab, var(--color-violet-500) 20%, var(--card));
+  --color-violet-200: color-mix(in oklab, var(--color-violet-500) 34%, var(--card));
+  --color-violet-700: var(--color-violet-300);
+  --color-violet-800: color-mix(in oklab, var(--color-violet-300) 65%, white);
+  --color-violet-900: color-mix(in oklab, var(--color-violet-300) 40%, white);
+  --color-purple-50: color-mix(in oklab, var(--color-purple-500) 12%, var(--card));
+  --color-purple-100: color-mix(in oklab, var(--color-purple-500) 20%, var(--card));
+  --color-purple-200: color-mix(in oklab, var(--color-purple-500) 34%, var(--card));
+  --color-purple-700: var(--color-purple-300);
+  --color-purple-800: color-mix(in oklab, var(--color-purple-300) 65%, white);
+  --color-purple-900: color-mix(in oklab, var(--color-purple-300) 40%, white);
+  --color-rose-50: color-mix(in oklab, var(--color-rose-500) 12%, var(--card));
+  --color-rose-100: color-mix(in oklab, var(--color-rose-500) 20%, var(--card));
+  --color-rose-200: color-mix(in oklab, var(--color-rose-500) 34%, var(--card));
+  --color-rose-700: var(--color-rose-300);
+  --color-rose-800: color-mix(in oklab, var(--color-rose-300) 65%, white);
+  --color-rose-900: color-mix(in oklab, var(--color-rose-300) 40%, white);
+}
+
+/* Always-dark surfaces (footer) keep the light-mode palette */
+.dark .palette-fixed {
+  --color-gray-300: oklch(87.2% 0.01 258.338);
+  --color-gray-500: oklch(55.1% 0.027 264.364);
+  --color-gray-700: oklch(37.3% 0.034 259.733);
+  --color-slate-900: oklch(20.8% 0.042 265.755);
 }
 
 @layer base {
@@ -508,3 +626,125 @@
   border-radius: 8px;
   box-shadow: rgba(33, 33, 33, 0.5) 0px 0px 0px 5000px, rgba(46,107,158,0.4) 0px 0px 0px 3px !important;
 }
+
+/* ─── Dark Mode: component overrides ─────────────────────────────── */
+.dark .bg-white {
+  background-color: var(--card);
+}
+
+/* solid green buttons hover to green-700; keep it dark enough for white text */
+.dark .bg-green-700,
+.dark .hover\:bg-green-700:hover {
+  background-color: #15803d;
+}
+
+/* one-off brand hex classes */
+.dark .bg-\[\#EEF6FA\],
+.dark .hover\:bg-\[\#EEF6FA\]:hover,
+.dark .bg-\[\#D0E8F0\] {
+  background-color: var(--surface-subtle);
+}
+.dark .text-\[\#2E6B9E\] {
+  color: #7DB6E0;
+}
+.dark .border-\[\#D0E8F0\],
+.dark .border-\[\#B0D4E8\] {
+  border-color: var(--border);
+}
+.dark .from-\[\#EEF6FA\],
+.dark .from-\[\#D0E8F0\]\/40 {
+  --tw-gradient-from: var(--surface-subtle);
+}
+.dark .via-\[\#F0F9F7\]\/50,
+.dark .to-\[\#F0F9F7\] {
+  --tw-gradient-via: var(--surface-subtle);
+  --tw-gradient-to: var(--surface-subtle);
+}
+.dark .to-white {
+  --tw-gradient-to: var(--card);
+}
+
+.dark .brand-gradient-subtle {
+  background: linear-gradient(135deg, oklch(0.2 0.03 240) 0%, oklch(0.2 0.025 200) 100%);
+}
+
+.dark .glow-card {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.dark .pattern-dots-light {
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+}
+
+/* Weekly calendar */
+.dark .weekly-calendar th {
+  color: var(--foreground);
+}
+.dark .weekly-calendar .available {
+  background-color: var(--card);
+}
+.dark .weekly-calendar .available:hover {
+  background-color: var(--color-brand-glow);
+}
+.dark .weekly-calendar .closed {
+  background-color: #4b5563 !important;
+}
+
+/* Timeslots */
+.dark .closed-timeslot {
+  background-color: #475569 !important;
+}
+.dark .student-timeslots {
+  background-color: var(--surface-subtle) !important;
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+/* React Calendar (its stock CSS hardcodes white/grey) */
+.dark .react-calendar {
+  background: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+.dark .react-calendar button {
+  color: inherit;
+}
+.dark .react-calendar__navigation button:disabled,
+.dark .react-calendar__tile:disabled {
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+}
+.dark .react-calendar__navigation button:enabled:hover,
+.dark .react-calendar__navigation button:enabled:focus,
+.dark .react-calendar__tile:enabled:focus {
+  background-color: var(--accent);
+}
+.dark .react-calendar__month-view__days__day--neighboringMonth {
+  color: var(--muted-foreground);
+}
+.dark .react-calendar__month-view__days__day--weekend {
+  color: #F87171;
+}
+.dark .custom-calendar .react-calendar__tile--now,
+.dark .custom-calendar .react-calendar__navigation button:hover {
+  background: var(--surface-subtle) !important;
+}
+.dark .custom-calendar .react-calendar__tile:hover {
+  background: var(--accent) !important;
+}
+
+/* Intro.js tour */
+.dark .introjs-tooltip {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+}
+.dark .introjs-tooltip-title {
+  color: #7DB6E0;
+}
+.dark .introjs-tooltiptext {
+  color: var(--muted-foreground);
+}
+.dark .introjs-arrow.top { border-bottom-color: var(--popover); }
+.dark .introjs-arrow.bottom { border-top-color: var(--popover); }
+.dark .introjs-arrow.left { border-right-color: var(--popover); }
+.dark .introjs-arrow.right { border-left-color: var(--popover); }

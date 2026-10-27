@@ -1,7 +1,7 @@
 const HeroIllustration = ({ className = "" }: { className?: string }) => (
   <svg viewBox="0 0 440 360" fill="none" className={className} xmlns="http://www.w3.org/2000/svg">
     {/* Background soft circle */}
-    <circle cx="220" cy="180" r="160" fill="#EEF6FA" />
+    <circle cx="220" cy="180" r="160" style={{ fill: "var(--surface-subtle)" }} />
     <circle cx="220" cy="180" r="120" fill="#D0E8F0" opacity="0.3" />
 
     {/* Desk */}

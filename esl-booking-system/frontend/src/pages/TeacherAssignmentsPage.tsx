@@ -155,13 +155,13 @@ const TeacherAssignmentsPage: React.FC = () => {
   const isPastDue = (d: string) => new Date() > new Date(d);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50">
       <NavBar />
       <div className="max-w-5xl mx-auto p-4 sm:p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <FileText className="h-6 w-6 text-blue-600" />
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Assignments</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Assignments</h1>
           </div>
           <Button onClick={() => setCreateOpen(true)} className="gap-1">
             <Plus className="h-4 w-4" /> New Assignment
@@ -284,7 +284,7 @@ const TeacherAssignmentsPage: React.FC = () => {
                 )}
 
                 {selectedDetail.submission ? (
-                  <Card className="bg-gray-50 dark:bg-gray-800">
+                  <Card className="bg-gray-50">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm flex items-center gap-2">
                         Student Submission

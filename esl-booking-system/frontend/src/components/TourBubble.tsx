@@ -186,7 +186,7 @@ export function TourBubble({
       {/* Header */}
       <div className="flex items-start justify-between gap-2 px-4 pt-3 pb-2 bg-gradient-to-r from-[#1a6fa8] to-[#2589c9]">
         <div className="flex-1 min-w-0">
-          <div className="text-[10px] font-semibold text-blue-100 uppercase tracking-wider mb-0.5">
+          <div className="text-[10px] font-semibold text-[#dbeafe] uppercase tracking-wider mb-0.5">
             Step {stepIndex + 1} of {totalSteps}
           </div>
           <h3

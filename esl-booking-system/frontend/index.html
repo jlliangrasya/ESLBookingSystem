@@ -8,6 +8,16 @@
     <meta name="theme-color" content="#2E6B9E" />
     <title>Brightfolks — ESL Tutoring & Booking Platform</title>
 
+    <!-- Apply saved theme before first paint (default: light) -->
+    <script>
+      try {
+        if (localStorage.getItem("theme") === "dark") {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        }
+      } catch (e) {}
+    </script>
+
     <!-- SEO -->
     <meta name="description" content="Book ESL tutoring sessions with Brightfolks. Find qualified English teachers, schedule lessons, and track your learning progress — all in one place." />
     <link rel="canonical" href="https://brightfolks.pages.dev/" />

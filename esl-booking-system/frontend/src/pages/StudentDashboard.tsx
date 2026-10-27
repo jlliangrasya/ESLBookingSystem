@@ -23,6 +23,7 @@ import AuthContext from "@/context/AuthContext";
 import NotificationBell from "@/components/NotificationBell";
 import LanguageToggle from "@/components/LanguageToggle";
 import InstallAppButton from "@/components/InstallAppButton";
+import ThemeToggle from "@/components/ThemeToggle";
 import { fmtDate, fmtDateOnly } from "@/utils/timezone";
 import AnnouncementPanel from "@/components/AnnouncementPanel";
 
@@ -506,6 +507,7 @@ const StudentDashboard = () => {
           {/* Desktop: full buttons (>= 620px) */}
           <div className="hidden min-[620px]:flex items-center gap-2">
             <InstallAppButton variant="white" />
+            <ThemeToggle variant="white" />
             <LanguageToggle variant="white" />
             <NotificationBell variant="white" />
             <Button variant="ghost" size="icon" onClick={() => navigate("/student-profile")}
@@ -538,10 +540,11 @@ const StudentDashboard = () => {
             </button>
             <div className="flex items-center gap-3 px-4 py-2">
               <InstallAppButton variant="white" />
+              <ThemeToggle variant="white" />
               <LanguageToggle variant="white" />
             </div>
             <button onClick={() => { setMobileMenuOpen(false); handleLogout(); }}
-              className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-red-200 hover:bg-white/10 w-full">
+              className="flex items-center gap-3 px-4 py-3 text-red-300 hover:text-[#fecaca] hover:bg-white/10 w-full">
               <LogOut className="h-5 w-5" /> <span className="text-sm">{t("student.logout")}</span>
             </button>
           </div>

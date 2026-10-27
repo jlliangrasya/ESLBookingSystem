@@ -12,7 +12,7 @@ const WaveDivider = ({ fill = "#ffffff", className = "" }: Props) => (
     >
       <path
         d="M0,48 C320,80 640,16 960,48 C1120,64 1280,32 1440,48 L1440,80 L0,80 Z"
-        fill={fill}
+        style={{ fill }}
       />
     </svg>
   </div>
