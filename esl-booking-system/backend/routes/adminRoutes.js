@@ -2440,7 +2440,8 @@ router.post('/students', authenticateToken, requireRole('company_admin'), requir
     if (cnt === 0) {
       await logAction(companyId, req.user.id, 'onboarding_student_invited', 'user', newStudent.id, { name, email });
     }
-    res.status(201).json({ message: 'Student created successfully' });
+    // The id lets the Add Student wizard go straight on to assigning a package.
+    res.status(201).json({ message: 'Student created successfully', id: newStudent.id });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }

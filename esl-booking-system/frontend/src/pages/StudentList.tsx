@@ -99,6 +99,44 @@ const emptyForm = {
   age: "",
 };
 
+// The Add Student modal is a wizard: create the account, then assign a
+// package, then set a recurring schedule with a teacher.
+type AddStep = "info" | "package" | "schedule";
+
+interface PackageOption {
+  id: number;
+  package_name: string;
+  session_limit: number;
+  subject: string | null;
+  is_active?: boolean | number;
+}
+
+interface TeacherOption {
+  id: number;
+  name: string;
+  is_active?: boolean | number;
+}
+
+const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+const emptySchedule = {
+  teacher_id: "",
+  days: [] as string[],
+  time: "09:00",
+  weeks: "4",
+  start_date: "",
+};
+
+type ScheduleResult = {
+  error?: boolean;
+  message?: string;
+  sessions_booked?: number;
+  sessions_remaining?: number;
+  skipped_dates?: { date: string; reason: string }[];
+};
+
+type CredInfo = { name: string; email: string; password: string; age: string; guardian_name: string };
+
 // MySQL hands back is_active as 0/1; treat a missing value as active so the row
 // never disappears if an older API response omits the column.
 const isActive = (s: Student) => s.is_active === undefined || !!s.is_active;
@@ -139,13 +177,25 @@ const StudentListPage: React.FC = () => {
   const [addError, setAddError] = useState<string | null>(null);
   const [addLoading, setAddLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [addStep, setAddStep] = useState<AddStep>("info");
+  // Set once step 1 succeeds; the account exists from then on, so closing the
+  // modal mid-wizard still shows the credentials.
+  const [newStudentId, setNewStudentId] = useState<number | null>(null);
+  const [pendingCred, setPendingCred] = useState<CredInfo | null>(null);
+  const [packageOptions, setPackageOptions] = useState<PackageOption[]>([]);
+  const [teacherOptions, setTeacherOptions] = useState<TeacherOption[]>([]);
+  const [selectedPackageId, setSelectedPackageId] = useState("");
+  const [studentPackageId, setStudentPackageId] = useState<number | null>(null);
+  const [packageSessions, setPackageSessions] = useState(0);
+  const [scheduleForm, setScheduleForm] = useState(emptySchedule);
+  const [scheduleResult, setScheduleResult] = useState<ScheduleResult | null>(null);
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [search, setSearch] = useState("");
   const [sessionFilter, setSessionFilter] = useState("all");
   const [teacherFilter, setTeacherFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [copiedId, setCopiedId] = useState<number | null>(null);
-  const [credStudent, setCredStudent] = useState<{ name: string; email: string; password: string; age: string; guardian_name: string } | null>(null);
+  const [credStudent, setCredStudent] = useState<CredInfo | null>(null);
   const [credCopied, setCredCopied] = useState(false);
   const [statusFilter, setStatusFilter] = useState("active");
   // The student the admin is about to delete, held until they confirm by name.
@@ -304,7 +354,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
       // that's the approval gate, and it deserves the explanation screen rather
       // than an inline error the owner can't act on.
       const token = localStorage.getItem("token");
-      await axios.post(
+      const res = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/admin/students`,
         {
           name: addForm.name,
@@ -316,17 +366,22 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
         },
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      setShowAddModal(false);
-      setCredStudent({
+      const cred: CredInfo = {
         name: addForm.name,
         email: addForm.email,
         password: addForm.password,
         age: addForm.age,
         guardian_name: addForm.guardian_name,
-      });
-      setCredCopied(false);
-      setAddForm(emptyForm);
+      };
+      setPendingCred(cred);
+      setNewStudentId(res.data?.id ?? null);
       fetchStudents();
+      if (res.data?.id && can("students.assign_package")) {
+        setAddStep("package");
+        loadPackageOptions();
+      } else {
+        finishAddWizard(cred);
+      }
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response) {
         // The approval gate. Send them to the screen that explains why and gives
@@ -345,6 +400,152 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
     }
   };
 
+  const openAddWizard = () => {
+    setAddForm(emptyForm);
+    setAddError(null);
+    setAddStep("info");
+    setNewStudentId(null);
+    setPendingCred(null);
+    setSelectedPackageId("");
+    setStudentPackageId(null);
+    setPackageSessions(0);
+    setScheduleForm(emptySchedule);
+    setScheduleResult(null);
+    setShowAddModal(true);
+  };
+
+  // Ends the wizard at whatever step it's on and shows the login credentials.
+  // Skipping or closing after step 1 lands here too, since the account exists.
+  const finishAddWizard = (cred: CredInfo | null = pendingCred) => {
+    setShowAddModal(false);
+    setAddError(null);
+    if (cred) {
+      setCredStudent(cred);
+      setCredCopied(false);
+    }
+    setPendingCred(null);
+    setAddForm(emptyForm);
+  };
+
+  const loadPackageOptions = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/student/packages`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      // Admins get inactive packages from this endpoint too; those can't be assigned.
+      const rows: PackageOption[] = Array.isArray(res.data) ? res.data : [];
+      setPackageOptions(rows.filter((p) => p.is_active === undefined || !!p.is_active));
+    } catch {
+      setPackageOptions([]);
+    }
+  };
+
+  const loadTeacherOptions = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/admin/teachers`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const rows: TeacherOption[] = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+      setTeacherOptions(rows.filter((t) => t.is_active === undefined || !!t.is_active));
+    } catch {
+      setTeacherOptions([]);
+    }
+  };
+
+  const handleAssignPackageStep = async () => {
+    if (!newStudentId || !selectedPackageId) return;
+    setAddLoading(true);
+    setAddError(null);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/admin/students/${newStudentId}/assign-package`,
+        { package_id: Number(selectedPackageId) },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      // A brand-new student has no earlier paid package, so the returned id is
+      // the package that actually holds the sessions.
+      setStudentPackageId(res.data?.id ?? null);
+      setPackageSessions(
+        packageOptions.find((p) => String(p.id) === selectedPackageId)?.session_limit ?? 0,
+      );
+      fetchStudents();
+      if (res.data?.id && can("students.book_classes")) {
+        setAddStep("schedule");
+        loadTeacherOptions();
+      } else {
+        finishAddWizard();
+      }
+    } catch (err: unknown) {
+      setAddError(
+        axios.isAxiosError(err) && err.response
+          ? err.response.data?.message || "Failed to assign package"
+          : "An unexpected error occurred",
+      );
+    } finally {
+      setAddLoading(false);
+    }
+  };
+
+  const handleScheduleStep = async () => {
+    if (!newStudentId || !studentPackageId) return;
+    setAddLoading(true);
+    setAddError(null);
+    setScheduleResult(null);
+    const token = localStorage.getItem("token");
+    const headers = { Authorization: `Bearer ${token}` };
+    try {
+      // Make this the student's regular teacher, so the list shows them and
+      // later bookings default to them. Admins without students.edit still get
+      // the schedule — the recurring call carries the teacher itself.
+      if (can("students.edit")) {
+        await axios.put(
+          `${import.meta.env.VITE_API_URL}/api/admin/students/${newStudentId}/assign-teacher`,
+          { teacher_id: Number(scheduleForm.teacher_id) },
+          { headers },
+        );
+      }
+      const res = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/recurring`,
+        {
+          student_package_id: studentPackageId,
+          student_id: newStudentId,
+          teacher_id: Number(scheduleForm.teacher_id),
+          days_of_week: scheduleForm.days,
+          start_time: scheduleForm.time,
+          num_weeks: parseInt(scheduleForm.weeks) || 4,
+          start_date: scheduleForm.start_date || undefined,
+        },
+        { headers },
+      );
+      setScheduleResult(res.data);
+      fetchStudents();
+    } catch (err: unknown) {
+      const data = axios.isAxiosError(err) ? err.response?.data : undefined;
+      if (data?.skipped_dates) {
+        setScheduleResult({ error: true, message: data.message, skipped_dates: data.skipped_dates });
+      } else {
+        setAddError(data?.message || "Failed to create recurring schedule");
+      }
+    } finally {
+      setAddLoading(false);
+    }
+  };
+
+  const plannedClasses = scheduleForm.days.length * (parseInt(scheduleForm.weeks) || 4);
+  const wizardSteps: AddStep[] = [
+    "info",
+    ...(can("students.assign_package") ? (["package"] as AddStep[]) : []),
+    ...(can("students.assign_package") && can("students.book_classes") ? (["schedule"] as AddStep[]) : []),
+  ];
+  const stepTitles: Record<AddStep, string> = {
+    info: "Student Information",
+    package: "Assign a Package",
+    schedule: "Recurring Schedule & Teacher",
+  };
+
   return (
     <>
       <NavBar />
@@ -361,11 +562,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
             </Button>
             <Button
               id="btn-add-student"
-              onClick={() => {
-                setAddForm(emptyForm);
-                setAddError(null);
-                setShowAddModal(true);
-              }}
+              onClick={openAddWizard}
             >
               <UserPlus className="h-4 w-4 mr-2" /> Add Student
             </Button>
@@ -786,61 +983,6 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
         </DialogContent>
       </Dialog>
 
-      {/* Send Credentials prompt — shown after a student is successfully created */}
-      <Dialog open={!!credStudent} onOpenChange={(open) => { if (!open) { setCredStudent(null); setCredCopied(false); } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Student Added!</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Share these login credentials with your student. Use the{" "}
-              <span className="inline-flex items-center gap-1 font-medium text-foreground">
-                <Copy className="h-3.5 w-3.5" /> Copy
-              </span>{" "}
-              button below and send it to them via chat or message.
-            </p>
-            {credStudent && (() => {
-              const credText = `Name: ${credStudent.name}
-Age: ${credStudent.age ?? ""}
-Guardian: ${credStudent.guardian_name ?? ""}
-Email: ${credStudent.email}
-Password: ${credStudent.password}
-
-Please use the email and password to login to https://esl-booking-system.pages.dev`;
-              return (
-                <div className="relative rounded-lg border bg-muted/50 p-4">
-                  <pre className="text-xs whitespace-pre-wrap break-all font-mono text-foreground leading-relaxed">
-                    {credText}
-                  </pre>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="mt-3 w-full gap-2"
-                    onClick={() => {
-                      navigator.clipboard.writeText(credText);
-                      setCredCopied(true);
-                      setTimeout(() => setCredCopied(false), 2000);
-                    }}
-                  >
-                    {credCopied ? (
-                      <><Check className="h-3.5 w-3.5 text-green-500" /> Copied!</>
-                    ) : (
-                      <><Copy className="h-3.5 w-3.5" /> Copy Credentials</>
-                    )}
-                  </Button>
-                </div>
-              );
-            })()}
-          </div>
-          <DialogFooter className="mt-2">
-            <Button variant="outline" onClick={() => { setCredStudent(null); setCredCopied(false); }}>
-              Done
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <SessionAdjustDialog
         mode={adjustTarget?.mode ?? null}
         studentPackageId={adjustTarget?.student.student_package_id ?? null}
@@ -863,17 +1005,43 @@ Please use the email and password to login to https://esl-booking-system.pages.d
       />
 
       {/* Add Student Modal */}
-      <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
-        <DialogContent>
+      <Dialog
+        open={showAddModal}
+        onOpenChange={(open) => {
+          if (open || addLoading) return;
+          // Past step 1 the account already exists, so still hand over the credentials.
+          if (addStep === "info") setShowAddModal(false);
+          else finishAddWizard();
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add New Student</DialogTitle>
+            {wizardSteps.length > 1 && (
+              <DialogDescription>
+                Step {wizardSteps.indexOf(addStep) + 1} of {wizardSteps.length} · {stepTitles[addStep]}
+              </DialogDescription>
+            )}
           </DialogHeader>
+          {wizardSteps.length > 1 && (
+            <div className="flex gap-1.5">
+              {wizardSteps.map((s, i) => (
+                <div
+                  key={s}
+                  className={`h-1.5 flex-1 rounded-full ${
+                    i <= wizardSteps.indexOf(addStep) ? "bg-primary" : "bg-muted"
+                  }`}
+                />
+              ))}
+            </div>
+          )}
           <div className="space-y-3">
             {addError && (
               <Alert variant="destructive">
                 <AlertDescription>{addError}</AlertDescription>
               </Alert>
             )}
+            {addStep === "info" && (<>
             <div>
               <Label>
                 Full Name <span className="text-destructive">*</span>
@@ -961,26 +1129,229 @@ Please use the email and password to login to https://esl-booking-system.pages.d
                 placeholder="Optional"
               />
             </div>
+            </>)}
+
+            {addStep === "package" && (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">{pendingCred?.name}</span> has been
+                  created. Choose the package they'll take classes from.
+                </p>
+                <div>
+                  <Label>
+                    Package <span className="text-destructive">*</span>
+                  </Label>
+                  {packageOptions.length === 0 ? (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      No active packages yet. Create one on the Packages page, or skip this step
+                      and assign it later from the student's profile.
+                    </p>
+                  ) : (
+                    <Select value={selectedPackageId} onValueChange={setSelectedPackageId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a package" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {packageOptions.map((p) => (
+                          <SelectItem key={p.id} value={String(p.id)}>
+                            {p.package_name} — {p.session_limit} sessions
+                            {p.subject ? ` (${p.subject})` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              </>
+            )}
+
+            {addStep === "schedule" && !scheduleResult?.sessions_booked && (
+              <>
+                <div>
+                  <Label>
+                    Teacher <span className="text-destructive">*</span>
+                  </Label>
+                  <Select
+                    value={scheduleForm.teacher_id}
+                    onValueChange={(v) => setScheduleForm((f) => ({ ...f, teacher_id: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a teacher" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {teacherOptions.map((t) => (
+                        <SelectItem key={t.id} value={String(t.id)}>
+                          {t.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>
+                    Days of Week <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {DAYS_OF_WEEK.map((day) => (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() =>
+                          setScheduleForm((f) => ({
+                            ...f,
+                            days: f.days.includes(day)
+                              ? f.days.filter((d) => d !== day)
+                              : [...f.days, day],
+                          }))
+                        }
+                        className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                          scheduleForm.days.includes(day)
+                            ? "bg-primary text-white border-primary"
+                            : "bg-white text-gray-700 border-gray-300 hover:border-primary/50"
+                        }`}
+                      >
+                        {day.substring(0, 3)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>
+                      Start Time <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      type="time"
+                      value={scheduleForm.time}
+                      onChange={(e) => setScheduleForm((f) => ({ ...f, time: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <Label>Weeks (1–12)</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={12}
+                      value={scheduleForm.weeks}
+                      onChange={(e) => setScheduleForm((f) => ({ ...f, weeks: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label>
+                    Start Date{" "}
+                    <span className="text-muted-foreground font-normal">(optional — defaults to tomorrow)</span>
+                  </Label>
+                  <Input
+                    type="date"
+                    value={scheduleForm.start_date}
+                    onChange={(e) => setScheduleForm((f) => ({ ...f, start_date: e.target.value }))}
+                  />
+                </div>
+                {scheduleForm.days.length > 0 && (
+                  <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg text-sm space-y-1">
+                    <p>
+                      <strong>Preview:</strong> ~{plannedClasses} classes over {scheduleForm.weeks} weeks
+                    </p>
+                    <p>
+                      Sessions available: <strong>{packageSessions}</strong>
+                    </p>
+                    {plannedClasses > packageSessions && (
+                      <p className="text-amber-600 flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" /> May not have enough sessions
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {addStep === "schedule" && scheduleResult && (
+              <>
+                {scheduleResult.error ? (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-700 font-medium">{scheduleResult.message}</p>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg space-y-1">
+                    <p className="text-green-700 font-medium flex items-center gap-1.5">
+                      <Check className="h-4 w-4" /> Recurring schedule created!
+                    </p>
+                    <p className="text-sm">{scheduleResult.sessions_booked} classes booked</p>
+                    <p className="text-sm">Sessions remaining: {scheduleResult.sessions_remaining}</p>
+                  </div>
+                )}
+                {scheduleResult.skipped_dates && scheduleResult.skipped_dates.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-amber-600 mb-1 flex items-center gap-1">
+                      <AlertTriangle className="h-3.5 w-3.5" /> Skipped dates:
+                    </p>
+                    <div className="max-h-36 overflow-y-auto space-y-1 border rounded-lg p-2">
+                      {scheduleResult.skipped_dates.map((s, i) => (
+                        <div key={i} className="text-xs flex gap-2">
+                          <span className="font-mono text-gray-600">{s.date}</span>
+                          <span className="text-amber-600">{s.reason}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
           <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setShowAddModal(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleAddStudent}
-              disabled={
-                addLoading ||
-                !addForm.name ||
-                !addForm.email ||
-                !addForm.password
-              }
-            >
-              {addLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+            {addStep === "info" && (
+              <>
+                <Button variant="outline" onClick={() => setShowAddModal(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleAddStudent}
+                  disabled={
+                    addLoading ||
+                    !addForm.name ||
+                    !addForm.email ||
+                    !addForm.password
+                  }
+                >
+                  {addLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Proceed"}
+                </Button>
+              </>
+            )}
+            {addStep === "package" && (
+              <>
+                <Button variant="outline" onClick={() => finishAddWizard()} disabled={addLoading}>
+                  Skip
+                </Button>
+                <Button
+                  onClick={handleAssignPackageStep}
+                  disabled={addLoading || !selectedPackageId}
+                >
+                  {addLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Proceed"}
+                </Button>
+              </>
+            )}
+            {addStep === "schedule" &&
+              (scheduleResult?.sessions_booked ? (
+                <Button onClick={() => finishAddWizard()}>Done</Button>
               ) : (
-                "Create Student"
-              )}
-            </Button>
+                <>
+                  <Button variant="outline" onClick={() => finishAddWizard()} disabled={addLoading}>
+                    Skip
+                  </Button>
+                  <Button
+                    onClick={handleScheduleStep}
+                    disabled={
+                      addLoading ||
+                      !scheduleForm.teacher_id ||
+                      scheduleForm.days.length === 0 ||
+                      !scheduleForm.time
+                    }
+                  >
+                    {addLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create Schedule"}
+                  </Button>
+                </>
+              ))}
           </DialogFooter>
         </DialogContent>
       </Dialog>
