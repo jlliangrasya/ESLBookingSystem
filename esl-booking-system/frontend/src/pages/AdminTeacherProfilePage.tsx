@@ -21,7 +21,7 @@ import {
   ArrowLeft, UserCircle, CalendarDays, Loader2, Pencil, Save, Eye, EyeOff,
   BookOpen, KeyRound, ChevronLeft, ChevronRight, Timer, CheckCircle2,
   UserX, Users, FileText, Heart, Search, Calculator, Copy, Check,
-  Plus, X, Download,
+  Plus, X, Download, Clock,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly } from "@/utils/timezone";
 import ReportModal from "@/components/ReportModal";
@@ -60,8 +60,19 @@ interface CompletedBooking {
   subject: string | null;
   student_absent: boolean;
   teacher_absent: boolean;
+  /** Student absent but notified in time — earns a half credit (utils/halfCredits.js) */
+  late_notice: boolean;
   has_report: boolean;
 }
+
+const AttendanceBadge = ({ b }: { b: CompletedBooking }) =>
+  b.late_notice
+    ? <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Late Notice</span>
+    : b.student_absent
+    ? <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">Student Absent</span>
+    : b.teacher_absent
+    ? <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">Teacher Absent</span>
+    : <span className="text-xs text-green-700">Present</span>;
 
 interface WeekBooking {
   id: number;
@@ -149,9 +160,13 @@ interface SalaryRates {
   twentyFive: string;
   absentFifty: string;
   absentTwentyFive: string;
+  lateNoticeFifty: string;
+  lateNoticeTwentyFive: string;
 }
 
-const EMPTY_RATES: SalaryRates = { fifty: "", twentyFive: "", absentFifty: "", absentTwentyFive: "" };
+const EMPTY_RATES: SalaryRates = {
+  fifty: "", twentyFive: "", absentFifty: "", absentTwentyFive: "", lateNoticeFifty: "", lateNoticeTwentyFive: "",
+};
 
 const ratesStorageKey = (teacherId: string) => `teacherSalaryRates_${teacherId}`;
 
@@ -204,6 +219,7 @@ const AdminTeacherProfilePage = () => {
   const [leaves, setLeaves] = useState<LeaveEntry[]>([]);
   const [kpi, setKpi] = useState<Kpi | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
+  const [lateNoticeEnabled, setLateNoticeEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Upcoming filters & pagination
@@ -240,7 +256,7 @@ const AdminTeacherProfilePage = () => {
   const [rangeFrom, setRangeFrom] = useState("");
   const [rangeTo, setRangeTo] = useState("");
   const [appliedRange, setAppliedRange] = useState<{ from: string; to: string } | null>(null);
-  const [rangeDrillKey, setRangeDrillKey] = useState<"fifty" | "twentyFive" | "absences" | null>(null);
+  const [rangeDrillKey, setRangeDrillKey] = useState<"fifty" | "twentyFive" | "absences" | "lateNotice" | null>(null);
 
   // Salary calculator rates — remembered per teacher on this browser
   const [salaryRates, setSalaryRates] = useState<SalaryRates>(() => loadRates(id));
@@ -330,6 +346,7 @@ const AdminTeacherProfilePage = () => {
       setCompletedBookings(res.data.completedBookings || []);
       setKpi(res.data.kpi || null);
       setHealth(res.data.health || null);
+      setLateNoticeEnabled(!!res.data.late_notice_enabled);
     } catch (err) {
       console.error("Error fetching teacher profile:", err);
     } finally {
@@ -760,17 +777,27 @@ const AdminTeacherProfilePage = () => {
           const to = new Date(appliedRange.to + "T00:00:00");
           const fiftyList = inRange.filter(b => !b.student_absent && b.duration_minutes === 50);
           const twentyFiveList = inRange.filter(b => !b.student_absent && b.duration_minutes === 25);
-          const absencesList = inRange.filter(b => b.student_absent);
+          // Late notices get their own card and pay lines while the policy is on —
+          // or when the range still holds some from before it was switched off
+          const showLateNotice = lateNoticeEnabled || inRange.some(b => b.late_notice);
+          const lateNoticeList = showLateNotice ? inRange.filter(b => b.late_notice) : [];
+          const absencesList = inRange.filter(b => b.student_absent && !(showLateNotice && b.late_notice));
           const label = `${format(from, "MMM dd, yyyy")} – ${format(to, "MMM dd, yyyy")}`;
 
-          // Salary breakdown — absences are paid at their own rate per duration
+          // Salary breakdown — absences and late notices are paid at their own rate per duration
           const absentFiftyCount = absencesList.filter(b => b.duration_minutes === 50).length;
           const absentTwentyFiveCount = absencesList.filter(b => b.duration_minutes === 25).length;
+          const lateNoticeFiftyCount = lateNoticeList.filter(b => b.duration_minutes === 50).length;
+          const lateNoticeTwentyFiveCount = lateNoticeList.filter(b => b.duration_minutes === 25).length;
           const salaryRows = [
             { key: "fifty" as const, label: "50-min class", count: fiftyList.length, rate: rateValue(salaryRates.fifty) },
             { key: "twentyFive" as const, label: "25-min class", count: twentyFiveList.length, rate: rateValue(salaryRates.twentyFive) },
             { key: "absentFifty" as const, label: "50-min absence", count: absentFiftyCount, rate: rateValue(salaryRates.absentFifty) },
             { key: "absentTwentyFive" as const, label: "25-min absence", count: absentTwentyFiveCount, rate: rateValue(salaryRates.absentTwentyFive) },
+            ...(showLateNotice ? [
+              { key: "lateNoticeFifty" as const, label: "50-min late notice", count: lateNoticeFiftyCount, rate: rateValue(salaryRates.lateNoticeFifty) },
+              { key: "lateNoticeTwentyFive" as const, label: "25-min late notice", count: lateNoticeTwentyFiveCount, rate: rateValue(salaryRates.lateNoticeTwentyFive) },
+            ] : []),
           ];
           const classesTotal = salaryRows.reduce((sum, r) => sum + r.count * r.rate, 0);
           const adjustmentsTotal = salaryAdjustments.reduce((sum, a) => sum + amountValue(a.amount), 0);
@@ -797,13 +824,19 @@ const AdminTeacherProfilePage = () => {
               setDownloadingPayroll(false);
             }
           };
-          const uncountedAbsences = absencesList.length - absentFiftyCount - absentTwentyFiveCount;
+          const uncountedAbsences = absencesList.length - absentFiftyCount - absentTwentyFiveCount
+            + lateNoticeList.length - lateNoticeFiftyCount - lateNoticeTwentyFiveCount;
           const rangeDrillTitles = {
             fifty: "50-min Completed Classes",
             twentyFive: "25-min Completed Classes",
             absences: "Absences",
+            lateNotice: "Late Notices",
           };
-          const rangeDrillList = rangeDrillKey === "fifty" ? fiftyList : rangeDrillKey === "twentyFive" ? twentyFiveList : rangeDrillKey === "absences" ? absencesList : [];
+          const rangeDrillList = rangeDrillKey === "fifty" ? fiftyList
+            : rangeDrillKey === "twentyFive" ? twentyFiveList
+            : rangeDrillKey === "absences" ? absencesList
+            : rangeDrillKey === "lateNotice" ? lateNoticeList
+            : [];
           return (
             <>
               <Card className="glow-card border-0 rounded-2xl border-l-4 border-l-primary">
@@ -814,7 +847,7 @@ const AdminTeacherProfilePage = () => {
                   <p className="text-xs text-muted-foreground">{label}</p>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className={`grid gap-3 ${showLateNotice ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
                     <button
                       onClick={() => setRangeDrillKey("fifty")}
                       className="text-left border rounded-xl p-3 bg-white hover:bg-indigo-50 hover:border-indigo-300 transition-colors cursor-pointer"
@@ -844,6 +877,18 @@ const AdminTeacherProfilePage = () => {
                         <UserX className="h-3.5 w-3.5" /> Absences
                       </p>
                     </button>
+                    {showLateNotice && (
+                      <button
+                        onClick={() => setRangeDrillKey("lateNotice")}
+                        className="text-left border rounded-xl p-3 bg-white hover:bg-amber-50 hover:border-amber-300 transition-colors cursor-pointer"
+                      >
+                        <p className="text-xl font-bold text-amber-600">{lateNoticeList.length}</p>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                          <Clock className="h-3.5 w-3.5" /> Late Notice
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">½ credit to student</p>
+                      </button>
+                    )}
                   </div>
 
                   {/* Salary calculator */}
@@ -863,7 +908,7 @@ const AdminTeacherProfilePage = () => {
                     </div>
 
                     {/* Rate inputs */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <div className={`grid grid-cols-2 gap-2 ${showLateNotice ? "md:grid-cols-3" : "md:grid-cols-4"}`}>
                       {salaryRows.map(row => (
                         <div key={row.key} className="space-y-1">
                           <Label className="text-xs" htmlFor={`rate-${row.key}`}>
@@ -1003,13 +1048,7 @@ const AdminTeacherProfilePage = () => {
                               <TableCell className="text-sm">{fmtDate(b.appointment_date, "MMM d, yyyy h:mm a")}</TableCell>
                               <TableCell className="text-sm font-medium">{b.student_name}</TableCell>
                               <TableCell className="text-sm">{b.duration_minutes} min{b.subject ? ` · ${b.subject}` : ""}</TableCell>
-                              <TableCell>
-                                {b.student_absent
-                                  ? <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">Student Absent</span>
-                                  : b.teacher_absent
-                                  ? <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">Teacher Absent</span>
-                                  : <span className="text-xs text-green-700">Present</span>}
-                              </TableCell>
+                              <TableCell><AttendanceBadge b={b} /></TableCell>
                               <TableCell>
                                 {b.has_report
                                   ? <Button size="sm" variant="outline" className="text-xs h-7 border-green-400 text-green-700 hover:bg-green-50" onClick={() => setReportModal({ open: true, bookingId: b.id, studentName: b.student_name, classDate: b.appointment_date })}>✓ View Report</Button>
@@ -1433,13 +1472,7 @@ const AdminTeacherProfilePage = () => {
                       <TableCell className="text-sm">{fmtDate(b.appointment_date, "MMM d, yyyy h:mm a")}</TableCell>
                       <TableCell className="text-sm font-medium">{b.student_name}</TableCell>
                       <TableCell className="text-sm">{b.duration_minutes} min{b.subject ? ` · ${b.subject}` : ""}</TableCell>
-                      <TableCell>
-                        {b.student_absent
-                          ? <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">Student Absent</span>
-                          : b.teacher_absent
-                          ? <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">Teacher Absent</span>
-                          : <span className="text-xs text-green-700">Present</span>}
-                      </TableCell>
+                      <TableCell><AttendanceBadge b={b} /></TableCell>
                       <TableCell>
                         {b.has_report
                           ? <Button size="sm" variant="outline" className="text-xs h-7 border-green-400 text-green-700 hover:bg-green-50" onClick={() => setReportModal({ open: true, bookingId: b.id, studentName: b.student_name, classDate: b.appointment_date })}>✓ View Report</Button>

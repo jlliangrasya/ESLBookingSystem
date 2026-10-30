@@ -342,6 +342,7 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
     const [completedBookings] = await pool.query(`
       SELECT MIN(b.id) AS id, MIN(b.appointment_date) AS appointment_date,
              b.student_absent, b.teacher_absent,
+             MAX(IF(b.student_absent AND b.absence_notice_at IS NOT NULL, 1, 0)) AS late_notice,
              MIN(u.name) AS student_name, tp.duration_minutes, sp.subject,
              MAX(IF(cr.id IS NOT NULL, 1, 0)) AS has_report
       FROM bookings b
@@ -404,8 +405,12 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
     const totalDone = totalCompletedRow.cnt || 0;
     const totalAbsent = totalAbsencesRow.cnt || 0;
 
+    // Lets the range results split late notices out of plain absences
+    const [[company]] = await pool.query('SELECT late_notice_enabled FROM companies WHERE id = ?', [companyId]);
+
     res.json({
       teacher, schedule, leaves, completedBookings,
+      late_notice_enabled: !!company?.late_notice_enabled,
       kpi: {
         fifty_min_this_week: fiftyMinRow.cnt || 0,
         twenty_five_min_this_week: twentyFiveMinRow.cnt || 0,
