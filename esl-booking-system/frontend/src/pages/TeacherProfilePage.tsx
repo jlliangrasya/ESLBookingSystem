@@ -12,7 +12,7 @@ import { TIMEZONES, setUserTimezone } from "@/utils/timezone";
 
 const TeacherProfilePage: React.FC = () => {
   const [profile, setProfile] = useState({
-    name: "", email: "", password: "********",
+    name: "", email: "", contact_number: "", password: "********",
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   });
   const [isEditing, setIsEditing] = useState(false);
@@ -32,6 +32,7 @@ const TeacherProfilePage: React.FC = () => {
         setProfile({
           name: res.data.name || "",
           email: res.data.email || "",
+          contact_number: res.data.contact_number || "",
           password: "********",
           timezone: res.data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
         });
@@ -55,7 +56,7 @@ const TeacherProfilePage: React.FC = () => {
     setSaveMsg(null);
     setSaveError(null);
     try {
-      const payload: Record<string, string> = { name: profile.name, email: profile.email, timezone: profile.timezone };
+      const payload: Record<string, string> = { name: profile.name, email: profile.email, contact_number: profile.contact_number, timezone: profile.timezone };
       if (profile.password && profile.password !== "********") {
         payload.password = profile.password;
       }
@@ -112,6 +113,20 @@ const TeacherProfilePage: React.FC = () => {
                 value={profile.email}
                 onChange={handleChange}
                 disabled={!isEditing}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="teacher-contact">Contact Number</Label>
+              <Input
+                id="teacher-contact"
+                type="tel"
+                name="contact_number"
+                maxLength={50}
+                value={profile.contact_number}
+                onChange={handleChange}
+                disabled={!isEditing}
+                placeholder={isEditing ? "+63 917 123 4567" : "Not added yet — click Edit to add one"}
               />
             </div>
 

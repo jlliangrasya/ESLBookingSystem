@@ -188,7 +188,7 @@ router.get("/teachers", authenticateToken, requireRole('company_admin'), async (
     const year = parseInt(req.query.year) || new Date().getUTCFullYear();
 
     const [rows] = await pool.query(`
-      SELECT u.id, u.name, u.email, u.password, u.created_at,
+      SELECT u.id, u.name, u.email, u.contact_number, u.password, u.created_at,
              COUNT(DISTINCT CASE WHEN b.appointment_date >= NOW() AND b.status NOT IN ('cancelled','done') THEN COALESCE(b.booking_group_id, CAST(b.id AS CHAR)) END) AS upcoming_classes,
              COUNT(DISTINCT CASE WHEN DATE(b.appointment_date) = CURDATE() AND b.status NOT IN ('cancelled','done') THEN COALESCE(b.booking_group_id, CAST(b.id AS CHAR)) END) AS classes_today,
              COUNT(DISTINCT CASE WHEN b.status IN ('confirmed','done')
@@ -225,6 +225,8 @@ router.post("/teachers", authenticateToken, requireRole('company_admin'), requir
     // explicitly supplied password still works exactly as before.
     const { name, email } = req.body;
     if (!name || !email) return res.status(400).json({ message: 'name and email are required' });
+    const contactNumber = (req.body.contact_number || '').trim() || null;
+    if (contactNumber && contactNumber.length > 50) return res.status(400).json({ message: 'Contact number is too long' });
     const suppliedPassword = req.body.password;
     const password = suppliedPassword || generateTempPassword();
     const wasGenerated = !suppliedPassword;
@@ -249,8 +251,8 @@ router.post("/teachers", authenticateToken, requireRole('company_admin'), requir
     if (existing.length > 0) return res.status(400).json({ message: 'Email already registered' });
 
     const [result] = await pool.query(
-      "INSERT INTO users (company_id, role, name, email, password) VALUES (?, 'teacher', ?, ?, ?)",
-      [companyId, name, email, password]
+      "INSERT INTO users (company_id, role, name, email, password, contact_number) VALUES (?, 'teacher', ?, ?, ?, ?)",
+      [companyId, name, email, password, contactNumber]
     );
     await logAction(companyId, adminId, 'teacher_added', 'user', result.insertId, { name, email });
 
@@ -313,7 +315,7 @@ router.get("/teachers/:id", authenticateToken, requireRole('company_admin'), asy
     // lose that email, and the admin is already the one who can reset it. Only
     // ever returned to a company_admin reading their own company's teacher.
     const [[teacher]] = await pool.query(
-      "SELECT id, name, email, password, created_at FROM users WHERE id = ? AND company_id = ? AND role = 'teacher'",
+      "SELECT id, name, email, contact_number, password, created_at FROM users WHERE id = ? AND company_id = ? AND role = 'teacher'",
       [id, companyId]
     );
     if (!teacher) return res.status(404).json({ message: 'Teacher not found' });
@@ -432,17 +434,18 @@ router.put("/teachers/:id", authenticateToken, requireRole('company_admin'), req
     const adminId = req.user.id;
     const { name, email, password } = req.body;
     const { id } = req.params;
-    if (password) {
-      await pool.query(
-        "UPDATE users SET name = ?, email = ?, password = ? WHERE id = ? AND company_id = ? AND role = 'teacher'",
-        [name, email, password, id, companyId]
-      );
-    } else {
-      await pool.query(
-        "UPDATE users SET name = ?, email = ? WHERE id = ? AND company_id = ? AND role = 'teacher'",
-        [name, email, id, companyId]
-      );
-    }
+    const contactNumber = (req.body.contact_number || '').trim() || null;
+    if (contactNumber && contactNumber.length > 50) return res.status(400).json({ message: 'Contact number is too long' });
+    // Only touch contact_number when the caller sent it, so a client that omits
+    // the field doesn't silently clear the number on record.
+    const sets = ['name = ?', 'email = ?'];
+    const params = [name, email];
+    if (password) { sets.push('password = ?'); params.push(password); }
+    if (req.body.contact_number !== undefined) { sets.push('contact_number = ?'); params.push(contactNumber); }
+    await pool.query(
+      `UPDATE users SET ${sets.join(', ')} WHERE id = ? AND company_id = ? AND role = 'teacher'`,
+      [...params, id, companyId]
+    );
     await logAction(companyId, adminId, 'teacher_updated', 'user', Number(id), { name, email });
     res.json({ message: 'Teacher updated successfully' });
   } catch (err) {

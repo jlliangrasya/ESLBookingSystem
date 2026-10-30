@@ -868,7 +868,7 @@ router.post('/bookings/:id/done', authenticateToken, requireRole('teacher'), asy
 router.get('/profile', authenticateToken, requireRole('teacher'), async (req, res) => {
     try {
         const [[teacher]] = await pool.query(
-            'SELECT id, name, email, timezone FROM users WHERE id = ?', [req.user.id]
+            'SELECT id, name, email, contact_number, timezone FROM users WHERE id = ?', [req.user.id]
         );
         res.json(teacher);
     } catch (err) {
@@ -876,20 +876,21 @@ router.get('/profile', authenticateToken, requireRole('teacher'), async (req, re
     }
 });
 
-// Update teacher's own profile (name, email, timezone, optional password)
+// Update teacher's own profile (name, email, timezone, optional password and contact number)
 router.put('/profile', authenticateToken, requireRole('teacher'), async (req, res) => {
     try {
         const { name, email, password, timezone } = req.body;
         const teacherId = req.user.id;
         if (!name || !email) return res.status(400).json({ message: 'Name and email are required' });
+        const contactNumber = (req.body.contact_number || '').trim() || null;
+        if (contactNumber && contactNumber.length > 50) return res.status(400).json({ message: 'Contact number is too long' });
 
-        if (password) {
-            await pool.query('UPDATE users SET name = ?, email = ?, password = ?, timezone = ? WHERE id = ?',
-                [name, email, password, timezone || 'UTC', teacherId]);
-        } else {
-            await pool.query('UPDATE users SET name = ?, email = ?, timezone = ? WHERE id = ?',
-                [name, email, timezone || 'UTC', teacherId]);
-        }
+        // contact_number is only written when sent, so an older client can't clear it.
+        const sets = ['name = ?', 'email = ?', 'timezone = ?'];
+        const params = [name, email, timezone || 'UTC'];
+        if (password) { sets.push('password = ?'); params.push(password); }
+        if (req.body.contact_number !== undefined) { sets.push('contact_number = ?'); params.push(contactNumber); }
+        await pool.query(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, [...params, teacherId]);
         res.json({ message: 'Profile updated successfully' });
     } catch (err) {
         res.status(500).json({ message: 'Server error' });

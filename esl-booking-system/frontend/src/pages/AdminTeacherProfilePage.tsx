@@ -32,6 +32,7 @@ interface TeacherProfile {
   id: number;
   name: string;
   email: string;
+  contact_number: string | null;
   // Returned by GET /api/admin/teachers/:id so the admin can re-send the login
   // when a teacher loses the invite email.
   password: string;
@@ -267,7 +268,7 @@ const AdminTeacherProfilePage = () => {
 
   // Edit dialog
   const [showEdit, setShowEdit] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", email: "", password: "" });
+  const [editForm, setEditForm] = useState({ name: "", email: "", contact_number: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -436,7 +437,7 @@ const AdminTeacherProfilePage = () => {
 
   const openEdit = () => {
     if (!teacher) return;
-    setEditForm({ name: teacher.name, email: teacher.email, password: "" });
+    setEditForm({ name: teacher.name, email: teacher.email, contact_number: teacher.contact_number || "", password: "" });
     setEditError(null);
     setShowEdit(true);
   };
@@ -445,7 +446,7 @@ const AdminTeacherProfilePage = () => {
     setEditLoading(true);
     setEditError(null);
     try {
-      const payload: Record<string, string> = { name: editForm.name, email: editForm.email };
+      const payload: Record<string, string> = { name: editForm.name, email: editForm.email, contact_number: editForm.contact_number };
       if (editForm.password) payload.password = editForm.password;
       await axios.put(`${base}/api/admin/teachers/${id}`, payload, { headers });
       setShowEdit(false);
@@ -586,6 +587,18 @@ const AdminTeacherProfilePage = () => {
             <div>
               <p className="text-xs text-muted-foreground">Email</p>
               <p className="font-medium">{teacher.email}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Contact Number</p>
+              {teacher.contact_number ? (
+                <p className="font-medium">{teacher.contact_number}</p>
+              ) : can("teachers.edit") ? (
+                <button type="button" onClick={openEdit} className="font-medium text-primary hover:underline">
+                  + Add contact number
+                </button>
+              ) : (
+                <p className="text-muted-foreground">—</p>
+              )}
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Added</p>
@@ -1519,6 +1532,16 @@ const AdminTeacherProfilePage = () => {
                 type="email"
                 value={editForm.email}
                 onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Contact Number <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Input
+                type="tel"
+                maxLength={50}
+                value={editForm.contact_number}
+                onChange={(e) => setEditForm((f) => ({ ...f, contact_number: e.target.value }))}
+                placeholder="+63 917 123 4567"
               />
             </div>
             <div className="space-y-1.5">

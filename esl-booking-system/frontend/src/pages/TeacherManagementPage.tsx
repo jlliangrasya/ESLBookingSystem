@@ -25,6 +25,7 @@ interface Teacher {
   id: number;
   name: string;
   email: string;
+  contact_number: string | null;
   // Returned by the list endpoint so the row's Copy button can hand over the
   // teacher's login without a second request.
   password: string;
@@ -101,7 +102,7 @@ const TeacherManagementPage = () => {
   // server generates a temporary one and emails an invite, and the credentials
   // come back in the response for the admin to copy (see inviteResult).
   const [showAddModal, setShowAddModal] = useState(false);
-  const [addForm, setAddForm] = useState({ name: "", email: "" });
+  const [addForm, setAddForm] = useState({ name: "", email: "", contact_number: "" });
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [copiedTeacherId, setCopiedTeacherId] = useState<number | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
@@ -121,7 +122,7 @@ const TeacherManagementPage = () => {
 
   // Edit teacher modal
   const [editTeacher, setEditTeacher] = useState<Teacher | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", email: "" });
+  const [editForm, setEditForm] = useState({ name: "", email: "", contact_number: "" });
   const [editError, setEditError] = useState<string | null>(null);
   const [editLoading, setEditLoading] = useState(false);
 
@@ -183,7 +184,7 @@ const TeacherManagementPage = () => {
         { headers },
       );
       setShowAddModal(false);
-      setAddForm({ name: "", email: "" });
+      setAddForm({ name: "", email: "", contact_number: "" });
       const creds = res.data?.credentials;
       if (creds) {
         setInviteCopied(false);
@@ -421,6 +422,7 @@ const TeacherManagementPage = () => {
                 <TableRow className="brand-gradient-subtle">
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Contact</TableHead>
                   <TableHead>Today</TableHead>
                   <TableHead>This Week</TableHead>
                   <TableHead>{["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][pickerMonth - 1]} {pickerYear}</TableHead>
@@ -431,7 +433,7 @@ const TeacherManagementPage = () => {
               <TableBody>
                 {filteredTeachers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       {teacherSearch ? "No teachers match your search" : "No teachers yet"}
                     </TableCell>
                   </TableRow>
@@ -442,6 +444,7 @@ const TeacherManagementPage = () => {
                     <TableRow key={t.id}>
                       <TableCell className="font-medium">{t.name}</TableCell>
                       <TableCell className="text-sm">{t.email}</TableCell>
+                      <TableCell className="text-sm">{t.contact_number || <span className="text-muted-foreground">—</span>}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="bg-orange-100 text-orange-700">{t.classes_today}</Badge>
                       </TableCell>
@@ -484,7 +487,7 @@ const TeacherManagementPage = () => {
                           )}
                           {can("teachers.edit") && (
                             <Button size="sm" variant="outline" className="text-xs h-7"
-                              onClick={() => { setEditTeacher(t); setEditForm({ name: t.name, email: t.email }); }}>
+                              onClick={() => { setEditTeacher(t); setEditForm({ name: t.name, email: t.email, contact_number: t.contact_number || "" }); }}>
                               <Pencil className="h-3 w-3 mr-1" /> Edit
                             </Button>
                           )}
@@ -543,6 +546,7 @@ const TeacherManagementPage = () => {
             {addError && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{addError}</AlertDescription></Alert>}
             <div className="space-y-1.5"><Label>Full Name</Label><Input placeholder="Jane Doe" value={addForm.name} onChange={(e) => setAddForm({ ...addForm, name: e.target.value })} /></div>
             <div className="space-y-1.5"><Label>Email</Label><Input type="email" placeholder="jane@example.com" value={addForm.email} onChange={(e) => setAddForm({ ...addForm, email: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Contact Number <span className="text-muted-foreground font-normal">(optional)</span></Label><Input type="tel" placeholder="+63 917 123 4567" maxLength={50} value={addForm.contact_number} onChange={(e) => setAddForm({ ...addForm, contact_number: e.target.value })} /></div>
             <p className="text-xs text-muted-foreground">
               We'll generate a temporary password and show it to you next, in case
               you'd rather send it yourself.
@@ -603,6 +607,7 @@ const TeacherManagementPage = () => {
             {editError && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{editError}</AlertDescription></Alert>}
             <div className="space-y-1.5"><Label>Full Name</Label><Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} /></div>
             <div className="space-y-1.5"><Label>Email</Label><Input type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Contact Number</Label><Input type="tel" placeholder="+63 917 123 4567" maxLength={50} value={editForm.contact_number} onChange={(e) => setEditForm({ ...editForm, contact_number: e.target.value })} /></div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditTeacher(null)}>Cancel</Button>

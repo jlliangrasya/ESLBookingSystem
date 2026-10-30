@@ -200,6 +200,12 @@ const MIGRATIONS = [
     check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'subscription_plans' AND COLUMN_NAME = 'is_public'",
     up: 'ALTER TABLE subscription_plans ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT TRUE',
   },
+  // ── 021: Teacher contact number ───────────────────────────────────────────
+  {
+    name: 'users.contact_number column',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'contact_number'",
+    up: 'ALTER TABLE users ADD COLUMN contact_number VARCHAR(50) NULL',
+  },
 ];
 
 async function main() {

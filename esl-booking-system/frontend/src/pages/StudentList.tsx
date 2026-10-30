@@ -1379,7 +1379,9 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
   `Login at: https://brightfolks.pages.dev`,
 ].filter(l => l !== null).join("\n")}
           </div>
-          <DialogFooter className="gap-2 sm:gap-0">
+          {/* A grid, not the default flex footer: two w-full buttons in a flex
+              row squeezed the copy button to a sliver. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <Button
               className="student-copy-btn w-full gap-2"
               onClick={() => {
@@ -1402,7 +1404,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
             <Button variant="outline" className="w-full" onClick={() => setCredStudent(null)}>
               Done
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 
