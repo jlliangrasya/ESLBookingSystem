@@ -1588,7 +1588,7 @@ router.get('/students/:id', authenticateToken, requireRole('company_admin'), asy
     const { id } = req.params;
 
     const [[student]] = await pool.query(
-      'SELECT id, name, email, guardian_name, nationality, age, is_active, created_at FROM users WHERE id = ? AND company_id = ? AND role = ?',
+      'SELECT id, name, email, guardian_name, nationality, age, is_active, is_disabled, created_at FROM users WHERE id = ? AND company_id = ? AND role = ?',
       [id, companyId, 'student']
     );
     if (!student) return res.status(404).json({ message: 'Student not found' });
@@ -2517,6 +2517,26 @@ router.post('/students/:id/reactivate', authenticateToken, requireRole('company_
   }
 });
 
+// Disable / enable a student (company_admin only). Lighter than /deactivate:
+// only hides the student from the dashboard's Active Students count and the
+// low-classes panel. Login, bookings, records and class counts are untouched.
+router.post('/students/:id/:action(disable|enable)', authenticateToken, requireRole('company_admin'), requirePermission('students.deactivate'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const { id, action } = req.params;
+    const disabled = action === 'disable';
+    const [result] = await pool.query(
+      "UPDATE users SET is_disabled = ? WHERE id = ? AND company_id = ? AND role = 'student'",
+      [disabled, id, companyId]
+    );
+    if (result.affectedRows === 0) return res.status(404).json({ message: 'Student not found' });
+    await logAction(companyId, req.user.id, disabled ? 'student_disabled' : 'student_enabled', 'user', Number(id), {});
+    res.json({ message: disabled ? 'Student disabled' : 'Student enabled' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Permanently delete a student and every record attached to them (company_admin).
 // Unlike /deactivate above, this cannot be undone: the account, its packages,
 // bookings, class reports, homework and feedback are all destroyed. The typed-name
@@ -2748,8 +2768,9 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
       `SELECT
          -- Same count the plan seat limit is enforced against (add student, register, import)
          (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'student' AND is_active = TRUE) AS totalStudents,
+         -- Disabled students are left out here (and only here) by design
          (SELECT COUNT(*) FROM users u WHERE u.company_id = c.id AND u.role = 'student' AND u.is_active = TRUE
-            AND u.id IN (${activePackageStudentIds})) AS activeStudents,
+            AND u.is_disabled = FALSE AND u.id IN (${activePackageStudentIds})) AS activeStudents,
          (SELECT COUNT(*) FROM users u WHERE u.company_id = c.id AND u.role = 'student' AND u.is_active = TRUE
             AND u.id NOT IN (${activePackageStudentIds})) AS noPackageStudents,
          (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE) AS teachersCount,

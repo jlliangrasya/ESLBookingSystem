@@ -72,6 +72,7 @@ interface StudentProfile {
   nationality: string | null;
   age: number | null;
   is_active: boolean;
+  is_disabled?: boolean | number;
   created_at: string;
 }
 
@@ -256,6 +257,25 @@ const AdminStudentProfilePage = () => {
       console.error(`Error ${action}ing student:`, err);
     } finally {
       setDeactivateLoading(false);
+    }
+  };
+
+  // Disable/enable student — only hides them from the dashboard's Active
+  // Students count and low-classes panel; login and records are untouched.
+  const [disableLoading, setDisableLoading] = useState(false);
+
+  const handleToggleDisabled = async () => {
+    if (!student) return;
+    const action = student.is_disabled ? 'enable' : 'disable';
+    if (action === 'disable' && !confirm(`Disable ${student.name}? They will be left out of the Active Students count and the low-classes panel on the dashboard. Their records, bookings and login stay as they are.`)) return;
+    setDisableLoading(true);
+    try {
+      await axios.post(`${base}/api/admin/students/${id}/${action}`, {}, { headers });
+      fetchData();
+    } catch (err) {
+      console.error(`Error ${action === 'disable' ? 'disabling' : 'enabling'} student:`, err);
+    } finally {
+      setDisableLoading(false);
     }
   };
 
@@ -870,6 +890,19 @@ const AdminStudentProfilePage = () => {
                         <KeyRound className="h-4 w-4" /> Reset Password
                       </Button>
                     )}
+                    {can("students.deactivate") && <Button
+                      id="student-btn-disable"
+                      size="sm"
+                      variant="outline"
+                      className="gap-1"
+                      title="Hide from the dashboard's Active Students count and low-classes panel"
+                      onClick={handleToggleDisabled}
+                      disabled={disableLoading}
+                    >
+                      {disableLoading
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : student.is_disabled ? "Enable" : "Disable"}
+                    </Button>}
                     {can("students.deactivate") && <Button
                       id="student-btn-deactivate"
                       size="sm"

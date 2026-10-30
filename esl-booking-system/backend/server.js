@@ -300,6 +300,8 @@ async function runAutoMigrations() {
     ['subscription_plans', 'is_public', 'BOOLEAN NOT NULL DEFAULT TRUE'],
     // Migration 021: the teacher list/profile/add/edit routes read and write this.
     ['users', 'contact_number', 'VARCHAR(50) NULL'],
+    // Migration 022: analytics and the student list/profile read this.
+    ['users', 'is_disabled', 'BOOLEAN NOT NULL DEFAULT FALSE'],
   ];
   for (const [table, col, def] of addTableCols) {
     try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); }

@@ -206,6 +206,12 @@ const MIGRATIONS = [
     check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'contact_number'",
     up: 'ALTER TABLE users ADD COLUMN contact_number VARCHAR(50) NULL',
   },
+  // ── 022: Disabled students (hidden from dashboard stats only) ─────────────
+  {
+    name: 'users.is_disabled column',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'is_disabled'",
+    up: 'ALTER TABLE users ADD COLUMN is_disabled BOOLEAN NOT NULL DEFAULT FALSE',
+  },
 ];
 
 async function main() {

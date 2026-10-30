@@ -87,6 +87,7 @@ interface Student {
   teacher_name: string | null;
   enrolled: boolean;
   is_active?: boolean | number;
+  is_disabled?: boolean | number;
   student_package_id: number | null;
 }
 
@@ -726,6 +727,14 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                                 className="text-[10px] text-muted-foreground"
                               >
                                 Archived
+                              </Badge>
+                            )}
+                            {isActive(student) && !!student.is_disabled && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] text-muted-foreground"
+                              >
+                                Disabled
                               </Badge>
                             )}
                           </div>

@@ -73,6 +73,7 @@ interface Student {
   age: number;
   created_at: string;
   is_active?: boolean | number;
+  is_disabled?: boolean | number;
   package_name: string | null;
   payment_status: "paid" | "unpaid" | null;
   unused_sessions: number | null;
@@ -313,6 +314,7 @@ const AdminDashboard = () => {
     .filter(
       (s) =>
         (s.is_active === undefined || !!s.is_active) &&
+        !s.is_disabled &&
         s.payment_status === "paid" &&
         Number(s.unused_sessions ?? 0) <= LOW_CLASS_COUNT,
     )
