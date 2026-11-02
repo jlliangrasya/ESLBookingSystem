@@ -386,9 +386,12 @@ const TeacherDashboard = () => {
   const [completedPageSize, setCompletedPageSize] = useState(20);
   const [classesThisWeek, setClassesThisWeek] = useState(0);
   const [classesThisMonth, setClassesThisMonth] = useState(0);
-  const [completedWithReportThisWeek, setCompletedWithReportThisWeek] =
-    useState(0);
+  const [finishedThisWeek, setFinishedThisWeek] = useState(0);
+  const [completedThisWeek, setCompletedThisWeek] = useState(0);
   const [absentStudentsThisWeek, setAbsentStudentsThisWeek] = useState(0);
+  const [absentFiftyMinThisWeek, setAbsentFiftyMinThisWeek] = useState(0);
+  const [absentTwentyFiveMinThisWeek, setAbsentTwentyFiveMinThisWeek] =
+    useState(0);
   const [fiftyMinThisWeek, setFiftyMinThisWeek] = useState(0);
   const [twentyFiveMinThisWeek, setTwentyFiveMinThisWeek] = useState(0);
   const [health, setHealth] = useState<Health>({
@@ -639,8 +642,13 @@ const TeacherDashboard = () => {
       setCompletedBookings(dash.completedBookings || []);
       setClassesThisWeek(dash.classes_this_week ?? 0);
       setClassesThisMonth(dash.classes_this_month ?? 0);
-      setCompletedWithReportThisWeek(dash.completed_with_report_this_week ?? 0);
+      setFinishedThisWeek(dash.finished_this_week ?? 0);
+      setCompletedThisWeek(dash.completed_this_week ?? 0);
       setAbsentStudentsThisWeek(dash.absent_students_this_week ?? 0);
+      setAbsentFiftyMinThisWeek(dash.absent_fifty_min_this_week ?? 0);
+      setAbsentTwentyFiveMinThisWeek(
+        dash.absent_twenty_five_min_this_week ?? 0,
+      );
       setFiftyMinThisWeek(dash.fifty_min_this_week ?? 0);
       setTwentyFiveMinThisWeek(dash.twenty_five_min_this_week ?? 0);
       setHealth(dash.health ?? { total_done: 0, total_absent: 0, attended: 0 });
@@ -1176,13 +1184,20 @@ const TeacherDashboard = () => {
 
   // Computed — use fmtDate for consistent date handling (appointment_date is stored as display time)
   const todayKey = fmtDate(new Date().toISOString(), "yyyy-MM-dd");
+  // A student on several packages appears once per package in `students`
+  const assignedStudentCount = new Set(students.map((s) => s.id)).size;
+  // Absent-marked classes (Mark as Absent / Late Notice) count under absences, not here
   const todayUpcoming = bookings.filter(
-    (b) => fmtDate(b.appointment_date, "yyyy-MM-dd") === todayKey,
+    (b) =>
+      fmtDate(b.appointment_date, "yyyy-MM-dd") === todayKey &&
+      !b.student_absent,
   ).length;
   const todayCompleted = completedBookings.filter(
     (b) =>
       fmtDate(b.appointment_date, "yyyy-MM-dd") === todayKey &&
-      b.status === "done",
+      b.status === "done" &&
+      !b.student_absent &&
+      !b.teacher_absent,
   ).length;
 
   // Filtered + sorted upcoming classes (derived, no state needed)
@@ -2185,7 +2200,9 @@ const TeacherDashboard = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <Card>
                     <CardContent className="p-3">
-                      <p className="text-xl font-bold">{students.length}</p>
+                      <p className="text-3xl font-bold">
+                        {assignedStudentCount}
+                      </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                         <Users className="h-3.5 w-3.5" /> Assigned Students
                       </p>
@@ -2193,7 +2210,7 @@ const TeacherDashboard = () => {
                   </Card>
                   <Card>
                     <CardContent className="p-3">
-                      <p className="text-xl font-bold text-orange-600">
+                      <p className="text-3xl font-bold text-orange-600">
                         {todayUpcoming}
                       </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
@@ -2203,7 +2220,7 @@ const TeacherDashboard = () => {
                   </Card>
                   <Card>
                     <CardContent className="p-3">
-                      <p className="text-xl font-bold text-green-600">
+                      <p className="text-3xl font-bold text-green-600">
                         {todayCompleted}
                       </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
@@ -2213,7 +2230,7 @@ const TeacherDashboard = () => {
                   </Card>
                   <Card>
                     <CardContent className="p-3">
-                      <p className="text-xl font-bold text-primary">
+                      <p className="text-3xl font-bold text-primary">
                         {classesThisMonth}
                       </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
@@ -2227,16 +2244,22 @@ const TeacherDashboard = () => {
                   <span className="text-sm text-muted-foreground">
                     Classes this week
                   </span>
-                  <span className="font-bold text-blue-600 text-lg">
-                    {classesThisWeek}
+                  <span
+                    className="font-bold text-blue-600 text-3xl"
+                    title="Finished (done or absent) / all classes this week, 50 and 25 mins"
+                  >
+                    {finishedThisWeek}
+                    <span className="text-muted-foreground text-xl">
+                      /{classesThisWeek}
+                    </span>
                   </span>
                 </div>
                 {/* Weekly detail KPIs */}
                 <div className="grid grid-cols-2 gap-3">
                   <Card>
                     <CardContent className="p-3">
-                      <p className="text-xl font-bold text-emerald-600">
-                        {completedWithReportThisWeek}
+                      <p className="text-3xl font-bold text-emerald-600">
+                        {completedThisWeek}
                       </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                         <CheckCircle2 className="h-3.5 w-3.5" /> Completed This
@@ -2246,18 +2269,22 @@ const TeacherDashboard = () => {
                   </Card>
                   <Card>
                     <CardContent className="p-3">
-                      <p className="text-xl font-bold text-red-500">
+                      <p className="text-3xl font-bold text-red-500">
                         {absentStudentsThisWeek}
                       </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                         <UserX className="h-3.5 w-3.5" /> Absent Students This
                         Week
                       </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        50 min: {absentFiftyMinThisWeek} · 25 min:{" "}
+                        {absentTwentyFiveMinThisWeek}
+                      </p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="p-3">
-                      <p className="text-xl font-bold text-indigo-600">
+                      <p className="text-3xl font-bold text-indigo-600">
                         {fiftyMinThisWeek}
                       </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
@@ -2268,7 +2295,7 @@ const TeacherDashboard = () => {
                   </Card>
                   <Card>
                     <CardContent className="p-3">
-                      <p className="text-xl font-bold text-violet-600">
+                      <p className="text-3xl font-bold text-violet-600">
                         {twentyFiveMinThisWeek}
                       </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">

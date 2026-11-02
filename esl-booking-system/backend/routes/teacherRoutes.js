@@ -183,29 +183,42 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
         // Group ASC so earliest slot is representative, then reverse for most-recent-first display
         const completedBookings = groupMultiSlotBookings(completedRows).reverse();
 
-        // Classes this week / month + weekly detail stats — all run in parallel
+        // Classes this week / month + weekly detail stats — all run in parallel.
+        // "Completed" = closed as done with the student and teacher both present.
+        // "Absent" = student_absent, which both Mark as Absent and Late Notice set —
+        // counted before the class is closed as done, since marking absent doesn't close it.
         const [
             [[weekRow]],
             [[monthRow]],
             [[healthRow]],
-            [[completedReportRow]],
-            [[absentStudentsRow]],
-            [[fiftyMinRow]],
-            [[twentyFiveMinRow]],
         ] = await Promise.all([
             pool.query(`
-                SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS classes_this_week
-                FROM bookings
-                WHERE teacher_id = ? AND company_id = ?
-                  AND status IN ('confirmed', 'done')
-                  AND YEARWEEK(appointment_date, 1) = YEARWEEK(?, 1)
+                SELECT COUNT(DISTINCT grp) AS total,
+                       COUNT(DISTINCT CASE WHEN status = 'done' OR student_absent THEN grp END) AS finished,
+                       COUNT(DISTINCT CASE WHEN completed THEN grp END) AS completed,
+                       COUNT(DISTINCT CASE WHEN completed AND duration_minutes = 50 THEN grp END) AS completed_50,
+                       COUNT(DISTINCT CASE WHEN completed AND duration_minutes = 25 THEN grp END) AS completed_25,
+                       COUNT(DISTINCT CASE WHEN student_absent THEN grp END) AS absent,
+                       COUNT(DISTINCT CASE WHEN student_absent AND duration_minutes = 50 THEN grp END) AS absent_50,
+                       COUNT(DISTINCT CASE WHEN student_absent AND duration_minutes = 25 THEN grp END) AS absent_25
+                FROM (
+                    SELECT COALESCE(b.booking_group_id, CAST(b.id AS CHAR)) AS grp,
+                           b.status, COALESCE(b.student_absent, FALSE) AS student_absent, tp.duration_minutes,
+                           (b.status = 'done' AND NOT COALESCE(b.student_absent, FALSE) AND NOT COALESCE(b.teacher_absent, FALSE)) AS completed
+                    FROM bookings b
+                    JOIN student_packages sp ON b.student_package_id = sp.id
+                    JOIN tutorial_packages tp ON sp.package_id = tp.id
+                    WHERE b.teacher_id = ? AND b.company_id = ?
+                      AND b.status <> 'cancelled'
+                      AND YEARWEEK(b.appointment_date, 1) = YEARWEEK(?, 1)
+                ) t
             `, [teacherId, companyId, todayDate()]),
 
             pool.query(`
                 SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS classes_this_month
                 FROM bookings
                 WHERE teacher_id = ? AND company_id = ?
-                  AND status IN ('confirmed', 'done')
+                  AND status = 'done' AND NOT COALESCE(student_absent, FALSE) AND NOT COALESCE(teacher_absent, FALSE)
                   AND YEAR(appointment_date) = YEAR(?)
                   AND MONTH(appointment_date) = MONTH(?)
             `, [teacherId, companyId, todayDate(), todayDate()]),
@@ -216,59 +229,19 @@ router.get('/dashboard', authenticateToken, requireRole('teacher'), async (req, 
                 FROM (SELECT COALESCE(booking_group_id, CAST(id AS CHAR)) AS grp, teacher_absent
                       FROM bookings WHERE teacher_id = ? AND company_id = ? AND status = 'done') t
             `, [teacherId, companyId]),
-
-            // Completed classes this week that have a submitted report
-            pool.query(`
-                SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR))) AS completed_with_report
-                FROM bookings b
-                WHERE b.teacher_id = ? AND b.company_id = ?
-                  AND b.status = 'done'
-                  AND EXISTS (SELECT 1 FROM class_reports cr WHERE cr.booking_id = b.id)
-                  AND YEARWEEK(b.appointment_date, 1) = YEARWEEK(?, 1)
-            `, [teacherId, companyId, todayDate()]),
-
-            // Students marked absent this week
-            pool.query(`
-                SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) AS absent_students
-                FROM bookings
-                WHERE teacher_id = ? AND company_id = ?
-                  AND status = 'done' AND student_absent = TRUE
-                  AND YEARWEEK(appointment_date, 1) = YEARWEEK(?, 1)
-            `, [teacherId, companyId, todayDate()]),
-
-            // 50-minute classes this week
-            pool.query(`
-                SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR))) AS fifty_min
-                FROM bookings b
-                JOIN student_packages sp ON b.student_package_id = sp.id
-                JOIN tutorial_packages tp ON sp.package_id = tp.id
-                WHERE b.teacher_id = ? AND b.company_id = ?
-                  AND b.status = 'done'
-                  AND tp.duration_minutes = 50
-                  AND YEARWEEK(b.appointment_date, 1) = YEARWEEK(?, 1)
-            `, [teacherId, companyId, todayDate()]),
-
-            // 25-minute classes this week
-            pool.query(`
-                SELECT COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR))) AS twenty_five_min
-                FROM bookings b
-                JOIN student_packages sp ON b.student_package_id = sp.id
-                JOIN tutorial_packages tp ON sp.package_id = tp.id
-                WHERE b.teacher_id = ? AND b.company_id = ?
-                  AND b.status = 'done'
-                  AND tp.duration_minutes = 25
-                  AND YEARWEEK(b.appointment_date, 1) = YEARWEEK(?, 1)
-            `, [teacherId, companyId, todayDate()]),
         ]);
 
         res.json({
             teacher, students, bookings, completedBookings,
-            classes_this_week: weekRow.classes_this_week,
-            classes_this_month: monthRow.classes_this_month,
-            completed_with_report_this_week: completedReportRow.completed_with_report || 0,
-            absent_students_this_week: absentStudentsRow.absent_students || 0,
-            fifty_min_this_week: fiftyMinRow.fifty_min || 0,
-            twenty_five_min_this_week: twentyFiveMinRow.twenty_five_min || 0,
+            classes_this_week: weekRow.total || 0,
+            finished_this_week: weekRow.finished || 0,
+            classes_this_month: monthRow.classes_this_month || 0,
+            completed_this_week: weekRow.completed || 0,
+            absent_students_this_week: weekRow.absent || 0,
+            fifty_min_this_week: weekRow.completed_50 || 0,
+            twenty_five_min_this_week: weekRow.completed_25 || 0,
+            absent_fifty_min_this_week: weekRow.absent_50 || 0,
+            absent_twenty_five_min_this_week: weekRow.absent_25 || 0,
             health: {
                 total_done: healthRow.total_done || 0,
                 total_absent: healthRow.total_absent || 0,
