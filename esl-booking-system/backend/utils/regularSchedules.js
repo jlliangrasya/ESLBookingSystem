@@ -134,6 +134,30 @@ async function applyRegularEntries(connection, {
   return { totalBooked, sessionsRemaining, groups: results, teacherIds: [...teacherIds] };
 }
 
+// Teachers' regular weekly OPEN slots (record only), grouped by teacher id,
+// e.g. { 7: [{ day_of_week: 'Monday', slot_time: '09:00' }, ...] }.
+// Pass teacherId to load a single teacher.
+async function loadTeacherRegularSlots(companyId, teacherId = null) {
+  const params = [companyId];
+  let teacherClause = '';
+  if (teacherId !== null) {
+    teacherClause = 'AND teacher_id = ?';
+    params.push(teacherId);
+  }
+  const [rows] = await pool.query(
+    `SELECT teacher_id, day_of_week, TIME_FORMAT(slot_time, '%H:%i') AS slot_time
+     FROM teacher_regular_slots
+     WHERE company_id = ? ${teacherClause}
+     ORDER BY ${dayOrderSql('day_of_week')}, slot_time`,
+    [...params, ...DAYS_OF_WEEK]
+  );
+  const byTeacher = {};
+  for (const { teacher_id, ...slot } of rows) {
+    (byTeacher[teacher_id] = byTeacher[teacher_id] || []).push(slot);
+  }
+  return byTeacher;
+}
+
 module.exports = {
-  DAYS_OF_WEEK, loadRegularSchedules, loadTeacherRegularSchedule, findBookablePackage, applyRegularEntries,
+  DAYS_OF_WEEK, loadRegularSchedules, loadTeacherRegularSlots, loadTeacherRegularSchedule, findBookablePackage, applyRegularEntries,
 };

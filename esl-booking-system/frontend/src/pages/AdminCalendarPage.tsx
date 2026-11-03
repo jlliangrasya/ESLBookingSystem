@@ -279,6 +279,16 @@ const AdminCalendarPage = () => {
 
   // Hand out the palette in order to the students booked this week, so no color
   // repeats until every one of them is in use. Sorted by id to keep it stable.
+  // This week's open slots as weekday + time, offered in the Regular Schedule
+  // view as a starting point for the teacher's regular hours.
+  const weekOpenSlots = useMemo(
+    () => [...openSlots].map((key) => {
+      const [date, time] = key.split("|");
+      return { day_of_week: format(new Date(`${date}T00:00:00`), "EEEE"), slot_time: time };
+    }),
+    [openSlots],
+  );
+
   const colorByStudent = useMemo(() => {
     const ids = [...new Set(bookings.map(b => b.student_id))].sort((a, b) => a - b);
     return new Map(ids.map((id, i) => [id, STUDENT_COLORS[i % STUDENT_COLORS.length]]));
@@ -839,6 +849,9 @@ const AdminCalendarPage = () => {
                   palette={STUDENT_COLORS}
                   canApply={canBook}
                   canEdit={canBook || can("students.edit")}
+                  canEditHours={canSlots || can("teachers.manage_schedule")}
+                  weekLabel={`week of ${format(weekStart, "MMM d")}`}
+                  weekOpenSlots={weekOpenSlots}
                   onApplied={() => { fetchGrid(); fetchBookableStudents(); }}
                 />
               ) : (<>

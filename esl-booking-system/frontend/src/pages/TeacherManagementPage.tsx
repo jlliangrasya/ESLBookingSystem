@@ -20,6 +20,7 @@ import { AdminTour } from "@/components/AdminTour";
 import BulkImportDialog from "@/components/BulkImportDialog";
 import { useTourEngine } from "@/context/TourEngine";
 import { fmtDate, fmtDateOnly } from "@/utils/timezone";
+import { summarizeRegularSlots, type TeacherRegularSlot } from "@/utils/regularSlots";
 
 interface Teacher {
   id: number;
@@ -37,6 +38,8 @@ interface Teacher {
   absent_count: number;
   total_done: number;
   created_at: string;
+  // Regular weekly open hours (record only), set on the calendar's Regular Schedule view
+  regular_slots?: TeacherRegularSlot[];
 }
 
 interface ScheduleBooking {
@@ -423,6 +426,7 @@ const TeacherManagementPage = () => {
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Contact</TableHead>
+                  <TableHead>Regular Schedule</TableHead>
                   <TableHead>Today</TableHead>
                   <TableHead>This Week</TableHead>
                   <TableHead>{["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][pickerMonth - 1]} {pickerYear}</TableHead>
@@ -433,7 +437,7 @@ const TeacherManagementPage = () => {
               <TableBody>
                 {filteredTeachers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                       {teacherSearch ? "No teachers match your search" : "No teachers yet"}
                     </TableCell>
                   </TableRow>
@@ -445,6 +449,22 @@ const TeacherManagementPage = () => {
                       <TableCell className="font-medium">{t.name}</TableCell>
                       <TableCell className="text-sm">{t.email}</TableCell>
                       <TableCell className="text-sm">{t.contact_number || <span className="text-muted-foreground">—</span>}</TableCell>
+                      <TableCell className="text-xs">
+                        {(() => {
+                          const days = summarizeRegularSlots(t.regular_slots ?? []);
+                          if (days.length === 0) return <span className="text-muted-foreground">—</span>;
+                          return (
+                            <ul className="space-y-0.5">
+                              {days.map((d) => (
+                                <li key={d.day} className="whitespace-nowrap">
+                                  <span className="font-medium">{d.day}</span>{" "}
+                                  <span className="text-muted-foreground">{d.ranges}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          );
+                        })()}
+                      </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="bg-orange-100 text-orange-700">{t.classes_today}</Badge>
                       </TableCell>

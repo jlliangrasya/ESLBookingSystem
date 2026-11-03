@@ -301,4 +301,4 @@ async function bookRecurringSchedule(connection, {
     };
 }
 
-module.exports = { DAY_NAMES, bookRecurringSchedule };
+module.exports = { DAY_NAMES, addDays, dayOfWeek, bookRecurringSchedule };

@@ -223,6 +223,16 @@ const MIGRATIONS = [
       INDEX idx_rs_student (company_id, student_id), INDEX idx_rs_teacher (teacher_id),
       FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE)`,
   },
+  // ── 024: Teachers' regular weekly open slots (record only) ───────────────
+  {
+    name: 'teacher_regular_slots table',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'teacher_regular_slots'",
+    up: `CREATE TABLE IF NOT EXISTS teacher_regular_slots (
+      id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, teacher_id INT NOT NULL,
+      day_of_week VARCHAR(9) NOT NULL, slot_time TIME NOT NULL,
+      UNIQUE KEY unique_teacher_regular_slot (company_id, teacher_id, day_of_week, slot_time),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE)`,
+  },
 ];
 
 async function main() {

@@ -261,6 +261,12 @@ async function runAutoMigrations() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_rs_student (company_id, student_id), INDEX idx_rs_teacher (teacher_id),
         FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE)` },
+    // Migration 024: the Teachers list and calendar Regular Schedule view read this.
+    { name: 'teacher_regular_slots', sql: `CREATE TABLE IF NOT EXISTS teacher_regular_slots (
+        id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, teacher_id INT NOT NULL,
+        day_of_week VARCHAR(9) NOT NULL, slot_time TIME NOT NULL,
+        UNIQUE KEY unique_teacher_regular_slot (company_id, teacher_id, day_of_week, slot_time),
+        FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE)` },
   ];
 
   for (const m of migrations) {
