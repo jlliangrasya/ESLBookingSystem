@@ -8,6 +8,8 @@ const { logAction } = require('../utils/audit');
 const { notifyWaitlistForSlot } = require('./waitlistRoutes');
 const { attendeeSql, packageStudentIds } = require('../utils/sharedPackages');
 const { HalfCreditError, resolveLateNotice, createHalfCredit, notifyHalfCredit } = require('../utils/halfCredits');
+const { loadTeacherRegularSlots, cleanRegularSlots, replaceTeacherRegularSlots } = require('../utils/regularSchedules');
+const { DAY_NAMES, addDays, dayOfWeek } = require('../utils/recurringBooking');
 
 const router = express.Router();
 
@@ -1139,6 +1141,72 @@ router.post('/weekly-slots', authenticateToken, requireRole('teacher'), async (r
             return res.status(400).json({ message: 'action must be "open" or "close"' });
         }
         res.json({ message: `Slot ${action}d successfully` });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// GET /api/teacher/regular-slots — the teacher's own regular weekly open slots
+router.get('/regular-slots', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const teacherId = req.user.id;
+        res.json((await loadTeacherRegularSlots(req.user.company_id, teacherId))[teacherId] || []);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// PUT /api/teacher/regular-slots — save the teacher's regular schedule, then open
+// it on the real calendar for `weeks` weeks from tomorrow.
+// Body: { slots: [{ day_of_week, slot_time: "HH:MM" }], weeks }. Opening uses
+// INSERT IGNORE, so slots already open stay open and nothing is closed; days
+// the teacher is on leave are skipped.
+router.put('/regular-slots', authenticateToken, requireRole('teacher'), async (req, res) => {
+    const teacherId = req.user.id;
+    const companyId = req.user.company_id;
+    const { error, clean } = cleanRegularSlots(req.body.slots);
+    if (error) return res.status(400).json({ message: error });
+    const weeks = Math.min(12, Math.max(1, parseInt(req.body.weeks) || 4));
+
+    try {
+        await replaceTeacherRegularSlots(companyId, teacherId, clean);
+
+        let slotsCreated = 0;
+        let leaveDays = [];
+        if (clean.length > 0) {
+            const startStr = addDays(new Date().toISOString().slice(0, 10), 1);
+            const endStr = addDays(startStr, weeks * 7);
+            const [leaves] = await pool.query(
+                `SELECT DATE_FORMAT(leave_date, '%Y-%m-%d') AS d FROM teacher_leaves
+                 WHERE teacher_id = ? AND company_id = ? AND status IN ('pending', 'approved') AND leave_date >= ? AND leave_date < ?`,
+                [teacherId, companyId, startStr, endStr]
+            );
+            const onLeave = new Set(leaves.map((l) => l.d));
+            leaveDays = [...onLeave].sort();
+            const values = [];
+            for (let cur = startStr; cur < endStr; cur = addDays(cur, 1)) {
+                if (onLeave.has(cur)) continue;
+                const dayName = DAY_NAMES[dayOfWeek(cur)];
+                for (const [day, time] of clean) {
+                    if (day === dayName) values.push([companyId, teacherId, cur, `${time}:00`]);
+                }
+            }
+            if (values.length > 0) {
+                const [result] = await pool.query(
+                    'INSERT IGNORE INTO teacher_available_slots (company_id, teacher_id, slot_date, slot_time) VALUES ?', [values]
+                );
+                slotsCreated = result.affectedRows;
+            }
+        }
+
+        await logAction(companyId, teacherId, 'teacher_regular_slots_updated', 'user', teacherId, { open_slots: clean.length, weeks, slots_opened: slotsCreated });
+        res.json({
+            slots: (await loadTeacherRegularSlots(companyId, teacherId))[teacherId] || [],
+            slotsCreated,
+            leave_days: leaveDays,
+        });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });

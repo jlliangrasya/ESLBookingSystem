@@ -158,6 +158,82 @@ async function loadTeacherRegularSlots(companyId, teacherId = null) {
   return byTeacher;
 }
 
+// Check a student's { entries: [{ day_of_week, start_time: "HH:MM", teacher_id|null }] }
+// list from a request. Returns { error } or { clean: [{ day, time, teacherId }] }.
+function cleanRegularEntries(entries) {
+  if (!Array.isArray(entries)) return { error: 'entries must be a list' };
+  if (entries.length > 21) return { error: 'Too many schedule entries' };
+  const clean = [];
+  for (const e of entries) {
+    const day = DAYS_OF_WEEK.find((d) => d.toLowerCase() === String(e?.day_of_week || '').toLowerCase());
+    const time = String(e?.start_time || '');
+    if (!day) return { error: 'Each entry needs a valid day' };
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return { error: 'Each entry needs a valid time' };
+    const teacherId = e.teacher_id ? Number(e.teacher_id) : null;
+    if (teacherId !== null && !Number.isInteger(teacherId)) return { error: 'Invalid teacher' };
+    clean.push({ day, time, teacherId });
+  }
+  return { clean };
+}
+
+// Names of the entries' teachers by id, or null if any isn't a teacher of this company.
+async function loadEntryTeachers(db, companyId, clean) {
+  const ids = [...new Set(clean.map((e) => e.teacherId).filter((t) => t !== null))];
+  if (ids.length === 0) return new Map();
+  const [found] = await db.query(
+    "SELECT id, name FROM users WHERE id IN (?) AND company_id = ? AND role = 'teacher'", [ids, companyId]
+  );
+  return found.length === ids.length ? new Map(found.map((t) => [t.id, t.name])) : null;
+}
+
+// Replace a student's regular schedule with `clean`, inside the caller's transaction.
+async function writeRegularEntries(connection, companyId, studentId, clean) {
+  await connection.query('DELETE FROM student_regular_schedules WHERE company_id = ? AND student_id = ?', [companyId, studentId]);
+  for (const e of clean) {
+    await connection.query(
+      'INSERT INTO student_regular_schedules (company_id, student_id, day_of_week, start_time, teacher_id) VALUES (?, ?, ?, ?, ?)',
+      [companyId, studentId, e.day, e.time, e.teacherId]
+    );
+  }
+}
+
+// Check a { slots: [{ day_of_week, slot_time: "HH:MM" }] } list from a request.
+// Returns { error } or { clean }: the slots as [day, time] pairs, deduplicated.
+function cleanRegularSlots(slots) {
+  if (!Array.isArray(slots)) return { error: 'slots must be a list' };
+  if (slots.length > 7 * 48) return { error: 'Too many slots' };
+  const clean = new Map();
+  for (const sl of slots) {
+    const day = DAYS_OF_WEEK.find((d) => d.toLowerCase() === String(sl?.day_of_week || '').toLowerCase());
+    const time = String(sl?.slot_time || '');
+    if (!day || !/^([01]\d|2[0-3]):(00|30)$/.test(time)) return { error: 'Each slot needs a valid day and a :00 or :30 time' };
+    clean.set(`${day}|${time}`, [day, time]);
+  }
+  return { clean: [...clean.values()] };
+}
+
+// Replace all of a teacher's regular open slots with `clean` (from cleanRegularSlots).
+async function replaceTeacherRegularSlots(companyId, teacherId, clean) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.query('DELETE FROM teacher_regular_slots WHERE company_id = ? AND teacher_id = ?', [companyId, teacherId]);
+    if (clean.length > 0) {
+      await connection.query(
+        'INSERT INTO teacher_regular_slots (company_id, teacher_id, day_of_week, slot_time) VALUES ?',
+        [clean.map(([day, time]) => [companyId, teacherId, day, time])]
+      );
+    }
+    await connection.commit();
+  } catch (err) {
+    await connection.rollback().catch(() => {});
+    throw err;
+  } finally {
+    connection.release();
+  }
+}
+
 module.exports = {
   DAYS_OF_WEEK, loadRegularSchedules, loadTeacherRegularSlots, loadTeacherRegularSchedule, findBookablePackage, applyRegularEntries,
+  cleanRegularSlots, replaceTeacherRegularSlots, cleanRegularEntries, loadEntryTeachers, writeRegularEntries,
 };

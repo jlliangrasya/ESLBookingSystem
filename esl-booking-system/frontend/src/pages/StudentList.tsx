@@ -128,10 +128,16 @@ interface TeacherOption {
 
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
+// One time block of the first schedule: the same class time on a set of days,
+// e.g. Mon/Wed/Fri 7:00 PM. A student can have several, e.g. plus Sat 9:00 AM.
+type ScheduleBlock = { key: number; days: string[]; time: string };
+
+let nextBlockKey = 1;
+const newScheduleBlock = (): ScheduleBlock => ({ key: nextBlockKey++, days: [], time: "09:00" });
+
 const emptySchedule = {
   teacher_id: "",
-  days: [] as string[],
-  time: "09:00",
+  blocks: [newScheduleBlock()],
   weeks: "4",
   start_date: "",
 };
@@ -141,7 +147,7 @@ type ScheduleResult = {
   message?: string;
   sessions_booked?: number;
   sessions_remaining?: number;
-  skipped_dates?: { date: string; reason: string }[];
+  groups?: { label: string; sessions_booked: number; skipped_dates: { date: string; reason: string }[] }[];
 };
 
 type CredInfo = { name: string; email: string; password: string; age: string; guardian_name: string };
@@ -426,7 +432,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
     setSelectedPackageId("");
     setStudentPackageId(null);
     setPackageSessions(0);
-    setScheduleForm(emptySchedule);
+    setScheduleForm({ ...emptySchedule, blocks: [newScheduleBlock()] });
     setScheduleResult(null);
     setShowAddModal(true);
   };
@@ -506,6 +512,24 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
     }
   };
 
+  // Every block's days at its time, one entry per day; a day + time picked in
+  // two blocks is only booked once.
+  const scheduleEntries = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { day_of_week: string; start_time: string; teacher_id: number }[] = [];
+    for (const b of scheduleForm.blocks) {
+      for (const day of DAYS_OF_WEEK.filter((d) => b.days.includes(d))) {
+        if (!b.time || seen.has(`${day}|${b.time}`)) continue;
+        seen.add(`${day}|${b.time}`);
+        out.push({ day_of_week: day, start_time: b.time, teacher_id: Number(scheduleForm.teacher_id) });
+      }
+    }
+    return out;
+  }, [scheduleForm]);
+
+  const updateBlock = (key: number, patch: Partial<ScheduleBlock>) =>
+    setScheduleForm((f) => ({ ...f, blocks: f.blocks.map((b) => (b.key === key ? { ...b, ...patch } : b)) }));
+
   const handleScheduleStep = async () => {
     if (!newStudentId || !studentPackageId) return;
     setAddLoading(true);
@@ -524,14 +548,13 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
           { headers },
         );
       }
+      // Saved as the student's regular schedule and booked in one go, so it is
+      // only kept if the classes are booked.
       const res = await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/recurring`,
+        `${import.meta.env.VITE_API_URL}/api/admin/students/${newStudentId}/regular-schedule/apply`,
         {
           student_package_id: studentPackageId,
-          student_id: newStudentId,
-          teacher_id: Number(scheduleForm.teacher_id),
-          days_of_week: scheduleForm.days,
-          start_time: scheduleForm.time,
+          entries: scheduleEntries,
           num_weeks: parseInt(scheduleForm.weeks) || 4,
           start_date: scheduleForm.start_date || undefined,
         },
@@ -541,8 +564,8 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
       fetchStudents();
     } catch (err: unknown) {
       const data = axios.isAxiosError(err) ? err.response?.data : undefined;
-      if (data?.skipped_dates) {
-        setScheduleResult({ error: true, message: data.message, skipped_dates: data.skipped_dates });
+      if (data?.groups) {
+        setScheduleResult({ error: true, message: data.message, groups: data.groups });
       } else {
         setAddError(data?.message || "Failed to create recurring schedule");
       }
@@ -551,7 +574,8 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
     }
   };
 
-  const plannedClasses = scheduleForm.days.length * (parseInt(scheduleForm.weeks) || 4);
+  const plannedClasses = scheduleEntries.length * (parseInt(scheduleForm.weeks) || 4);
+  const incompleteBlock = scheduleForm.blocks.some((b) => b.days.length === 0 || !b.time);
   const wizardSteps: AddStep[] = [
     "info",
     ...(can("students.assign_package") ? (["package"] as AddStep[]) : []),
@@ -1269,45 +1293,70 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
+                <div className="space-y-2">
                   <Label>
-                    Days of Week <span className="text-destructive">*</span>
+                    Days &amp; Time <span className="text-destructive">*</span>
                   </Label>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {DAYS_OF_WEEK.map((day) => (
-                      <button
-                        key={day}
-                        type="button"
-                        onClick={() =>
-                          setScheduleForm((f) => ({
-                            ...f,
-                            days: f.days.includes(day)
-                              ? f.days.filter((d) => d !== day)
-                              : [...f.days, day],
-                          }))
-                        }
-                        className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
-                          scheduleForm.days.includes(day)
-                            ? "bg-primary text-white border-primary"
-                            : "bg-white text-gray-700 border-gray-300 hover:border-primary/50"
-                        }`}
-                      >
-                        {day.substring(0, 3)}
-                      </button>
-                    ))}
-                  </div>
+                  <p className="text-xs text-muted-foreground -mt-1">
+                    Add a time block for each class time, e.g. Mon/Wed/Fri 7:00 PM and Sat 9:00 AM.
+                  </p>
+                  {scheduleForm.blocks.map((b) => (
+                    <div key={b.key} className="border rounded-lg p-2.5 space-y-2">
+                      <div className="flex flex-wrap gap-1.5">
+                        {DAYS_OF_WEEK.map((day) => (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() =>
+                              updateBlock(b.key, {
+                                days: b.days.includes(day) ? b.days.filter((d) => d !== day) : [...b.days, day],
+                              })
+                            }
+                            className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                              b.days.includes(day)
+                                ? "bg-primary text-white border-primary"
+                                : "bg-white text-gray-700 border-gray-300 hover:border-primary/50"
+                            }`}
+                          >
+                            {day.substring(0, 3)}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">at</span>
+                        <Input
+                          type="time"
+                          className="w-36"
+                          aria-label="Class start time"
+                          value={b.time}
+                          onChange={(e) => updateBlock(b.key, { time: e.target.value })}
+                        />
+                        {scheduleForm.blocks.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="ml-auto h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                            aria-label="Remove time block"
+                            onClick={() => setScheduleForm((f) => ({ ...f, blocks: f.blocks.filter((x) => x.key !== b.key) }))}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setScheduleForm((f) => ({ ...f, blocks: [...f.blocks, newScheduleBlock()] }))}
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add time block
+                  </Button>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>
-                      Start Time <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      type="time"
-                      value={scheduleForm.time}
-                      onChange={(e) => setScheduleForm((f) => ({ ...f, time: e.target.value }))}
-                    />
-                  </div>
                   <div>
                     <Label>Weeks (1–12)</Label>
                     <Input
@@ -1318,25 +1367,26 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                       onChange={(e) => setScheduleForm((f) => ({ ...f, weeks: e.target.value }))}
                     />
                   </div>
+                  <div>
+                    <Label>Start Date</Label>
+                    <Input
+                      type="date"
+                      value={scheduleForm.start_date}
+                      onChange={(e) => setScheduleForm((f) => ({ ...f, start_date: e.target.value }))}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label>
-                    Start Date{" "}
-                    <span className="text-muted-foreground font-normal">(optional — defaults to tomorrow)</span>
-                  </Label>
-                  <Input
-                    type="date"
-                    value={scheduleForm.start_date}
-                    onChange={(e) => setScheduleForm((f) => ({ ...f, start_date: e.target.value }))}
-                  />
-                </div>
-                {scheduleForm.days.length > 0 && (
+                <p className="text-xs text-muted-foreground -mt-2">Start date defaults to tomorrow.</p>
+                {scheduleEntries.length > 0 && (
                   <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg text-sm space-y-1">
                     <p>
                       <strong>Preview:</strong> ~{plannedClasses} classes over {scheduleForm.weeks} weeks
                     </p>
                     <p>
                       Sessions available: <strong>{packageSessions}</strong>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Also saved as the student's regular schedule.
                     </p>
                     {plannedClasses > packageSessions && (
                       <p className="text-amber-600 flex items-center gap-1">
@@ -1357,24 +1407,27 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                 ) : (
                   <div className="p-3 bg-green-50 border border-green-200 rounded-lg space-y-1">
                     <p className="text-green-700 font-medium flex items-center gap-1.5">
-                      <Check className="h-4 w-4" /> Recurring schedule created!
+                      <Check className="h-4 w-4" /> Schedule created and saved as their regular schedule!
                     </p>
                     <p className="text-sm">{scheduleResult.sessions_booked} classes booked</p>
                     <p className="text-sm">Sessions remaining: {scheduleResult.sessions_remaining}</p>
                   </div>
                 )}
-                {scheduleResult.skipped_dates && scheduleResult.skipped_dates.length > 0 && (
+                {scheduleResult.groups?.some((g) => g.skipped_dates.length > 0) && (
                   <div>
                     <p className="text-sm font-medium text-amber-600 mb-1 flex items-center gap-1">
                       <AlertTriangle className="h-3.5 w-3.5" /> Skipped dates:
                     </p>
                     <div className="max-h-36 overflow-y-auto space-y-1 border rounded-lg p-2">
-                      {scheduleResult.skipped_dates.map((s, i) => (
-                        <div key={i} className="text-xs flex gap-2">
-                          <span className="font-mono text-gray-600">{s.date}</span>
-                          <span className="text-amber-600">{s.reason}</span>
-                        </div>
-                      ))}
+                      {scheduleResult.groups
+                        .flatMap((g) => g.skipped_dates.map((d) => ({ ...d, label: g.label })))
+                        .map((s, i) => (
+                          <div key={i} className="text-xs flex gap-2">
+                            <span className="font-mono text-gray-600">{s.date}</span>
+                            <span className="text-gray-600">{s.label}</span>
+                            <span className="text-amber-600">{s.reason}</span>
+                          </div>
+                        ))}
                     </div>
                   </div>
                 )}
@@ -1426,8 +1479,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                     disabled={
                       addLoading ||
                       !scheduleForm.teacher_id ||
-                      scheduleForm.days.length === 0 ||
-                      !scheduleForm.time
+                      incompleteBlock
                     }
                   >
                     {addLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create Schedule"}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
-import { AlertTriangle, CalendarPlus, Check, CopyPlus, Download, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, CalendarPlus, Check, CopyPlus, Download, Loader2, Trash2, X } from "lucide-react";
 import { DAYS_OF_WEEK, type TeacherRegularSlot } from "@/utils/regularSlots";
 import { downloadRegularScheduleImage, type RegularImageCell } from "@/utils/regularScheduleImage";
 import { Button } from "@/components/ui/button";
@@ -54,6 +54,32 @@ const toMinutes = (t: string) => {
   return h * 60 + m;
 };
 
+// Drag-selection, tuned like the Actual view's grid.
+/** How far the pointer must travel before a press counts as a drag rather than a click. */
+const DRAG_THRESHOLD_PX = 8;
+/** Touch has no drag-to-select, so a hold starts one. */
+const LONG_PRESS_MS = 500;
+/** Finger travel before a hold is written off as the start of a scroll. */
+const TOUCH_SCROLL_CANCEL_PX = 10;
+/** A drag this close to the scroll box's top or bottom edge scrolls the grid. */
+const AUTOSCROLL_EDGE_PX = 32;
+const AUTOSCROLL_MAX_STEP_PX = 14;
+
+/** A grid cell: d = DAYS_OF_WEEK index, t = slotTimes index. */
+type CellPos = { d: number; t: number };
+
+/**
+ * The grid cell under a viewport point. Touch gives every pointermove to the cell
+ * the press started on, so a dragged finger has to be located by hit-testing.
+ */
+const cellFromPoint = (x: number, y: number): CellPos | null => {
+  const el = document.elementFromPoint(x, y);
+  const cell = el instanceof Element ? el.closest("[data-regular-cell]") : null;
+  if (!(cell instanceof HTMLElement)) return null;
+  const [d, t] = (cell.dataset.regularCell ?? "").split(":").map(Number);
+  return Number.isInteger(d) && Number.isInteger(t) ? { d, t } : null;
+};
+
 interface TeacherRegularScheduleProps {
   teacher: { id: number; name: string };
   // The calendar's own row times and student colors, so both views line up.
@@ -90,10 +116,27 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
   const [hoursSaving, setHoursSaving] = useState(false);
   const [hoursError, setHoursError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
-  // Drag-painting the hours: the value being painted, and the set before the drag
-  const paintRef = useRef<{ value: boolean; before: Set<string> } | null>(null);
-  const openSetRef = useRef(openSet);
-  openSetRef.current = openSet;
+
+  // Drag-selection, for opening or closing a range of regular hours at once: the
+  // rectangle between the cell the drag started on (anchor) and the one under the
+  // pointer (focus). Works in both modes; a plain click still does the mode's thing.
+  const [selAnchor, setSelAnchor] = useState<CellPos | null>(null);
+  const [selFocus, setSelFocus] = useState<CellPos | null>(null);
+  const [isSelecting, setIsSelecting] = useState(false);
+  // Where the press went down; a ref so an ordinary click re-renders nothing.
+  const pressRef = useRef<{ d: number; t: number; x: number; y: number; touch: boolean } | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // True once a press has travelled far enough to count as a drag.
+  const dragMovedRef = useRef(false);
+  // Mirrors isSelecting for the non-passive touchmove listener.
+  const isSelectingRef = useRef(false);
+  // True while a finished drag's highlight is standing, waiting for Mark open/closed.
+  const selectionCommittedRef = useRef(false);
+  // Set when a release ends a drag, so the click that follows doesn't also act on a cell.
+  const suppressClickRef = useRef(false);
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
 
   const token = localStorage.getItem("token");
   const base = import.meta.env.VITE_API_URL;
@@ -136,40 +179,230 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
     }
   }, [base, token, teacher.id]);
 
-  const paint = (key: string, value: boolean) =>
-    setOpenSet((prev) => {
-      if (prev.has(key) === value) return prev;
-      const next = new Set(prev);
-      if (value) next.add(key); else next.delete(key);
-      return next;
-    });
+  const selectedKeys = useMemo(() => {
+    const keys = new Set<string>();
+    if (!selAnchor || !selFocus) return keys;
+    for (let d = Math.min(selAnchor.d, selFocus.d); d <= Math.max(selAnchor.d, selFocus.d); d++) {
+      for (let t = Math.min(selAnchor.t, selFocus.t); t <= Math.max(selAnchor.t, selFocus.t); t++) {
+        keys.add(`${DAYS_OF_WEEK[d]}|${slotTimes[t]}`);
+      }
+    }
+    return keys;
+  }, [selAnchor, selFocus, slotTimes]);
+  const selectionSize = selectedKeys.size;
 
-  // A press starts painting the opposite of the first cell's state; dragging
-  // (mouse) extends it, and releasing anywhere saves once.
-  const handleHoursDown = (key: string, e: React.PointerEvent) => {
-    if (hoursSaving) return;
-    e.preventDefault();
-    const value = !openSetRef.current.has(key);
-    paintRef.current = { value, before: openSetRef.current };
-    paint(key, value);
-  };
-  const handleHoursEnter = (key: string) => {
-    if (paintRef.current) paint(key, paintRef.current.value);
-  };
+  const clearSelection = useCallback(() => {
+    selectionCommittedRef.current = false;
+    isSelectingRef.current = false;
+    setSelAnchor(null);
+    setSelFocus(null);
+    setIsSelecting(false);
+  }, []);
+
+  // Another teacher's grid must not inherit the highlight.
+  useEffect(() => { clearSelection(); }, [teacher.id, clearSelection]);
+
+  // A gesture ends wherever the pointer is released, often outside the grid, so the
+  // release is caught on the window. Only a drag over more than one cell leaves a
+  // highlight standing for the action bar.
   useEffect(() => {
-    const up = () => {
-      const p = paintRef.current;
-      if (!p) return;
-      paintRef.current = null;
-      if (openSetRef.current !== p.before) saveHours(openSetRef.current, p.before);
+    const finish = (cancelled: boolean) => {
+      pressRef.current = null;
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+      if (!isSelecting) return;
+      isSelectingRef.current = false;
+      setIsSelecting(false);
+      suppressClickRef.current = true;
+      if (!cancelled && dragMovedRef.current && selectionSize > 1) {
+        selectionCommittedRef.current = true;
+        return;
+      }
+      selectionCommittedRef.current = false;
+      setSelAnchor(null);
+      setSelFocus(null);
     };
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
+    const onUp = () => finish(false);
+    const onCancel = () => finish(true);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
     return () => {
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
     };
-  }, [saveHours]);
+  }, [isSelecting, selectionSize]);
+
+  // Once a hold has started a highlight, finger movement must extend it rather than
+  // scroll the grid; only a non-passive listener can cancel the scroll.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onTouchMove = (e: TouchEvent) => { if (isSelectingRef.current) e.preventDefault(); };
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => el.removeEventListener("touchmove", onTouchMove);
+    // The grid isn't mounted while loading, so re-attach once it is.
+  }, [loading]);
+
+  // Escape drops a standing highlight.
+  useEffect(() => {
+    if (!selAnchor || isSelecting) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") clearSelection(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selAnchor, isSelecting, clearSelection]);
+
+  // Holding the pointer near the scroll box's top or bottom edge while dragging
+  // scrolls the grid, so a range can reach rows that are out of view.
+  useEffect(() => {
+    if (!isSelecting) return;
+    const onMove = (e: PointerEvent) => { lastPointerRef.current = { x: e.clientX, y: e.clientY }; };
+    window.addEventListener("pointermove", onMove);
+    let frame = 0;
+    const tick = () => {
+      const el = scrollRef.current;
+      const p = lastPointerRef.current;
+      if (el && p) {
+        const rect = el.getBoundingClientRect();
+        const top = rect.top + (tableRef.current?.tHead?.getBoundingClientRect().height ?? 0);
+        let step = 0;
+        if (p.y < top + AUTOSCROLL_EDGE_PX) step = -Math.min(AUTOSCROLL_MAX_STEP_PX, top + AUTOSCROLL_EDGE_PX - p.y);
+        else if (p.y > rect.bottom - AUTOSCROLL_EDGE_PX) step = Math.min(AUTOSCROLL_MAX_STEP_PX, p.y - (rect.bottom - AUTOSCROLL_EDGE_PX));
+        if (step !== 0) {
+          const before = el.scrollTop;
+          el.scrollTop += step;
+          if (el.scrollTop !== before) {
+            // The rows slid under a still pointer, so find the cell now under it.
+            const cell = cellFromPoint(p.x, Math.min(Math.max(p.y, top + 2), rect.bottom - 2));
+            if (cell) {
+              dragMovedRef.current = true;
+              setSelFocus((prev) => (prev && prev.d === cell.d && prev.t === cell.t ? prev : cell));
+            }
+          }
+        }
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      cancelAnimationFrame(frame);
+      lastPointerRef.current = null;
+    };
+  }, [isSelecting]);
+
+  /** Open a one-cell highlight where the finger is being held. */
+  const beginTouchSelection = () => {
+    longPressTimerRef.current = null;
+    const press = pressRef.current;
+    if (!press) return;
+    dragMovedRef.current = false;
+    selectionCommittedRef.current = false;
+    isSelectingRef.current = true; // the very next touchmove must already be cancelled
+    setSelAnchor({ d: press.d, t: press.t });
+    setSelFocus({ d: press.d, t: press.t });
+    setIsSelecting(true);
+  };
+
+  // A press only records where it started; a click, hold or drag is decided by what
+  // the pointer does next.
+  const handleCellPointerDown = (d: number, t: number, e: React.PointerEvent) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    // The highlight only exists to open/close hours
+    if (!canEditHours || hoursSaving) return;
+    dragMovedRef.current = false;
+    suppressClickRef.current = false;
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+    const touch = e.pointerType !== "mouse";
+    pressRef.current = { d, t, x: e.clientX, y: e.clientY, touch };
+    if (touch) longPressTimerRef.current = setTimeout(beginTouchSelection, LONG_PRESS_MS);
+  };
+
+  const handleCellPointerMove = (d: number, t: number, e: React.PointerEvent) => {
+    const press = pressRef.current;
+    if (!press) return;
+    if (press.touch) {
+      if (isSelecting) {
+        const cell = cellFromPoint(e.clientX, e.clientY);
+        if (cell) {
+          dragMovedRef.current = true;
+          setSelFocus(cell);
+        }
+        return;
+      }
+      // Moving before the hold lands means the user is scrolling, not selecting.
+      if (Math.abs(e.clientX - press.x) > TOUCH_SCROLL_CANCEL_PX || Math.abs(e.clientY - press.y) > TOUCH_SCROLL_CANCEL_PX) {
+        if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+        pressRef.current = null;
+      }
+      return;
+    }
+    if (isSelecting) return; // pointerenter extends it from here
+    if (Math.abs(e.clientX - press.x) < DRAG_THRESHOLD_PX && Math.abs(e.clientY - press.y) < DRAG_THRESHOLD_PX) return;
+    e.preventDefault();
+    dragMovedRef.current = true;
+    selectionCommittedRef.current = false;
+    setSelAnchor({ d: press.d, t: press.t });
+    setSelFocus({ d, t });
+    setIsSelecting(true);
+  };
+
+  const handleCellPointerEnter = (d: number, t: number, e: React.PointerEvent) => {
+    if (e.pointerType !== "mouse" || !isSelecting) return;
+    setSelFocus({ d, t });
+  };
+
+  /**
+   * Every cell click runs through here first. A click that ends a drag does nothing;
+   * while a highlight is standing, a click inside keeps it and one outside dismisses it.
+   */
+  const guardCellClick = (key: string): boolean => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return false;
+    }
+    if (selectionCommittedRef.current) {
+      if (!selectedKeys.has(key)) clearSelection();
+      return false;
+    }
+    return true;
+  };
+
+  const toggleHour = (key: string) => {
+    if (hoursSaving) return;
+    const before = openSet;
+    const next = new Set(openSet);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    setOpenSet(next);
+    saveHours(next, before);
+  };
+
+  /** Mark every highlighted cell open or closed. */
+  const applySelection = (open: boolean) => {
+    const before = openSet;
+    const next = new Set(openSet);
+    for (const k of selectedKeys) {
+      if (open) next.add(k); else next.delete(k);
+    }
+    clearSelection();
+    if (next.size === before.size && [...next].every((k) => before.has(k))) return;
+    setOpenSet(next);
+    saveHours(next, before);
+  };
+
+  const selectionLabel = (() => {
+    if (!selAnchor || !selFocus) return "";
+    const d1 = Math.min(selAnchor.d, selFocus.d);
+    const d2 = Math.max(selAnchor.d, selFocus.d);
+    const t1 = Math.min(selAnchor.t, selFocus.t);
+    const t2 = Math.max(selAnchor.t, selFocus.t);
+    const days = d1 === d2 ? DAYS_OF_WEEK[d1].slice(0, 3) : `${DAYS_OF_WEEK[d1].slice(0, 3)}–${DAYS_OF_WEEK[d2].slice(0, 3)}`;
+    const endMins = toMinutes(slotTimes[t2]) + 30;
+    const end = `${String(Math.floor(endMins / 60) % 24).padStart(2, "0")}:${String(endMins % 60).padStart(2, "0")}`;
+    return `${days} · ${fmt12(slotTimes[t1])} – ${fmt12(end)}`;
+  })();
+  const showSelectionBar = !!selAnchor && !isSelecting && selectionSize > 1;
 
   const copyFromWeek = () => {
     const before = openSet;
@@ -230,9 +463,9 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
 
   const hint =
     mode === "hours" && canEditHours
-      ? "Click — or drag with a mouse — to mark the teacher's regular open (green) and closed (gray) hours."
+      ? "Click a slot to switch it open (green) or closed (gray), or drag across slots — hold then drag on touch — to open or close a whole range."
       : canEdit
-        ? "Click a slot to add or remove a student."
+        ? `Click a slot to add or remove a student.${canEditHours ? " Drag across slots to open or close a range." : ""}`
         : "";
 
   return (
@@ -287,6 +520,23 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
           {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
         </div>
       )}
+      {showSelectionBar && (
+        <div className="flex flex-wrap items-center gap-2 mb-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2">
+          <span className="text-sm font-medium">{selectionLabel}</span>
+          <span className="text-xs text-muted-foreground">{selectionSize} slots</span>
+          <div className="flex gap-2 ml-auto">
+            <Button size="sm" className="h-7 px-2 text-xs bg-green-600 hover:bg-green-700" onClick={() => applySelection(true)}>
+              <Check className="h-3.5 w-3.5 mr-1" /> Mark open
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => applySelection(false)}>
+              Mark closed
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" aria-label="Clear selection" onClick={clearSelection}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
       {hoursError && (
         <Alert variant="destructive" className="mb-3">
           <AlertDescription>{hoursError}</AlertDescription>
@@ -299,8 +549,9 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
         </div>
       ) : (
         <>
-          <div className="overflow-auto max-h-[70vh] overscroll-contain">
-            <table className={`w-full text-xs border-collapse table-fixed ${mode === "hours" ? "select-none" : ""}`}>
+          <div ref={scrollRef} className="overflow-auto max-h-[70vh] overscroll-contain">
+            {/* select-none stops a drag across the grid turning into a text selection */}
+            <table ref={tableRef} className={`w-full text-xs border-collapse table-fixed ${canEditHours ? "select-none" : ""}`}>
               <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_0_var(--border)]">
                 <tr>
                   <th className="p-1 text-left w-16 bg-white">Time</th>
@@ -310,34 +561,38 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {slotTimes.map((time) => (
+                {slotTimes.map((time, t) => (
                   <tr key={time}>
                     <td className="p-1 font-medium text-muted-foreground whitespace-nowrap">{fmt12(time)}</td>
-                    {DAYS_OF_WEEK.map((day) => {
+                    {DAYS_OF_WEEK.map((day, d) => {
                       const key = `${day}|${time}`;
                       const here = cells.get(key) ?? [];
                       const isOpen = openSet.has(key);
-                      const hoursProps = mode === "hours" && canEditHours
-                        ? {
-                            onPointerDown: (e: React.PointerEvent) => handleHoursDown(key, e),
-                            onPointerEnter: () => handleHoursEnter(key),
-                          }
-                        : {};
-                      const onClick = mode === "students" && canEdit ? () => setEditCell({ day, time }) : undefined;
-                      const clickable = !!onClick || (mode === "hours" && canEditHours);
+                      const action = mode === "hours" && canEditHours
+                        ? () => toggleHour(key)
+                        : mode === "students" && canEdit ? () => setEditCell({ day, time }) : null;
+                      const clickable = !!action;
+                      // Every cell takes part in drag-selection, whatever the mode.
+                      const cellProps = {
+                        "data-regular-cell": `${d}:${t}`,
+                        onPointerDown: (e: React.PointerEvent) => handleCellPointerDown(d, t, e),
+                        onPointerMove: (e: React.PointerEvent) => handleCellPointerMove(d, t, e),
+                        onPointerEnter: (e: React.PointerEvent) => handleCellPointerEnter(d, t, e),
+                        onClick: () => { if (guardCellClick(key)) action?.(); },
+                      };
+                      const selected = selectedKeys.has(key) ? "ring-2 ring-inset ring-primary" : "";
                       if (here.length === 0) {
                         return (
                           <td
                             key={day}
-                            {...hoursProps}
-                            onClick={onClick}
+                            {...cellProps}
                             title={
                               (isOpen ? "Regularly open — vacant" : "Regularly closed")
-                              + (mode === "hours" && canEditHours ? " · click to switch" : onClick ? " · click to add a student" : "")
+                              + (mode === "hours" && canEditHours ? " · click to switch" : clickable ? " · click to add a student" : "")
                             }
                             className={`p-1 text-center border ${
                               isOpen ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"
-                            } ${clickable ? "cursor-pointer hover:brightness-95" : ""}`}
+                            } ${clickable ? "cursor-pointer hover:brightness-95" : ""} ${selected}`}
                           >
                             {isOpen ? "✓" : mode === "students" && canEdit ? "+" : ""}
                           </td>
@@ -350,16 +605,15 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
                       return (
                         <td
                           key={day}
-                          {...hoursProps}
-                          onClick={onClick}
+                          {...cellProps}
                           title={here.map(({ slot }) => `${slot.student_name} — ${slot.day_of_week} ${fmt12(slot.start_time)}`).join("\n")
                             + (clash ? "\n⚠ More than one student in this slot" : "")
                             + (outsideHours ? "\n⚠ Outside the teacher's regular open hours" : "")
-                            + (mode === "hours" && canEditHours ? "\nClick to switch open/closed" : onClick ? "\nClick to edit" : "")}
+                            + (mode === "hours" && canEditHours ? "\nClick to switch open/closed" : clickable ? "\nClick to edit" : "")}
                           style={clash ? undefined : { backgroundColor: colorByStudent.get(only.slot.student_id), color: "#fff" }}
                           className={`p-1 text-center border ${clash ? "bg-amber-100 text-amber-800" : ""} ${
                             outsideHours ? "outline-2 outline-dashed outline-red-500 -outline-offset-2" : ""
-                          } ${clickable ? "cursor-pointer hover:brightness-110" : ""}`}
+                          } ${clickable ? "cursor-pointer hover:brightness-110" : ""} ${selected}`}
                         >
                           {clash ? (
                             <div className="truncate font-medium">⚠ {here.map(({ slot }) => slot.student_name).join(", ")}</div>

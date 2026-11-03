@@ -14,7 +14,7 @@ const { phtNowSql } = require("../utils/phtTime");
 const { attendeeSql, canUsePackageSql, canUsePackage, packageStudentIds } = require("../utils/sharedPackages");
 const { findAvailableTeachers } = require("../utils/teacherAvailability");
 const { DAY_NAMES, addDays, dayOfWeek } = require("../utils/recurringBooking");
-const { DAYS_OF_WEEK, loadRegularSchedules, loadTeacherRegularSlots, loadTeacherRegularSchedule, findBookablePackage, applyRegularEntries } = require("../utils/regularSchedules");
+const { DAYS_OF_WEEK, loadRegularSchedules, loadTeacherRegularSlots, loadTeacherRegularSchedule, findBookablePackage, applyRegularEntries, cleanRegularSlots, replaceTeacherRegularSlots, cleanRegularEntries, loadEntryTeachers, writeRegularEntries } = require("../utils/regularSchedules");
 const { HalfCreditError, resolveLateNotice, createHalfCredit, removeHalfCreditForBooking, notifyHalfCredit, fmtMoney } = require("../utils/halfCredits");
 
 /** Format a stored PHT datetime string for notification messages without UTC shift. */
@@ -1653,20 +1653,8 @@ router.get('/students/:id', authenticateToken, requireRole('company_admin'), asy
 router.put('/students/:id/regular-schedule', authenticateToken, requireRole('company_admin'), requirePermission('students.edit'), async (req, res) => {
   const companyId = req.user.company_id;
   const id = Number(req.params.id);
-  const entries = Array.isArray(req.body.entries) ? req.body.entries : null;
-  if (!entries) return res.status(400).json({ message: 'entries must be a list' });
-  if (entries.length > 21) return res.status(400).json({ message: 'Too many schedule entries' });
-
-  const clean = [];
-  for (const e of entries) {
-    const day = DAYS_OF_WEEK.find((d) => d.toLowerCase() === String(e?.day_of_week || '').toLowerCase());
-    const time = String(e?.start_time || '');
-    if (!day) return res.status(400).json({ message: 'Each entry needs a valid day' });
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return res.status(400).json({ message: 'Each entry needs a valid time' });
-    const teacherId = e.teacher_id ? Number(e.teacher_id) : null;
-    if (teacherId !== null && !Number.isInteger(teacherId)) return res.status(400).json({ message: 'Invalid teacher' });
-    clean.push({ day, time, teacherId });
-  }
+  const { error, clean } = cleanRegularEntries(req.body.entries);
+  if (error) return res.status(400).json({ message: error });
 
   const connection = await pool.getConnection();
   try {
@@ -1674,23 +1662,10 @@ router.put('/students/:id/regular-schedule', authenticateToken, requireRole('com
       "SELECT id FROM users WHERE id = ? AND company_id = ? AND role = 'student'", [id, companyId]
     );
     if (!student) return res.status(404).json({ message: 'Student not found' });
-
-    const teacherIds = [...new Set(clean.map((e) => e.teacherId).filter((t) => t !== null))];
-    if (teacherIds.length > 0) {
-      const [found] = await connection.query(
-        "SELECT id FROM users WHERE id IN (?) AND company_id = ? AND role = 'teacher'", [teacherIds, companyId]
-      );
-      if (found.length !== teacherIds.length) return res.status(400).json({ message: 'Teacher not found' });
-    }
+    if (!(await loadEntryTeachers(connection, companyId, clean))) return res.status(400).json({ message: 'Teacher not found' });
 
     await connection.beginTransaction();
-    await connection.query('DELETE FROM student_regular_schedules WHERE company_id = ? AND student_id = ?', [companyId, id]);
-    for (const e of clean) {
-      await connection.query(
-        'INSERT INTO student_regular_schedules (company_id, student_id, day_of_week, start_time, teacher_id) VALUES (?, ?, ?, ?, ?)',
-        [companyId, id, e.day, e.time, e.teacherId]
-      );
-    }
+    await writeRegularEntries(connection, companyId, id, clean);
     await connection.commit();
 
     const schedule = (await loadRegularSchedules(companyId, id))[id] || [];
@@ -1711,6 +1686,8 @@ router.put('/students/:id/regular-schedule', authenticateToken, requireRole('com
 // like a recurring schedule. All-or-nothing — one transaction for every slot,
 // so a shortfall in sessions books nothing. Slots with no free dates at all are
 // reported as skipped rather than failing the rest.
+// With `entries` (the Add Student wizard's first schedule), those replace the
+// saved regular schedule in the same transaction, so it is only saved if booked.
 router.post('/students/:id/regular-schedule/apply', authenticateToken, requireRole('company_admin'), requirePermission('students.book_classes'), async (req, res) => {
   const companyId = req.user.company_id;
   const id = Number(req.params.id);
@@ -1719,12 +1696,29 @@ router.post('/students/:id/regular-schedule/apply', authenticateToken, requireRo
   if (start_date && !/^\d{4}-\d{2}-\d{2}$/.test(String(start_date))) return res.status(400).json({ message: 'Invalid start date' });
   const weeks = Math.min(12, Math.max(1, parseInt(num_weeks) || 4));
 
-  const entries = (await loadRegularSchedules(companyId, id))[id] || [];
-  if (entries.length === 0) return res.status(400).json({ message: 'Save a regular schedule first' });
+  let entries;
+  let clean = null;
+  if (req.body.entries !== undefined) {
+    const checked = cleanRegularEntries(req.body.entries);
+    if (checked.error) return res.status(400).json({ message: checked.error });
+    if (checked.clean.length === 0) return res.status(400).json({ message: 'Add at least one day and time' });
+    const [[student]] = await pool.query(
+      "SELECT id FROM users WHERE id = ? AND company_id = ? AND role = 'student'", [id, companyId]
+    );
+    if (!student) return res.status(404).json({ message: 'Student not found' });
+    const names = await loadEntryTeachers(pool, companyId, checked.clean);
+    if (!names) return res.status(400).json({ message: 'Teacher not found' });
+    clean = checked.clean;
+    entries = clean.map((e) => ({ day_of_week: e.day, start_time: e.time, teacher_id: e.teacherId, teacher_name: names.get(e.teacherId) || null }));
+  } else {
+    entries = (await loadRegularSchedules(companyId, id))[id] || [];
+    if (entries.length === 0) return res.status(400).json({ message: 'Save a regular schedule first' });
+  }
 
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
+    if (clean) await writeRegularEntries(connection, companyId, id, clean);
     const applied = await applyRegularEntries(connection, {
       companyId, actorRole: req.user.role, actorId: req.user.id, studentId: id,
       studentPackageId: student_package_id, entries, weeks, startDate: start_date,
@@ -1789,42 +1783,21 @@ router.get('/teachers/:id/regular-slots', authenticateToken, requireRole('compan
 router.put('/teachers/:id/regular-slots', authenticateToken, requireRole('company_admin'), requirePermission('calendar.manage_slots', 'teachers.manage_schedule'), async (req, res) => {
   const companyId = req.user.company_id;
   const teacherId = Number(req.params.id);
-  const slots = Array.isArray(req.body.slots) ? req.body.slots : null;
-  if (!slots) return res.status(400).json({ message: 'slots must be a list' });
-  if (slots.length > 7 * 48) return res.status(400).json({ message: 'Too many slots' });
+  const { error, clean } = cleanRegularSlots(req.body.slots);
+  if (error) return res.status(400).json({ message: error });
 
-  const clean = new Map();
-  for (const sl of slots) {
-    const day = DAYS_OF_WEEK.find((d) => d.toLowerCase() === String(sl?.day_of_week || '').toLowerCase());
-    const time = String(sl?.slot_time || '');
-    if (!day || !/^([01]\d|2[0-3]):(00|30)$/.test(time)) return res.status(400).json({ message: 'Each slot needs a valid day and a :00 or :30 time' });
-    clean.set(`${day}|${time}`, [day, time]);
-  }
-
-  const connection = await pool.getConnection();
   try {
-    const [[teacher]] = await connection.query(
+    const [[teacher]] = await pool.query(
       "SELECT id, name FROM users WHERE id = ? AND company_id = ? AND role = 'teacher'", [teacherId, companyId]
     );
     if (!teacher) return res.status(404).json({ message: 'Teacher not found' });
 
-    await connection.beginTransaction();
-    await connection.query('DELETE FROM teacher_regular_slots WHERE company_id = ? AND teacher_id = ?', [companyId, teacherId]);
-    if (clean.size > 0) {
-      await connection.query(
-        'INSERT INTO teacher_regular_slots (company_id, teacher_id, day_of_week, slot_time) VALUES ?',
-        [[...clean.values()].map(([day, time]) => [companyId, teacherId, day, time])]
-      );
-    }
-    await connection.commit();
-
-    await logAction(companyId, req.user.id, 'teacher_regular_slots_updated', 'user', teacherId, { open_slots: clean.size });
+    await replaceTeacherRegularSlots(companyId, teacherId, clean);
+    await logAction(companyId, req.user.id, 'teacher_regular_slots_updated', 'user', teacherId, { open_slots: clean.length });
     res.json((await loadTeacherRegularSlots(companyId, teacherId))[teacherId] || []);
   } catch (err) {
-    await connection.rollback().catch(() => {});
+    console.error('Update teacher regular slots error:', err);
     res.status(500).json({ message: 'Server error' });
-  } finally {
-    connection.release();
   }
 });
 

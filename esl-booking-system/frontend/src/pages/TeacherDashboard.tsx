@@ -44,6 +44,7 @@ import NotificationBell from "@/components/NotificationBell";
 import InstallAppButton from "@/components/InstallAppButton";
 import ThemeToggle from "@/components/ThemeToggle";
 import ReportModal from "@/components/ReportModal";
+import RegularScheduleSetupDialog from "@/components/RegularScheduleSetupDialog";
 import { fmtDate, fmtDateOnly, TIMEZONES } from "@/utils/timezone";
 import {
   NOTE_COLOR_PRESETS,
@@ -224,10 +225,6 @@ const SLOT_TIMES: string[] = Array.from({ length: 34 }, (_, i) => {
   const m = (totalMins % 60).toString().padStart(2, "0");
   return `${h}:${m}`;
 });
-
-// Boundaries for the recurring-schedule range pickers: every slot start plus
-// 24:00 (midnight) as the closing edge, so the 11:30 PM slot can be included.
-const RANGE_TIMES: string[] = [...SLOT_TIMES, "24:00"];
 
 /** A single 30-min cell in the weekly availability grid. */
 type SlotRef = { dateStr: string; time: string };
@@ -585,16 +582,8 @@ const TeacherDashboard = () => {
   const [noteError, setNoteError] = useState<string | null>(null);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
 
-  // Recurring availability dialog
+  // Regular schedule dialog
   const [showRecurringAvail, setShowRecurringAvail] = useState(false);
-  const [recurringAvailDays, setRecurringAvailDays] = useState<string[]>([]);
-  const [recurringAvailStart, setRecurringAvailStart] = useState("09:00");
-  const [recurringAvailEnd, setRecurringAvailEnd] = useState("17:00");
-  const [recurringAvailWeeks, setRecurringAvailWeeks] = useState(4);
-  const [recurringAvailLoading, setRecurringAvailLoading] = useState(false);
-  const [recurringAvailMsg, setRecurringAvailMsg] = useState<string | null>(
-    null,
-  );
   const [clearingWeek, setClearingWeek] = useState(false);
 
   // Last-class panel — opened by clicking a booked cell in the availability grid
@@ -1064,33 +1053,6 @@ const TeacherDashboard = () => {
       );
     } finally {
       setNoteSaving(false);
-    }
-  };
-
-  const handleRecurringAvailability = async () => {
-    if (recurringAvailDays.length === 0) return;
-    setRecurringAvailLoading(true);
-    setRecurringAvailMsg(null);
-    try {
-      const res = await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/teacher/weekly-slots/recurring`,
-        {
-          days: recurringAvailDays,
-          start_time: recurringAvailStart,
-          end_time: recurringAvailEnd,
-          weeks: recurringAvailWeeks,
-        },
-        { headers },
-      );
-      setRecurringAvailMsg(`Done! ${res.data.slotsCreated} slots opened.`);
-      fetchOpenSlots(weekStart);
-    } catch (err: unknown) {
-      setRecurringAvailMsg(
-        (err as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message || "Failed to set recurring schedule.",
-      );
-    } finally {
-      setRecurringAvailLoading(false);
     }
   };
 
@@ -2391,12 +2353,9 @@ const TeacherDashboard = () => {
                       size="sm"
                       variant="outline"
                       className="h-7 px-2 text-xs"
-                      onClick={() => {
-                        setRecurringAvailMsg(null);
-                        setShowRecurringAvail(true);
-                      }}
+                      onClick={() => setShowRecurringAvail(true)}
                     >
-                      Set Recurring
+                      Regular Schedule
                     </Button>
                     <Button
                       size="sm"
@@ -4503,234 +4462,11 @@ const TeacherDashboard = () => {
         classDate={postDoneReport?.classDate ?? reportModal.classDate}
       />
 
-      {/* Recurring Availability Dialog */}
-      <Dialog
+      <RegularScheduleSetupDialog
         open={showRecurringAvail}
-        onOpenChange={(o) => {
-          if (!o) {
-            setShowRecurringAvail(false);
-            setRecurringAvailMsg(null);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Set Recurring Availability</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            {/* Quick presets */}
-            <div>
-              <p className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wide">
-                Quick Presets
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  {
-                    label: "Weekdays Full Day",
-                    days: [
-                      "Monday",
-                      "Tuesday",
-                      "Wednesday",
-                      "Thursday",
-                      "Friday",
-                    ],
-                    start: "09:00",
-                    end: "18:00",
-                  },
-                  {
-                    label: "Weekday Mornings",
-                    days: [
-                      "Monday",
-                      "Tuesday",
-                      "Wednesday",
-                      "Thursday",
-                      "Friday",
-                    ],
-                    start: "07:00",
-                    end: "12:00",
-                  },
-                  {
-                    label: "Weekday Afternoons",
-                    days: [
-                      "Monday",
-                      "Tuesday",
-                      "Wednesday",
-                      "Thursday",
-                      "Friday",
-                    ],
-                    start: "13:00",
-                    end: "18:00",
-                  },
-                  {
-                    label: "Mon / Wed / Fri",
-                    days: ["Monday", "Wednesday", "Friday"],
-                    start: "09:00",
-                    end: "18:00",
-                  },
-                  {
-                    label: "⭐ Peak Hours",
-                    days: [
-                      "Monday",
-                      "Tuesday",
-                      "Wednesday",
-                      "Thursday",
-                      "Friday",
-                      "Saturday",
-                      "Sunday",
-                    ],
-                    start: "18:00",
-                    end: "22:00",
-                  },
-                ].map((p) => (
-                  <button
-                    key={p.label}
-                    type="button"
-                    onClick={() => {
-                      setRecurringAvailDays(p.days);
-                      setRecurringAvailStart(p.start);
-                      setRecurringAvailEnd(p.end);
-                    }}
-                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${p.label.startsWith("⭐") ? "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100 hover:border-amber-400" : "bg-white text-muted-foreground border-gray-200 hover:border-primary hover:text-primary"}`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Day toggles */}
-            <div>
-              <p className="text-sm font-medium mb-2">Days of the week</p>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  "Monday",
-                  "Tuesday",
-                  "Wednesday",
-                  "Thursday",
-                  "Friday",
-                  "Saturday",
-                  "Sunday",
-                ].map((day) => (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() =>
-                      setRecurringAvailDays((prev) =>
-                        prev.includes(day)
-                          ? prev.filter((d) => d !== day)
-                          : [...prev, day],
-                      )
-                    }
-                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${recurringAvailDays.includes(day) ? "bg-primary text-white border-primary" : "bg-white text-muted-foreground border-gray-200 hover:border-primary"}`}
-                  >
-                    {day.substring(0, 3)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Time range */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium block mb-1">
-                  Start Time
-                </label>
-                <select
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                  value={recurringAvailStart}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setRecurringAvailStart(v);
-                    if (v >= recurringAvailEnd) {
-                      const next = RANGE_TIMES.find((t) => t > v);
-                      if (next) setRecurringAvailEnd(next);
-                    }
-                  }}
-                >
-                  {RANGE_TIMES.slice(0, -1).map((t) => (
-                    <option key={t} value={t}>
-                      {fmt12(t)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium block mb-1">
-                  End Time
-                </label>
-                <select
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                  value={recurringAvailEnd}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setRecurringAvailEnd(v);
-                    if (v <= recurringAvailStart) {
-                      const prev = [...RANGE_TIMES].reverse().find((t) => t < v);
-                      if (prev) setRecurringAvailStart(prev);
-                    }
-                  }}
-                >
-                  {RANGE_TIMES.slice(1).map((t) => (
-                    <option key={t} value={t}>
-                      {fmt12(t)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Weeks */}
-            <div>
-              <label className="text-sm font-medium block mb-1">
-                Number of Weeks
-              </label>
-              <select
-                className="w-full border rounded-lg px-3 py-2 text-sm"
-                value={recurringAvailWeeks}
-                onChange={(e) => setRecurringAvailWeeks(Number(e.target.value))}
-              >
-                {[1, 2, 3, 4, 6, 8, 12].map((w) => (
-                  <option key={w} value={w}>
-                    {w} week{w > 1 ? "s" : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {recurringAvailMsg && (
-              <p
-                className={`text-sm ${recurringAvailMsg.startsWith("Done") ? "text-green-600" : "text-red-600"}`}
-              >
-                {recurringAvailMsg}
-              </p>
-            )}
-          </div>
-          <div className="flex gap-2 pt-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => {
-                setShowRecurringAvail(false);
-                setRecurringAvailMsg(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="flex-1"
-              disabled={
-                recurringAvailLoading || recurringAvailDays.length === 0
-              }
-              onClick={handleRecurringAvailability}
-            >
-              {recurringAvailLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : null}
-              {recurringAvailMsg?.startsWith("Done") ? "Close" : "Apply"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+        onClose={() => setShowRecurringAvail(false)}
+        onApplied={() => fetchOpenSlots(weekStart)}
+      />
 
       {/* Last Class panel — from a booked cell in the availability grid */}
       <Dialog
