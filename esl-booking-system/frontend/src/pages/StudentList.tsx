@@ -8,6 +8,11 @@ import { AdminTour } from "@/components/AdminTour";
 import { useOnboarding } from "@/context/OnboardingContext";
 import BulkImportDialog from "@/components/BulkImportDialog";
 import SessionAdjustDialog, { type AdjustMode } from "@/components/SessionAdjustDialog";
+import RegularScheduleDialog, {
+  RegularScheduleList,
+  type RegularScheduleEntry,
+} from "@/components/RegularScheduleDialog";
+import ApplyRegularScheduleDialog from "@/components/ApplyRegularScheduleDialog";
 import {
   Table,
   TableBody,
@@ -61,6 +66,8 @@ import {
   Plus,
   Minus,
   Columns3,
+  Pencil,
+  CalendarPlus,
 } from "lucide-react";
 import {
   Tooltip,
@@ -88,6 +95,7 @@ interface Student {
   enrolled: boolean;
   is_active?: boolean | number;
   is_disabled?: boolean | number;
+  regular_schedule?: RegularScheduleEntry[];
   student_package_id: number | null;
 }
 
@@ -151,14 +159,16 @@ const remainingCount = (s: Student) => s.unused_sessions ?? s.sessions_remaining
 // Columns the admin can hide. The choice is a per-browser preference, so it
 // lives in localStorage; storage can throw (private mode, blocked site data),
 // in which case both columns simply show.
-type OptionalColumn = "package" | "subject";
+type OptionalColumn = "package" | "subject" | "schedule";
 const HIDDEN_COLUMNS_KEY = "studentList.hiddenColumns";
 const loadHiddenColumns = (): OptionalColumn[] => {
   try {
     const raw = localStorage.getItem(HIDDEN_COLUMNS_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed)
-      ? parsed.filter((c): c is OptionalColumn => c === "package" || c === "subject")
+      ? parsed.filter(
+          (c): c is OptionalColumn => c === "package" || c === "subject" || c === "schedule",
+        )
       : [];
   } catch {
     return [];
@@ -209,7 +219,13 @@ const StudentListPage: React.FC = () => {
   const [hiddenColumns, setHiddenColumns] = useState<OptionalColumn[]>(loadHiddenColumns);
   const showPackage = !hiddenColumns.includes("package");
   const showSubject = !hiddenColumns.includes("subject");
-  const columnCount = 5 + (showPackage ? 1 : 0) + (showSubject ? 1 : 0);
+  const showSchedule = !hiddenColumns.includes("schedule");
+  const columnCount =
+    5 + (showPackage ? 1 : 0) + (showSubject ? 1 : 0) + (showSchedule ? 1 : 0);
+  // Student whose agreed regular schedule is being edited (record only).
+  const [scheduleTarget, setScheduleTarget] = useState<Student | null>(null);
+  // Student whose regular schedule is being booked as real classes.
+  const [applyTarget, setApplyTarget] = useState<Student | null>(null);
 
   const toggleColumn = (col: OptionalColumn, visible: boolean) => {
     setHiddenColumns((prev) => {
@@ -677,6 +693,13 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
               >
                 Subject
               </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={showSchedule}
+                onCheckedChange={(v) => toggleColumn("schedule", !!v)}
+                onSelect={(e) => e.preventDefault()}
+              >
+                Regular Schedule
+              </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -696,6 +719,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                     {showSubject && <TableHead>Subject</TableHead>}
                     <TableHead>Sessions</TableHead>
                     <TableHead>Assigned Teacher</TableHead>
+                    {showSchedule && <TableHead>Regular Schedule</TableHead>}
                     <TableHead>Nationality</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
@@ -807,6 +831,38 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                             <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
+                        {showSchedule && (
+                          <TableCell>
+                            <div className="flex items-start gap-1">
+                              <RegularScheduleList entries={student.regular_schedule} />
+                              {can("students.edit") && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  aria-label={`Edit regular schedule for ${student.name}`}
+                                  title="Edit regular schedule"
+                                  className="h-6 w-6 p-0 shrink-0 text-muted-foreground"
+                                  onClick={() => setScheduleTarget(student)}
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                              )}
+                              {can("students.book_classes") && (student.regular_schedule?.length ?? 0) > 0 && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  aria-label={`Apply regular schedule for ${student.name}`}
+                                  title={student.student_package_id ? "Apply to schedule (books classes)" : "No package assigned"}
+                                  className="h-6 w-6 p-0 shrink-0 text-primary"
+                                  disabled={!student.student_package_id}
+                                  onClick={() => setApplyTarget(student)}
+                                >
+                                  <CalendarPlus className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
                         <TableCell>{student.nationality || "—"}</TableCell>
                         <TableCell className="text-right flex items-center justify-end gap-1">
                           {can("students.reset_password") && <TooltipProvider>
@@ -991,6 +1047,23 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <RegularScheduleDialog
+        student={scheduleTarget}
+        onClose={() => setScheduleTarget(null)}
+        onSaved={(schedule) => {
+          const id = scheduleTarget?.id;
+          setStudents((prev) =>
+            prev.map((s) => (s.id === id ? { ...s, regular_schedule: schedule } : s)),
+          );
+        }}
+      />
+
+      <ApplyRegularScheduleDialog
+        student={applyTarget}
+        onClose={() => setApplyTarget(null)}
+        onApplied={fetchStudents}
+      />
 
       <SessionAdjustDialog
         mode={adjustTarget?.mode ?? null}

@@ -7,6 +7,7 @@ const { hasAnyPermission } = require('../utils/permissions');
 const notify = require('../utils/notify');
 const { attendeeSql, canUsePackageSql, packageStudentIds } = require('../utils/sharedPackages');
 const { toTime24, findAvailableTeachers } = require('../utils/teacherAvailability');
+const { loadRegularSchedules } = require('../utils/regularSchedules');
 
 /** Format a stored PHT datetime string for notification messages without UTC shift. */
 function fmtAppt(dtStr) {
@@ -629,6 +630,9 @@ router.get("/students", authenticateToken, requireRole('company_admin'), async (
         );
         // Passwords back the "Copy info" button — only for admins who manage credentials
         if (!await hasAnyPermission(req.user.id, 'students.reset_password')) rows.forEach(r => delete r.password);
+
+        const schedules = await loadRegularSchedules(companyId);
+        rows.forEach(r => { r.regular_schedule = schedules[r.id] || []; });
 
         res.json({
             data: rows,

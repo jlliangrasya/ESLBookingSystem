@@ -1,15 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const crypto = require('crypto');
 const pool = require('../db');
 const authenticateToken = require('../middleware/authMiddleware');
 const requireRole = require('../middleware/requireRole');
 const { requirePermission } = require('../utils/permissions');
 const notify = require('../utils/notify');
 const { logAction } = require('../utils/audit');
-const { attendeeSql, canUsePackage } = require('../utils/sharedPackages');
-
-const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const { attendeeSql } = require('../utils/sharedPackages');
+const { DAY_NAMES, bookRecurringSchedule } = require('../utils/recurringBooking');
 
 /** Format a stored PHT datetime string for notification messages without UTC shift. */
 function fmtAppt(dtStr) {
@@ -24,32 +22,6 @@ function fmtAppt(dtStr) {
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     return `${months[Number(mo) - 1]} ${Number(d)}, ${y} ${h12}:${String(mm).padStart(2,'0')} ${ampm}`;
 }
-
-/**
- * Advance a "YYYY-MM-DD" string by one day using pure arithmetic — no Date object,
- * no timezone shift risk.
- */
-function addOneDay(dateStr) {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    const dt = new Date(Date.UTC(y, m - 1, d + 1));
-    return dt.toISOString().slice(0, 10);
-}
-
-/** Add N days to a "YYYY-MM-DD" string. */
-function addDays(dateStr, n) {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    const dt = new Date(Date.UTC(y, m - 1, d + n));
-    return dt.toISOString().slice(0, 10);
-}
-
-/** Get the day-of-week index (0=Sun) for a "YYYY-MM-DD" string. */
-function dayOfWeek(dateStr) {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-}
-
-/** Compare two "YYYY-MM-DD" strings. */
-function dateStrLt(a, b) { return a < b; }
 
 // POST / — Create recurring schedule + auto-generate bookings
 router.post('/', authenticateToken, requireRole('student', 'company_admin'), requirePermission('students.book_classes'), async (req, res) => {
@@ -68,272 +40,21 @@ router.post('/', authenticateToken, requireRole('student', 'company_admin'), req
             connection.release();
             return res.status(400).json({ message: 'days_of_week must be a non-empty array of valid day names (Monday-Sunday)' });
         }
-        const weeksCount = Math.min(12, Math.max(1, parseInt(num_weeks) || 4));
 
         // ── BEGIN TRANSACTION ───────────────────────────────────────────────
         await connection.beginTransaction();
 
-        // ── Lock & fetch package + duration ─────────────────────────────────
-        const [spRows] = await connection.query(
-            `SELECT sp.id, sp.student_id, sp.teacher_id, sp.sessions_remaining, sp.payment_status,
-                    tp.duration_minutes
-             FROM student_packages sp
-             JOIN tutorial_packages tp ON sp.package_id = tp.id
-             WHERE sp.id = ? AND sp.company_id = ? FOR UPDATE`,
-            [student_package_id, companyId]
-        );
-        if (spRows.length === 0) {
+        const booked = await bookRecurringSchedule(connection, {
+            companyId, actorRole: req.user.role, actorId: createdBy,
+            studentPackageId: student_package_id, studentId: req.body.student_id,
+            teacherId: teacher_id, daysOfWeek: days_of_week, startTime: start_time,
+            numWeeks: num_weeks, startDate: start_date,
+        });
+        if (booked.error) {
             await connection.rollback(); connection.release();
-            return res.status(404).json({ message: 'Student package not found' });
+            return res.status(booked.error.status).json(booked.error.body);
         }
-        const sp = spRows[0];
-
-        // Who attends: the student themself, or (admin) the chosen student on a
-        // shared package — defaulting to the package owner as before.
-        const attendeeId = req.user.role === 'student'
-            ? req.user.id
-            : (req.body.student_id ? Number(req.body.student_id) : sp.student_id);
-
-        // Students can only create schedules for their own (or shared-with-them) packages
-        if (!(await canUsePackage(attendeeId, student_package_id, connection))) {
-            await connection.rollback(); connection.release();
-            return res.status(403).json({ message: req.user.role === 'student'
-                ? 'You can only create recurring schedules for your own packages.'
-                : 'That student does not share this package.' });
-        }
-
-        if (sp.payment_status !== 'paid') {
-            await connection.rollback(); connection.release();
-            return res.status(403).json({ message: 'Package payment has not been confirmed yet.' });
-        }
-        if (sp.sessions_remaining <= 0) {
-            await connection.rollback(); connection.release();
-            return res.status(403).json({ message: 'No sessions remaining in this package.' });
-        }
-
-        // ── Resolve teacher ─────────────────────────────────────────────────
-        let teacherId = teacher_id || sp.teacher_id;
-        if (!teacherId) {
-            const [companyTeachers] = await connection.query(
-                "SELECT id FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE",
-                [companyId]
-            );
-            if (companyTeachers.length === 1) {
-                teacherId = companyTeachers[0].id;
-            }
-        }
-        if (!teacherId) {
-            await connection.rollback(); connection.release();
-            return res.status(400).json({ message: 'No teacher assigned. Please assign a teacher to the package or specify teacher_id.' });
-        }
-
-        // Verify teacher exists and is active
-        const [[validTeacher]] = await connection.query(
-            "SELECT id FROM users WHERE id = ? AND company_id = ? AND role = 'teacher' AND is_active = TRUE",
-            [teacherId, companyId]
-        );
-        if (!validTeacher) {
-            await connection.rollback(); connection.release();
-            return res.status(400).json({ message: 'Selected teacher is not valid.' });
-        }
-
-        // ── Calculate duration & slots per class ────────────────────────────
-        const durationMinutes = sp.duration_minutes || 25;
-        const slotsPerClass = Math.max(1, Math.ceil(durationMinutes / 30));
-
-        // ── Generate target dates ───────────────────────────────────────────
-        // Use pure string-based date arithmetic — no new Date() to avoid UTC shift.
-        const schedStartStr = start_date || addOneDay(new Date().toISOString().slice(0, 10));
-        const schedEndStr = addDays(schedStartStr, weeksCount * 7);
-
-        const [baseH, baseM] = start_time.split(':').map(Number);
-
-        const localDateStr = (d) => {
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${y}-${m}-${day}`;
-        };
-
-        const targetDates = [];
-        for (let cur = schedStartStr; dateStrLt(cur, schedEndStr); cur = addOneDay(cur)) {
-            const dayName = DAY_NAMES[dayOfWeek(cur)];
-            if (!days_of_week.includes(dayName)) continue;
-            targetDates.push(cur);
-        }
-
-        if (targetDates.length === 0) {
-            await connection.rollback(); connection.release();
-            return res.status(400).json({ message: 'No matching dates found for the selected days and weeks.' });
-        }
-
-        // ── Check each date for conflicts ───────────────────────────────────
-        const bookableDates = [];
-        const skippedDates = [];
-
-        for (const dateStr of targetDates) {
-            // Build consecutive slot list for this class
-            const slotList = [];
-            let skipReason = null;
-
-            for (let i = 0; i < slotsPerClass; i++) {
-                const totalMin = baseH * 60 + baseM + i * 30;
-                const h = Math.floor(totalMin / 60);
-                const m = totalMin % 60;
-                if (h >= 23 && m > 0) {
-                    skipReason = `Class extends past end of day at ${start_time}`;
-                    break;
-                }
-                slotList.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
-            }
-            if (skipReason) { skippedDates.push({ date: dateStr, reason: skipReason }); continue; }
-
-            // a) Teacher leave check
-            const [leaveRows] = await connection.query(
-                `SELECT id FROM teacher_leaves WHERE teacher_id = ? AND company_id = ? AND leave_date = ? AND status IN ('pending', 'approved')`,
-                [teacherId, companyId, dateStr]
-            );
-            if (leaveRows.length > 0) {
-                skippedDates.push({ date: dateStr, reason: 'Teacher on leave' }); continue;
-            }
-
-            // b) Check all slots available in teacher_available_slots
-            let slotMissing = false;
-            for (const timeStr of slotList) {
-                const [openRows] = await connection.query(
-                    `SELECT id FROM teacher_available_slots WHERE company_id = ? AND teacher_id = ? AND slot_date = ? AND TIME_FORMAT(slot_time, '%H:%i') = ?`,
-                    [companyId, teacherId, dateStr, timeStr]
-                );
-                if (openRows.length === 0) {
-                    // TEMP DIAGNOSTIC — remove once root cause of the false-negative is confirmed.
-                    const [allRowsThatDay] = await connection.query(
-                        `SELECT teacher_id, slot_date, TIME_FORMAT(slot_time, '%H:%i:%s') AS slot_time_raw
-                         FROM teacher_available_slots WHERE company_id = ? AND slot_date = ?`,
-                        [companyId, dateStr]
-                    );
-                    console.log('[recurring debug] no match', {
-                        companyId, teacherId, teacherIdType: typeof teacherId, dateStr, timeStr,
-                        rowsThatDayAnyTeacher: allRowsThatDay,
-                    });
-                    skippedDates.push({ date: dateStr, reason: `Teacher not available at ${timeStr}` });
-                    slotMissing = true; break;
-                }
-            }
-            if (slotMissing) continue;
-
-            // c) Closed slot check
-            let slotClosed = false;
-            for (const timeStr of slotList) {
-                const [closedRows] = await connection.query(
-                    `SELECT id FROM closed_slots WHERE company_id = ? AND (teacher_id = ? OR teacher_id IS NULL) AND date = ? AND time = ?`,
-                    [companyId, teacherId, dateStr, timeStr]
-                );
-                if (closedRows.length > 0) {
-                    skippedDates.push({ date: dateStr, reason: `Slot closed at ${timeStr}` });
-                    slotClosed = true; break;
-                }
-            }
-            if (slotClosed) continue;
-
-            // d) Teacher overlap check
-            let teacherOverlap = false;
-            for (const timeStr of slotList) {
-                const slotDatetime = `${dateStr} ${timeStr}:00`;
-                const [overlapRows] = await connection.query(
-                    `SELECT id FROM bookings WHERE teacher_id = ? AND company_id = ? AND status NOT IN ('cancelled', 'done')
-                     AND ABS(TIMESTAMPDIFF(MINUTE, appointment_date, ?)) < 30`,
-                    [teacherId, companyId, slotDatetime]
-                );
-                if (overlapRows.length > 0) {
-                    skippedDates.push({ date: dateStr, reason: `Teacher has existing class at ${timeStr}` });
-                    teacherOverlap = true; break;
-                }
-            }
-            if (teacherOverlap) continue;
-
-            // e) Student overlap check
-            let studentOverlap = false;
-            for (const timeStr of slotList) {
-                const slotDatetime = `${dateStr} ${timeStr}:00`;
-                const [overlapRows] = await connection.query(
-                    `SELECT b.id FROM bookings b JOIN student_packages spp ON b.student_package_id = spp.id
-                     WHERE ${attendeeSql('b', 'spp')} = ? AND b.company_id = ? AND b.status NOT IN ('cancelled', 'done')
-                     AND ABS(TIMESTAMPDIFF(MINUTE, b.appointment_date, ?)) < 30`,
-                    [attendeeId, companyId, slotDatetime]
-                );
-                if (overlapRows.length > 0) {
-                    skippedDates.push({ date: dateStr, reason: `Student has existing class at ${timeStr}` });
-                    studentOverlap = true; break;
-                }
-            }
-            if (studentOverlap) continue;
-
-            // All checks passed — this date is bookable
-            bookableDates.push({ date: dateStr, slots: slotList });
-        }
-
-        // ── Validate session availability ───────────────────────────────────
-        if (bookableDates.length === 0) {
-            await connection.rollback(); connection.release();
-            return res.status(400).json({
-                message: 'No available dates found. All dates have conflicts.',
-                skipped_dates: skippedDates,
-            });
-        }
-
-        if (sp.sessions_remaining < bookableDates.length) {
-            await connection.rollback(); connection.release();
-            return res.status(403).json({
-                message: `Not enough sessions: ${sp.sessions_remaining} remaining, ${bookableDates.length} needed.`,
-                sessions_remaining: sp.sessions_remaining,
-                sessions_needed: bookableDates.length,
-                skipped_dates: skippedDates,
-            });
-        }
-
-        // ── INSERT recurring schedule ───────────────────────────────────────
-        const startDateStr = schedStartStr;
-        const endDateStr = schedEndStr;
-
-        const [schedResult] = await connection.query(
-            `INSERT INTO recurring_schedules
-             (company_id, student_package_id, teacher_id, student_id, days_of_week, start_time,
-              duration_minutes, slots_per_class, num_weeks, start_date, end_date,
-              total_possible, sessions_booked, skipped_dates, status, created_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
-            [companyId, student_package_id, teacherId, attendeeId,
-             JSON.stringify(days_of_week), start_time,
-             durationMinutes, slotsPerClass, weeksCount, startDateStr, endDateStr,
-             targetDates.length, bookableDates.length,
-             skippedDates.length > 0 ? JSON.stringify(skippedDates) : null,
-             createdBy]
-        );
-        const scheduleId = schedResult.insertId;
-
-        // ── INSERT bookings for each bookable date ──────────────────────────
-        const allInsertedIds = [];
-        for (const { date, slots } of bookableDates) {
-            // Each CLASS gets its own booking_group_id for multi-slot
-            const groupId = slotsPerClass > 1 ? crypto.randomUUID() : null;
-
-            for (const timeStr of slots) {
-                const appointmentDate = `${date} ${timeStr}:00`;
-                const [result] = await connection.query(
-                    `INSERT INTO bookings (company_id, student_package_id, attendee_id, teacher_id, appointment_date,
-                     status, rescheduled_by_admin, booking_group_id, recurring_schedule_id, created_at)
-                     VALUES (?, ?, ?, ?, ?, 'confirmed', 0, ?, ?, NOW())`,
-                    [companyId, student_package_id, attendeeId, teacherId, appointmentDate, groupId, scheduleId]
-                );
-                allInsertedIds.push(result.insertId);
-            }
-        }
-
-        // ── Deduct sessions (1 per CLASS, not per slot) ─────────────────────
-        await connection.query(
-            `UPDATE student_packages SET sessions_remaining = GREATEST(0, sessions_remaining - ?)
-             WHERE id = ? AND company_id = ?`,
-            [bookableDates.length, student_package_id, companyId]
-        );
+        const { scheduleId, attendeeId, teacherId, weeksCount } = booked;
 
         // ── COMMIT ──────────────────────────────────────────────────────────
         await connection.commit();
@@ -341,7 +62,7 @@ router.post('/', authenticateToken, requireRole('student', 'company_admin'), req
 
         // ── Notifications (fire-and-forget, after commit) ───────────────────
         const daysStr = days_of_week.join(', ');
-        const msg = `Recurring schedule created: ${daysStr} at ${start_time} for ${weeksCount} weeks. ${bookableDates.length} classes booked.`;
+        const msg = `Recurring schedule created: ${daysStr} at ${start_time} for ${weeksCount} weeks. ${booked.sessionsBooked} classes booked.`;
 
         notify({ userId: attendeeId, companyId, type: 'recurring_schedule_created', title: 'Recurring Schedule Created', message: msg });
         if (teacherId !== createdBy) {
@@ -351,19 +72,19 @@ router.post('/', authenticateToken, requireRole('student', 'company_admin'), req
         Promise.all(admins.map(a => notify({ userId: a.id, companyId, type: 'recurring_schedule_created', title: 'Recurring Schedule Created', message: msg }))).catch(() => {});
 
         logAction(companyId, createdBy, 'create_recurring_schedule', 'recurring_schedule', scheduleId, {
-            sessions_booked: bookableDates.length, days_of_week, start_time, num_weeks: weeksCount
+            sessions_booked: booked.sessionsBooked, days_of_week, start_time, num_weeks: weeksCount
         });
 
         res.status(201).json({
             message: 'Recurring schedule created',
             schedule_id: scheduleId,
-            sessions_booked: bookableDates.length,
-            sessions_remaining: sp.sessions_remaining - bookableDates.length,
-            skipped_dates: skippedDates,
-            total_possible: targetDates.length,
-            booking_ids: allInsertedIds,
-            duration_minutes: durationMinutes,
-            slots_per_class: slotsPerClass,
+            sessions_booked: booked.sessionsBooked,
+            sessions_remaining: booked.sessionsRemaining,
+            skipped_dates: booked.skippedDates,
+            total_possible: booked.totalPossible,
+            booking_ids: booked.bookingIds,
+            duration_minutes: booked.durationMinutes,
+            slots_per_class: booked.slotsPerClass,
         });
     } catch (err) {
         try { await connection.rollback(); } catch (_) {}

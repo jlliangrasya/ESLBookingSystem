@@ -212,6 +212,17 @@ const MIGRATIONS = [
     check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'is_disabled'",
     up: 'ALTER TABLE users ADD COLUMN is_disabled BOOLEAN NOT NULL DEFAULT FALSE',
   },
+  // ── 023: Students' agreed regular schedule (record only) ──────────────────
+  {
+    name: 'student_regular_schedules table',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student_regular_schedules'",
+    up: `CREATE TABLE IF NOT EXISTS student_regular_schedules (
+      id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, student_id INT NOT NULL,
+      day_of_week VARCHAR(9) NOT NULL, start_time TIME NOT NULL, teacher_id INT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_rs_student (company_id, student_id), INDEX idx_rs_teacher (teacher_id),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE)`,
+  },
 ];
 
 async function main() {

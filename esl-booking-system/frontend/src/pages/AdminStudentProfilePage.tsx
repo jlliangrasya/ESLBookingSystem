@@ -20,12 +20,17 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users, UserCheck, X, CheckCircle, AlertTriangle, TrendingUp, TrendingDown, Download,
+  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users, UserCheck, X, CheckCircle, AlertTriangle, TrendingUp, TrendingDown, Download, CalendarPlus,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly, localToMysql } from "@/utils/timezone";
 import { downloadReportImage } from "@/utils/reportImage";
 import TablePagination from "@/components/TablePagination";
 import SessionAdjustDialog from "@/components/SessionAdjustDialog";
+import RegularScheduleDialog, {
+  RegularScheduleList,
+  type RegularScheduleEntry,
+} from "@/components/RegularScheduleDialog";
+import ApplyRegularScheduleDialog from "@/components/ApplyRegularScheduleDialog";
 import { StudentPackagePicker } from "@/components/StudentPackagePicker";
 
 interface PackageHistory {
@@ -73,6 +78,7 @@ interface StudentProfile {
   age: number | null;
   is_active: boolean;
   is_disabled?: boolean | number;
+  regular_schedule?: RegularScheduleEntry[];
   created_at: string;
 }
 
@@ -423,6 +429,11 @@ const AdminStudentProfilePage = () => {
       setBulkLoading(false);
     }
   };
+
+  // Agreed regular schedule editor (record only — never books or deducts)
+  const [showSchedule, setShowSchedule] = useState(false);
+  // Snapshot taken on click so a refetch after booking doesn't reset the dialog.
+  const [applyTarget, setApplyTarget] = useState<React.ComponentProps<typeof ApplyRegularScheduleDialog>["student"]>(null);
 
   // Edit student dialog
   const [showEdit, setShowEdit] = useState(false);
@@ -942,6 +953,42 @@ const AdminStudentProfilePage = () => {
                     <div>
                       <p className="text-xs text-muted-foreground">Enrolled</p>
                       <p className="font-medium">{fmtDateOnly(student.created_at)}</p>
+                    </div>
+                    <div className="col-span-2 sm:col-span-3">
+                      <div className="flex items-center gap-1">
+                        <p className="text-xs text-muted-foreground">Regular Schedule</p>
+                        {can("students.edit") && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            aria-label="Edit regular schedule"
+                            title="Edit regular schedule"
+                            className="h-5 w-5 p-0 text-muted-foreground"
+                            onClick={() => setShowSchedule(true)}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                        )}
+                        {can("students.book_classes") && (student.regular_schedule?.length ?? 0) > 0 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 ml-auto gap-1 text-xs"
+                            title={activePackage ? "Book these slots as real classes" : "No active package"}
+                            disabled={!activePackage}
+                            onClick={() => setApplyTarget({
+                              id: student.id,
+                              name: student.name,
+                              regular_schedule: student.regular_schedule,
+                              student_package_id: activePackage?.id ?? null,
+                              sessions_remaining: activePackage?.sessions_remaining ?? 0,
+                            })}
+                          >
+                            <CalendarPlus className="h-3 w-3" /> Apply to Schedule
+                          </Button>
+                        )}
+                      </div>
+                      <RegularScheduleList entries={student.regular_schedule} />
                     </div>
                   </div>
 
@@ -1624,6 +1671,18 @@ const AdminStudentProfilePage = () => {
           );
         })()}
       </div>
+
+      <RegularScheduleDialog
+        student={showSchedule ? student : null}
+        onClose={() => setShowSchedule(false)}
+        onSaved={(schedule) => setStudent((s) => (s ? { ...s, regular_schedule: schedule } : s))}
+      />
+
+      <ApplyRegularScheduleDialog
+        student={applyTarget}
+        onClose={() => setApplyTarget(null)}
+        onApplied={fetchData}
+      />
 
       {/* Edit Student Dialog */}
       <Dialog open={showEdit} onOpenChange={(o) => { if (!o) setShowEdit(false); }}>

@@ -16,6 +16,7 @@ import { StudentPackagePicker } from "@/components/StudentPackagePicker";
 import { SubstituteTeacherDialog } from "@/components/SubstituteTeacherDialog";
 import { AvailableSlotsDialog } from "@/components/AvailableSlotsDialog";
 import { CopyWeekDialog } from "@/components/CopyWeekDialog";
+import TeacherRegularSchedule from "@/components/TeacherRegularSchedule";
 import {
   CalendarRange, ChevronLeft, ChevronRight, Loader2, GraduationCap, ListChecks, CopyPlus,
 } from "lucide-react";
@@ -208,6 +209,9 @@ const AdminCalendarPage = () => {
   const [showAvailable, setShowAvailable] = useState(false);
   // Copy this week's classes onto later weeks
   const [showCopyWeek, setShowCopyWeek] = useState(false);
+  // "actual" is the real booked calendar; "regular" is the students' agreed
+  // weekly slots with this teacher, which only become classes when applied.
+  const [view, setView] = useState<"actual" | "regular">("actual");
 
   const teacher = teachers[teacherIdx] ?? null;
 
@@ -544,8 +548,9 @@ const AdminCalendarPage = () => {
     const onTouchMove = (e: TouchEvent) => { if (isSelectingRef.current) e.preventDefault(); };
     el.addEventListener("touchmove", onTouchMove, { passive: false });
     return () => el.removeEventListener("touchmove", onTouchMove);
-    // The grid unmounts while teachers load, so re-attach whenever it can have come back.
-  }, [loadingTeachers, teachers.length]);
+    // The grid unmounts while teachers load and in the Regular Schedule view, so
+    // re-attach whenever it can have come back.
+  }, [loadingTeachers, teachers.length, view]);
 
   // Cap the scroll box at the header plus VISIBLE_ROWS rows. The cut-off row's top edge,
   // measured from the table's top, is exactly that height. Re-measured on resize since a
@@ -561,7 +566,7 @@ const AdminCalendarPage = () => {
     const ro = new ResizeObserver(measure);
     ro.observe(table);
     return () => ro.disconnect();
-  }, [loadingTeachers, teachers.length]);
+  }, [loadingTeachers, teachers.length, view]);
 
   // While a drag is extending the highlight, holding the pointer near the scroll box's top
   // or bottom edge scrolls the grid, so a range can reach rows outside the visible window.
@@ -812,6 +817,31 @@ const AdminCalendarPage = () => {
                   <button className="text-xs underline" onClick={() => setSubstituteNotice(null)}>Dismiss</button>
                 </div>
               )}
+              <div className="inline-flex rounded-lg border p-0.5 mb-4 bg-muted/40" role="tablist" aria-label="Calendar view">
+                {([["actual", "Actual"], ["regular", "Regular Schedule"]] as const).map(([v, label]) => (
+                  <button
+                    key={v}
+                    role="tab"
+                    aria-selected={view === v}
+                    onClick={() => { setView(v); setSelAnchor(null); setSelFocus(null); }}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                      view === v ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {view === "regular" && teacher ? (
+                <TeacherRegularSchedule
+                  teacher={teacher}
+                  slotTimes={SLOT_TIMES}
+                  palette={STUDENT_COLORS}
+                  canApply={canBook}
+                  canEdit={canBook || can("students.edit")}
+                  onApplied={() => { fetchGrid(); fetchBookableStudents(); }}
+                />
+              ) : (<>
               <div className="flex items-center justify-between gap-2 mb-4">
                 <Button variant="outline" size="sm" onClick={() => setWeekStart(addDays(weekStart, -7))}>
                   <ChevronLeft className="h-4 w-4 mr-1" /> Prev
@@ -998,6 +1028,7 @@ const AdminCalendarPage = () => {
                 <span><span className="inline-block w-3 h-3 bg-amber-100 border rounded mr-1" />Teacher note (shared by teacher)</span>
                 <span><span className="inline-block w-3 h-3 border-2 border-primary rounded mr-1" />Selected — drag to pick a range, then open or close it</span>
               </div>
+              </>)}
             </CardContent>
           </Card>
         )}

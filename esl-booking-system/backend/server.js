@@ -254,6 +254,13 @@ async function runAutoMigrations() {
         FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
         FOREIGN KEY (student_package_id) REFERENCES student_packages(id) ON DELETE CASCADE,
         FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL)` },
+    // Migration 023: the student list/profile read and write this.
+    { name: 'student_regular_schedules', sql: `CREATE TABLE IF NOT EXISTS student_regular_schedules (
+        id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, student_id INT NOT NULL,
+        day_of_week VARCHAR(9) NOT NULL, start_time TIME NOT NULL, teacher_id INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_rs_student (company_id, student_id), INDEX idx_rs_teacher (teacher_id),
+        FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE)` },
   ];
 
   for (const m of migrations) {

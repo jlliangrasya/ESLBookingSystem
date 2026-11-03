@@ -514,6 +514,8 @@ router.delete('/users/:id', authenticateToken, requireRole('super_admin'), async
         await connection.query('DELETE FROM teacher_available_slots WHERE teacher_id = ?', [id]);
         await connection.query('DELETE FROM closed_slots WHERE teacher_id = ?', [id]);
         await connection.query('DELETE FROM waitlist WHERE student_id = ? OR teacher_id = ?', [id, id]);
+        await connection.query('DELETE FROM student_regular_schedules WHERE student_id = ?', [id]);
+        await connection.query('UPDATE student_regular_schedules SET teacher_id = NULL WHERE teacher_id = ?', [id]);
         await connection.query('UPDATE company_payments SET recorded_by = NULL WHERE recorded_by = ?', [id]);
         await connection.query('UPDATE upgrade_requests SET processed_by = NULL WHERE processed_by = ?', [id]);
         await connection.query('DELETE FROM users WHERE id = ?', [id]);
