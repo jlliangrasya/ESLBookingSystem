@@ -14,7 +14,7 @@ const { phtNowSql } = require("../utils/phtTime");
 const { attendeeSql, canUsePackageSql, canUsePackage, packageStudentIds } = require("../utils/sharedPackages");
 const { findAvailableTeachers } = require("../utils/teacherAvailability");
 const { DAY_NAMES, addDays, dayOfWeek } = require("../utils/recurringBooking");
-const { DAYS_OF_WEEK, loadRegularSchedules, loadTeacherRegularSlots, loadTeacherRegularSchedule, findBookablePackage, applyRegularEntries, cleanRegularSlots, replaceTeacherRegularSlots, cleanRegularEntries, loadEntryTeachers, writeRegularEntries } = require("../utils/regularSchedules");
+const { DAYS_OF_WEEK, loadRegularSchedules, loadTeacherRegularSlots, loadTeacherRegularSchedule, findBookablePackage, applyRegularEntries, cleanRegularSlots, replaceTeacherRegularSlots, cleanRegularEntries, loadEntryTeachers, writeRegularEntries, syncTeacherHours } = require("../utils/regularSchedules");
 const { HalfCreditError, resolveLateNotice, createHalfCredit, removeHalfCreditForBooking, notifyHalfCredit, fmtMoney } = require("../utils/halfCredits");
 
 /** Format a stored PHT datetime string for notification messages without UTC shift. */
@@ -1845,6 +1845,166 @@ router.post('/teachers/:id/regular-schedule', authenticateToken, requireRole('co
   }
 });
 
+// The reverse of "Apply to Actual": turn one real week of this teacher's
+// calendar into their regular schedule. Body: { start_date, hours, classes, dry_run }.
+//  - hours: the teacher's regular open hours are REPLACED by that week's open
+//    slots plus the slots its classes take up (a booked slot is a working slot).
+//  - classes: each class that week (one per class, not per 30-min slot) is ADDED
+//    to its student's regular schedule with this teacher. Nothing is removed, so
+//    a student absent that week keeps their regular slot; a student who already
+//    has a regular slot at that day and time (with anyone) is left as is.
+// A record only: nothing is booked, deducted or opened. dry_run reports what
+// would change without saving.
+router.post('/teachers/:id/regular-schedule/copy-from-week', authenticateToken, requireRole('company_admin'), requirePermission('calendar.manage_slots', 'teachers.manage_schedule', 'students.edit', 'calendar.book_classes'), async (req, res) => {
+  const companyId = req.user.company_id;
+  const teacherId = Number(req.params.id);
+  const startDate = String(req.body.start_date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return res.status(400).json({ message: 'Invalid start date' });
+  const doHours = !!req.body.hours;
+  const doClasses = !!req.body.classes;
+  const dryRun = !!req.body.dry_run;
+  if (!doHours && !doClasses) return res.status(400).json({ message: 'Choose what to copy' });
+
+  const access = req.adminAccess;
+  const allowed = (...keys) => access.is_owner || keys.some((k) => access.permissions.includes(k));
+  if (doHours && !allowed('calendar.manage_slots', 'teachers.manage_schedule')) {
+    return res.status(403).json({ message: "You do not have permission to change the teacher's regular hours" });
+  }
+  if (doClasses && !allowed('students.edit', 'calendar.book_classes')) {
+    return res.status(403).json({ message: "You do not have permission to change students' regular schedules" });
+  }
+
+  try {
+    const [[teacher]] = await pool.query(
+      "SELECT id, name FROM users WHERE id = ? AND company_id = ? AND role = 'teacher'", [teacherId, companyId]
+    );
+    if (!teacher) return res.status(404).json({ message: 'Teacher not found' });
+    const endDate = addDays(startDate, 7);
+
+    const [bookings] = await pool.query(
+      `SELECT b.booking_group_id, DATE_FORMAT(b.appointment_date, '%Y-%m-%d') AS d, DATE_FORMAT(b.appointment_date, '%H:%i') AS t,
+              u.id AS student_id, u.name AS student_name, tp.duration_minutes
+       FROM bookings b
+       JOIN student_packages sp ON b.student_package_id = sp.id
+       JOIN users u ON u.id = ${attendeeSql()}
+       JOIN tutorial_packages tp ON sp.package_id = tp.id
+       WHERE b.teacher_id = ? AND b.company_id = ? AND b.status != 'cancelled'
+         AND b.appointment_date >= ? AND b.appointment_date < ?
+       ORDER BY b.appointment_date ASC`,
+      [teacherId, companyId, startDate, endDate]
+    );
+    // A longer class can be stored as several 30-min bookings in one group; only its first counts.
+    const seenGroups = new Set();
+    const classes = bookings.filter((b) => {
+      if (!b.booking_group_id) return true;
+      if (seenGroups.has(b.booking_group_id)) return false;
+      seenGroups.add(b.booking_group_id);
+      return true;
+    });
+
+    // ── Hours ──
+    let hoursSlots = null;
+    if (doHours) {
+      const keys = new Set();
+      const [open] = await pool.query(
+        `SELECT DATE_FORMAT(slot_date, '%Y-%m-%d') AS d, TIME_FORMAT(slot_time, '%H:%i') AS t
+         FROM teacher_available_slots WHERE company_id = ? AND teacher_id = ? AND slot_date >= ? AND slot_date < ?`,
+        [companyId, teacherId, startDate, endDate]
+      );
+      for (const s of open) keys.add(`${DAY_NAMES[dayOfWeek(s.d)]}|${s.t}`);
+      for (const b of bookings) {
+        // Round down to the slot the class starts in, then cover its length.
+        const [h, m] = b.t.split(':').map(Number);
+        const first = h * 60 + (m < 30 ? 0 : 30);
+        const span = Math.max(1, Math.ceil((b.duration_minutes || 25) / 30));
+        for (let i = 0; i < span && first + i * 30 < 24 * 60; i++) {
+          const mins = first + i * 30;
+          keys.add(`${DAY_NAMES[dayOfWeek(b.d)]}|${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`);
+        }
+      }
+      hoursSlots = [...keys].map((k) => k.split('|'));
+    }
+
+    // ── Classes ──
+    const classResults = [];
+    if (doClasses && classes.length > 0) {
+      const studentIds = [...new Set(classes.map((c) => c.student_id))];
+      const [existing] = await pool.query(
+        `SELECT s.student_id, s.day_of_week, TIME_FORMAT(s.start_time, '%H:%i') AS start_time, s.teacher_id, t.name AS teacher_name
+         FROM student_regular_schedules s LEFT JOIN users t ON t.id = s.teacher_id
+         WHERE s.company_id = ? AND s.student_id IN (?)`,
+        [companyId, studentIds]
+      );
+      const taken = new Map(existing.map((e) => [`${e.student_id}|${e.day_of_week}|${e.start_time}`, e]));
+      const counts = new Map();
+      for (const e of existing) counts.set(e.student_id, (counts.get(e.student_id) || 0) + 1);
+
+      for (const c of classes) {
+        const day = DAY_NAMES[dayOfWeek(c.d)];
+        const key = `${c.student_id}|${day}|${c.t}`;
+        const base = { student_id: c.student_id, student_name: c.student_name, day_of_week: day, start_time: c.t };
+        const already = taken.get(key);
+        if (already) {
+          classResults.push({ ...base, status: already.teacher_id === teacherId ? 'already' : 'other_teacher', other_teacher: already.teacher_name || null });
+          continue;
+        }
+        if ((counts.get(c.student_id) || 0) >= 21) {
+          classResults.push({ ...base, status: 'full' });
+          continue;
+        }
+        taken.set(key, { teacher_id: teacherId });
+        counts.set(c.student_id, (counts.get(c.student_id) || 0) + 1);
+        classResults.push({ ...base, status: 'added' });
+      }
+    }
+    const toAdd = classResults.filter((r) => r.status === 'added');
+
+    if (!dryRun) {
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        if (hoursSlots) {
+          await connection.query('DELETE FROM teacher_regular_slots WHERE company_id = ? AND teacher_id = ?', [companyId, teacherId]);
+          if (hoursSlots.length > 0) {
+            await connection.query(
+              'INSERT INTO teacher_regular_slots (company_id, teacher_id, day_of_week, slot_time) VALUES ?',
+              [hoursSlots.map(([day, time]) => [companyId, teacherId, day, time])]
+            );
+          }
+        }
+        if (toAdd.length > 0) {
+          await connection.query(
+            'INSERT INTO student_regular_schedules (company_id, student_id, day_of_week, start_time, teacher_id) VALUES ?',
+            [toAdd.map((r) => [companyId, r.student_id, r.day_of_week, r.start_time, teacherId])]
+          );
+        }
+        await connection.commit();
+      } catch (err) {
+        await connection.rollback().catch(() => {});
+        throw err;
+      } finally {
+        connection.release();
+      }
+      await logAction(companyId, req.user.id, 'teacher_regular_copied_from_week', 'user', teacherId, {
+        start_date: startDate,
+        regular_hours: hoursSlots ? hoursSlots.length : undefined,
+        classes_added: toAdd.map((r) => `${r.student_name}: ${r.day_of_week} ${r.start_time}`),
+      });
+    }
+
+    res.json({
+      dry_run: dryRun,
+      hours_count: hoursSlots ? hoursSlots.length : null,
+      hours: hoursSlots ? hoursSlots.map(([day_of_week, slot_time]) => ({ day_of_week, slot_time })) : null,
+      classes: classResults,
+      classes_added: toAdd.length,
+    });
+  } catch (err) {
+    console.error('Copy week to regular schedule error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Remove one regular slot (calendar's Regular Schedule view). Record only.
 router.delete('/regular-schedule/:entryId', authenticateToken, requireRole('company_admin'), requirePermission('students.edit', 'calendar.book_classes'), async (req, res) => {
   try {
@@ -1868,9 +2028,9 @@ router.delete('/regular-schedule/:entryId', authenticateToken, requireRole('comp
 });
 
 // Apply this teacher's regular timetable to the Actual calendar for num_weeks:
-//  1. open_hours: open the teacher's regular open slots as real slots
-//     (INSERT IGNORE, so already-open slots stay; nothing is ever closed, and
-//     days the teacher is on leave are skipped), then
+//  1. open_hours: make the real calendar match the teacher's regular hours:
+//     regular open slots are opened and every other slot is closed (leave days,
+//     past slots and slots with a class are left alone), then
 //  2. book_students: book every student's regular slots with this teacher,
 //     deducting 1 session per class. Done after step 1 so classes inside the
 //     regular hours find their slots open.
@@ -1909,33 +2069,16 @@ router.post('/teachers/:id/regular-schedule/apply', authenticateToken, requireRo
       return res.status(400).json({ message: 'Nothing to apply: no regular open hours or student slots for this teacher' });
     }
 
-    // ── 1. Open the teacher's regular hours ──
+    // ── 1. Make the teacher's real hours match the regular ones (open and closed) ──
     let slotsOpened = 0;
+    let slotsClosed = 0;
     let leaveDays = [];
     if (hours.length > 0) {
       const startStr = start_date || addDays(new Date().toISOString().slice(0, 10), 1);
-      const endStr = addDays(startStr, weeks * 7);
-      const [leaves] = await pool.query(
-        `SELECT DATE_FORMAT(leave_date, '%Y-%m-%d') AS d FROM teacher_leaves
-         WHERE teacher_id = ? AND company_id = ? AND status IN ('pending', 'approved') AND leave_date >= ? AND leave_date < ?`,
-        [teacherId, companyId, startStr, endStr]
-      );
-      const onLeave = new Set(leaves.map((l) => l.d));
-      leaveDays = [...onLeave].sort();
-      const values = [];
-      for (let cur = startStr; cur < endStr; cur = addDays(cur, 1)) {
-        if (onLeave.has(cur)) continue;
-        const dayName = DAY_NAMES[dayOfWeek(cur)];
-        for (const h of hours) {
-          if (h.day_of_week === dayName) values.push([companyId, teacherId, cur, `${h.slot_time}:00`]);
-        }
-      }
-      if (values.length > 0) {
-        const [result] = await pool.query(
-          'INSERT IGNORE INTO teacher_available_slots (company_id, teacher_id, slot_date, slot_time) VALUES ?', [values]
-        );
-        slotsOpened = result.affectedRows;
-      }
+      const synced = await syncTeacherHours(companyId, teacherId, hours.map((h) => [h.day_of_week, h.slot_time]), startStr, weeks);
+      slotsOpened = synced.opened;
+      slotsClosed = synced.closed;
+      leaveDays = synced.leaveDays;
     }
 
     // ── 2. Book the students' regular classes ──
@@ -1988,13 +2131,14 @@ router.post('/teachers/:id/regular-schedule/apply', authenticateToken, requireRo
         `Regular schedule applied for ${teacher.name}: ${totalBooked} classes booked for ${bookedStudents.map((s) => s.student_name).join(', ')} over ${weeks} week${weeks === 1 ? '' : 's'}.`);
     }
     await logAction(companyId, req.user.id, 'teacher_regular_schedule_applied', 'user', teacherId, {
-      num_weeks: weeks, start_date: start_date || null, slots_opened: slotsOpened, sessions_booked: totalBooked,
+      num_weeks: weeks, start_date: start_date || null, slots_opened: slotsOpened, slots_closed: slotsClosed, sessions_booked: totalBooked,
       students: students.map((s) => `${s.student_name}: ${s.error ? `failed (${s.error})` : s.sessions_booked}`),
     });
-    const anything = slotsOpened > 0 || totalBooked > 0;
+    const anything = slotsOpened > 0 || slotsClosed > 0 || totalBooked > 0;
     res.status(anything ? 201 : 400).json({
       message: anything ? 'Regular schedule applied' : 'Nothing new was applied',
       slots_opened: slotsOpened,
+      slots_closed: slotsClosed,
       leave_days: leaveDays,
       sessions_booked: totalBooked,
       students,

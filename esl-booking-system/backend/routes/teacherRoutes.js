@@ -8,8 +8,8 @@ const { logAction } = require('../utils/audit');
 const { notifyWaitlistForSlot } = require('./waitlistRoutes');
 const { attendeeSql, packageStudentIds } = require('../utils/sharedPackages');
 const { HalfCreditError, resolveLateNotice, createHalfCredit, notifyHalfCredit } = require('../utils/halfCredits');
-const { loadTeacherRegularSlots, cleanRegularSlots, replaceTeacherRegularSlots } = require('../utils/regularSchedules');
-const { DAY_NAMES, addDays, dayOfWeek } = require('../utils/recurringBooking');
+const { loadTeacherRegularSlots, cleanRegularSlots, replaceTeacherRegularSlots, syncTeacherHours } = require('../utils/regularSchedules');
+const { addDays } = require('../utils/recurringBooking');
 
 const router = express.Router();
 
@@ -1158,11 +1158,10 @@ router.get('/regular-slots', authenticateToken, requireRole('teacher'), async (r
     }
 });
 
-// PUT /api/teacher/regular-slots — save the teacher's regular schedule, then open
-// it on the real calendar for `weeks` weeks from tomorrow.
-// Body: { slots: [{ day_of_week, slot_time: "HH:MM" }], weeks }. Opening uses
-// INSERT IGNORE, so slots already open stay open and nothing is closed; days
-// the teacher is on leave are skipped.
+// PUT /api/teacher/regular-slots — save the teacher's regular schedule, then make
+// the real calendar match it for `weeks` weeks from tomorrow: its slots are
+// opened and every other slot is closed. Leave days and slots with a class are
+// left alone. Body: { slots: [{ day_of_week, slot_time: "HH:MM" }], weeks }.
 router.put('/regular-slots', authenticateToken, requireRole('teacher'), async (req, res) => {
     const teacherId = req.user.id;
     const companyId = req.user.company_id;
@@ -1174,37 +1173,20 @@ router.put('/regular-slots', authenticateToken, requireRole('teacher'), async (r
         await replaceTeacherRegularSlots(companyId, teacherId, clean);
 
         let slotsCreated = 0;
+        let slotsClosed = 0;
         let leaveDays = [];
         if (clean.length > 0) {
-            const startStr = addDays(new Date().toISOString().slice(0, 10), 1);
-            const endStr = addDays(startStr, weeks * 7);
-            const [leaves] = await pool.query(
-                `SELECT DATE_FORMAT(leave_date, '%Y-%m-%d') AS d FROM teacher_leaves
-                 WHERE teacher_id = ? AND company_id = ? AND status IN ('pending', 'approved') AND leave_date >= ? AND leave_date < ?`,
-                [teacherId, companyId, startStr, endStr]
-            );
-            const onLeave = new Set(leaves.map((l) => l.d));
-            leaveDays = [...onLeave].sort();
-            const values = [];
-            for (let cur = startStr; cur < endStr; cur = addDays(cur, 1)) {
-                if (onLeave.has(cur)) continue;
-                const dayName = DAY_NAMES[dayOfWeek(cur)];
-                for (const [day, time] of clean) {
-                    if (day === dayName) values.push([companyId, teacherId, cur, `${time}:00`]);
-                }
-            }
-            if (values.length > 0) {
-                const [result] = await pool.query(
-                    'INSERT IGNORE INTO teacher_available_slots (company_id, teacher_id, slot_date, slot_time) VALUES ?', [values]
-                );
-                slotsCreated = result.affectedRows;
-            }
+            const synced = await syncTeacherHours(companyId, teacherId, clean, addDays(new Date().toISOString().slice(0, 10), 1), weeks);
+            slotsCreated = synced.opened;
+            slotsClosed = synced.closed;
+            leaveDays = synced.leaveDays;
         }
 
-        await logAction(companyId, teacherId, 'teacher_regular_slots_updated', 'user', teacherId, { open_slots: clean.length, weeks, slots_opened: slotsCreated });
+        await logAction(companyId, teacherId, 'teacher_regular_slots_updated', 'user', teacherId, { open_slots: clean.length, weeks, slots_opened: slotsCreated, slots_closed: slotsClosed });
         res.json({
             slots: (await loadTeacherRegularSlots(companyId, teacherId))[teacherId] || [],
             slotsCreated,
+            slotsClosed,
             leave_days: leaveDays,
         });
     } catch (err) {

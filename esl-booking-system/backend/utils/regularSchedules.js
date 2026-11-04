@@ -1,5 +1,5 @@
 const pool = require('../db');
-const { bookRecurringSchedule } = require('./recurringBooking');
+const { bookRecurringSchedule, DAY_NAMES, addDays, dayOfWeek } = require('./recurringBooking');
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -197,6 +197,79 @@ async function writeRegularEntries(connection, companyId, studentId, clean) {
   }
 }
 
+// Make the real calendar match a teacher's regular hours for `weeks` weeks from
+// startStr: regular open slots are opened and every other slot is CLOSED, so
+// the Actual week ends up looking like the Regular one. `regular` is a list of
+// [day, "HH:MM"]. Left untouched: days the teacher is on leave (pending or
+// approved), slots already in the past, and slots a class is booked in.
+async function syncTeacherHours(companyId, teacherId, regular, startStr, weeks) {
+  const endStr = addDays(startStr, weeks * 7);
+  const isPast = (date, time) => new Date(`${date}T${time}:00+08:00`) < new Date();
+  const toTime = (mins) => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+
+  const [[leaves], [existing], [bookings]] = await Promise.all([
+    pool.query(
+      `SELECT DATE_FORMAT(leave_date, '%Y-%m-%d') AS d FROM teacher_leaves
+       WHERE teacher_id = ? AND company_id = ? AND status IN ('pending', 'approved') AND leave_date >= ? AND leave_date < ?`,
+      [teacherId, companyId, startStr, endStr]
+    ),
+    pool.query(
+      `SELECT DATE_FORMAT(slot_date, '%Y-%m-%d') AS d, TIME_FORMAT(slot_time, '%H:%i') AS t
+       FROM teacher_available_slots WHERE company_id = ? AND teacher_id = ? AND slot_date >= ? AND slot_date < ?`,
+      [companyId, teacherId, startStr, endStr]
+    ),
+    pool.query(
+      `SELECT DATE_FORMAT(b.appointment_date, '%Y-%m-%d') AS d, DATE_FORMAT(b.appointment_date, '%H:%i') AS t, tp.duration_minutes
+       FROM bookings b
+       JOIN student_packages sp ON b.student_package_id = sp.id
+       JOIN tutorial_packages tp ON sp.package_id = tp.id
+       WHERE b.teacher_id = ? AND b.company_id = ? AND b.status != 'cancelled'
+         AND b.appointment_date >= ? AND b.appointment_date < ?`,
+      [teacherId, companyId, startStr, endStr]
+    ),
+  ]);
+  const onLeave = new Set(leaves.map((l) => l.d));
+  const regularSet = new Set(regular.map(([day, time]) => `${day}|${time}`));
+  // Every 30-min slot a class covers
+  const booked = new Set();
+  for (const b of bookings) {
+    const [h, m] = b.t.split(':').map(Number);
+    const first = h * 60 + (m < 30 ? 0 : 30);
+    const span = Math.max(1, Math.ceil((b.duration_minutes || 25) / 30));
+    for (let i = 0; i < span; i++) booked.add(`${b.d}|${toTime(first + i * 30)}`);
+  }
+
+  const toOpen = [];
+  for (let cur = startStr; cur < endStr; cur = addDays(cur, 1)) {
+    if (onLeave.has(cur)) continue;
+    const dayName = DAY_NAMES[dayOfWeek(cur)];
+    for (const [day, time] of regular) {
+      if (day === dayName && !isPast(cur, time)) toOpen.push([companyId, teacherId, cur, `${time}:00`]);
+    }
+  }
+  const toClose = existing
+    .filter((s) => !onLeave.has(s.d) && !isPast(s.d, s.t) && !booked.has(`${s.d}|${s.t}`)
+      && !regularSet.has(`${DAY_NAMES[dayOfWeek(s.d)]}|${s.t}`))
+    .map((s) => [s.d, `${s.t}:00`]);
+
+  let opened = 0;
+  let closed = 0;
+  if (toOpen.length > 0) {
+    const [r] = await pool.query(
+      'INSERT IGNORE INTO teacher_available_slots (company_id, teacher_id, slot_date, slot_time) VALUES ?', [toOpen]
+    );
+    opened = r.affectedRows;
+  }
+  if (toClose.length > 0) {
+    const [r] = await pool.query(
+      'DELETE FROM teacher_available_slots WHERE company_id = ? AND teacher_id = ? AND (slot_date, slot_time) IN (?)',
+      [companyId, teacherId, toClose]
+    );
+    closed = r.affectedRows;
+  }
+  return { opened, closed, leaveDays: [...onLeave].sort() };
+}
+
 // Check a { slots: [{ day_of_week, slot_time: "HH:MM" }] } list from a request.
 // Returns { error } or { clean }: the slots as [day, time] pairs, deduplicated.
 function cleanRegularSlots(slots) {
@@ -235,5 +308,5 @@ async function replaceTeacherRegularSlots(companyId, teacherId, clean) {
 
 module.exports = {
   DAYS_OF_WEEK, loadRegularSchedules, loadTeacherRegularSlots, loadTeacherRegularSchedule, findBookablePackage, applyRegularEntries,
-  cleanRegularSlots, replaceTeacherRegularSlots, cleanRegularEntries, loadEntryTeachers, writeRegularEntries,
+  cleanRegularSlots, replaceTeacherRegularSlots, cleanRegularEntries, loadEntryTeachers, writeRegularEntries, syncTeacherHours,
 };

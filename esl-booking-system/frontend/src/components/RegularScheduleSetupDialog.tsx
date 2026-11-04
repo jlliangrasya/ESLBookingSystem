@@ -109,7 +109,7 @@ const RegularScheduleSetupDialog: React.FC<RegularScheduleSetupDialogProps> = ({
   const [saving, setSaving] = useState(false);
   const [hadSaved, setHadSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ slotsCreated: number; leaveDays: string[] } | null>(null);
+  const [result, setResult] = useState<{ slotsCreated: number; slotsClosed: number; leaveDays: string[] } | null>(null);
 
   const url = `${import.meta.env.VITE_API_URL}/api/teacher/regular-slots`;
   const headers = { Authorization: `Bearer ${localStorage.getItem("token")}` };
@@ -147,7 +147,7 @@ const RegularScheduleSetupDialog: React.FC<RegularScheduleSetupDialogProps> = ({
     setError(null);
     try {
       const res = await axios.put(url, { slots, weeks }, { headers });
-      setResult({ slotsCreated: res.data?.slotsCreated ?? 0, leaveDays: res.data?.leave_days ?? [] });
+      setResult({ slotsCreated: res.data?.slotsCreated ?? 0, slotsClosed: res.data?.slotsClosed ?? 0, leaveDays: res.data?.leave_days ?? [] });
       setHadSaved(slots.length > 0);
       onApplied();
     } catch (err: unknown) {
@@ -178,12 +178,12 @@ const RegularScheduleSetupDialog: React.FC<RegularScheduleSetupDialogProps> = ({
             <div className="p-3 bg-green-50 border border-green-200 rounded-lg space-y-0.5 text-green-700 font-medium">
               <p className="flex items-center gap-1.5"><Check className="h-4 w-4" /> Regular schedule saved</p>
               <p className="flex items-center gap-1.5">
-                <Check className="h-4 w-4" /> {result.slotsCreated} slot{result.slotsCreated === 1 ? "" : "s"} opened
-                for the next {weeks} week{weeks === 1 ? "" : "s"}
+                <Check className="h-4 w-4" /> {result.slotsCreated} slot{result.slotsCreated === 1 ? "" : "s"} opened,{" "}
+                {result.slotsClosed} closed for the next {weeks} week{weeks === 1 ? "" : "s"}
               </p>
             </div>
-            {result.slotsCreated === 0 && slots.length > 0 && (
-              <p className="text-xs text-muted-foreground">These hours were already open on your calendar.</p>
+            {result.slotsCreated === 0 && result.slotsClosed === 0 && slots.length > 0 && (
+              <p className="text-xs text-muted-foreground">Your calendar already matched this schedule.</p>
             )}
             {result.leaveDays.length > 0 && (
               <p className="text-xs text-amber-600">Not opened — you're on leave: {result.leaveDays.join(", ")}</p>
@@ -324,7 +324,7 @@ const RegularScheduleSetupDialog: React.FC<RegularScheduleSetupDialogProps> = ({
                 ))}
               </select>
               <p className="text-xs text-muted-foreground mt-1">
-                Starting tomorrow. Slots already open stay open, nothing is closed, and your leave days are skipped.{" "}
+                Starting tomorrow, these hours are opened and every other slot is closed. Leave days and slots with a class are left alone.{" "}
                 {hadSaved
                   ? "Your saved schedule is filled in above — change it if you need to, then apply again for more weeks."
                   : "It's saved, so next time it's filled in and you only pick the weeks."}

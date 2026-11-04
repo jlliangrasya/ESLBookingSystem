@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { AlertTriangle, CalendarPlus, Check, CopyPlus, Download, Loader2, Trash2, X } from "lucide-react";
-import { DAYS_OF_WEEK, type TeacherRegularSlot } from "@/utils/regularSlots";
+import { DAYS_OF_WEEK, summarizeRegularSlots, type TeacherRegularSlot } from "@/utils/regularSlots";
 import { downloadRegularScheduleImage, type RegularImageCell } from "@/utils/regularScheduleImage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -90,9 +90,9 @@ interface TeacherRegularScheduleProps {
   canEdit: boolean;
   // Set the teacher's regular open/closed hours
   canEditHours: boolean;
-  // The Actual week on screen, offered as a starting point for the regular hours
+  // The Actual week on screen ("yyyy-MM-dd" Monday), which "Copy from Actual" copies
   weekLabel: string;
-  weekOpenSlots: TeacherRegularSlot[];
+  weekStart: string;
   // Called after classes are booked, so the Actual view can refresh.
   onApplied: () => void;
 }
@@ -104,12 +104,13 @@ type EditMode = "students" | "hours";
 // template. Open slots with no student are the teacher's regular vacancies.
 // All of it is a record; only "Apply to Actual" books classes and deducts sessions.
 const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
-  teacher, slotTimes, palette, canApply, canEdit, canEditHours, weekLabel, weekOpenSlots, onApplied,
+  teacher, slotTimes, palette, canApply, canEdit, canEditHours, weekLabel, weekStart, onApplied,
 }) => {
   const [slots, setSlots] = useState<RegularSlot[]>([]);
   const [openSet, setOpenSet] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [showApply, setShowApply] = useState(false);
+  const [showCopy, setShowCopy] = useState(false);
   // The grid cell being edited
   const [editCell, setEditCell] = useState<{ day: string; time: string } | null>(null);
   const [mode, setMode] = useState<EditMode>(canEdit ? "students" : "hours");
@@ -404,13 +405,6 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
   })();
   const showSelectionBar = !!selAnchor && !isSelecting && selectionSize > 1;
 
-  const copyFromWeek = () => {
-    const before = openSet;
-    const next = new Set(weekOpenSlots.map((s) => `${s.day_of_week}|${s.slot_time}`));
-    setOpenSet(next);
-    saveHours(next, before);
-  };
-
   const colorByStudent = useMemo(() => {
     const ids = [...new Set(slots.map((s) => s.student_id))].sort((a, b) => a - b);
     return new Map(ids.map((id, i) => [id, palette[i % palette.length]]));
@@ -479,6 +473,11 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
           <Button size="sm" variant="outline" disabled={loading || downloading} onClick={handleDownload}>
             {downloading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Download className="h-4 w-4 mr-1" />} Download Image
           </Button>
+          {(canEdit || canEditHours) && (
+            <Button size="sm" variant="outline" disabled={loading} onClick={() => setShowCopy(true)}>
+              <CopyPlus className="h-4 w-4 mr-1" /> Copy from Actual
+            </Button>
+          )}
           {(canApply || canEditHours) && (
             <Button size="sm" disabled={loading || (slots.length === 0 && openSet.size === 0)} onClick={() => setShowApply(true)}>
               <CalendarPlus className="h-4 w-4 mr-1" /> Apply to Actual
@@ -505,16 +504,6 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
                 </button>
               ))}
             </div>
-          )}
-          {mode === "hours" && (
-            <Button
-              size="sm" variant="outline" className="h-7 px-2 text-xs"
-              disabled={hoursSaving || weekOpenSlots.length === 0}
-              title={weekOpenSlots.length === 0 ? "No open slots in that week" : "Replace the regular hours with that week's open slots"}
-              onClick={copyFromWeek}
-            >
-              <CopyPlus className="h-3.5 w-3.5 mr-1" /> Copy open slots from {weekLabel}
-            </Button>
           )}
           {hoursSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
           {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
@@ -676,7 +665,238 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
         // Refresh the session counts shown here as well as the Actual view's slots and classes
         onApplied={() => { fetchSlots(); onApplied(); }}
       />
+
+      <CopyFromActualDialog
+        open={showCopy}
+        teacher={teacher}
+        weekLabel={weekLabel}
+        weekStart={weekStart}
+        currentHoursCount={openSet.size}
+        canCopyHours={canEditHours}
+        canCopyClasses={canEdit}
+        onClose={() => setShowCopy(false)}
+        onCopied={fetchSlots}
+      />
     </>
+  );
+};
+
+type CopiedClass = {
+  student_id: number;
+  student_name: string;
+  day_of_week: string;
+  start_time: string;
+  // added: new regular slot; already: already regular with this teacher;
+  // other_teacher: the student has a regular slot then with someone else; full: 21 slots already
+  status: "added" | "already" | "other_teacher" | "full";
+  other_teacher?: string | null;
+};
+
+type CopyResult = { hours_count: number | null; hours: TeacherRegularSlot[] | null; classes: CopiedClass[]; classes_added: number };
+
+const COPY_STATUS: Record<CopiedClass["status"], { label: string; className: string }> = {
+  added: { label: "New", className: "text-green-700" },
+  already: { label: "Already regular", className: "text-muted-foreground" },
+  other_teacher: { label: "Has a regular slot then", className: "text-amber-600" },
+  full: { label: "Too many regular slots", className: "text-amber-600" },
+};
+
+interface CopyFromActualDialogProps {
+  open: boolean;
+  teacher: { id: number; name: string };
+  weekLabel: string;
+  weekStart: string;
+  currentHoursCount: number;
+  canCopyHours: boolean;
+  canCopyClasses: boolean;
+  onClose: () => void;
+  onCopied: () => void;
+}
+
+// The reverse of "Apply to Actual": one real week of the teacher's calendar
+// becomes their regular schedule. The open hours are replaced; students'
+// classes are only added, so a student absent that week keeps their slot.
+// A record only — nothing is booked, deducted or opened.
+const CopyFromActualDialog: React.FC<CopyFromActualDialogProps> = ({
+  open, teacher, weekLabel, weekStart, currentHoursCount, canCopyHours, canCopyClasses, onClose, onCopied,
+}) => {
+  const [copyHours, setCopyHours] = useState(true);
+  const [copyClasses, setCopyClasses] = useState(true);
+  const [preview, setPreview] = useState<CopyResult | null>(null);
+  const [result, setResult] = useState<CopyResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const url = `${import.meta.env.VITE_API_URL}/api/admin/teachers/${teacher.id}/regular-schedule/copy-from-week`;
+
+  // Preview everything this admin may copy, every time it opens.
+  useEffect(() => {
+    if (!open) return;
+    setCopyHours(canCopyHours);
+    setCopyClasses(canCopyClasses);
+    setPreview(null);
+    setResult(null);
+    setError(null);
+    setLoading(true);
+    axios
+      .post<CopyResult>(
+        url,
+        { start_date: weekStart, hours: canCopyHours, classes: canCopyClasses, dry_run: true },
+        { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } },
+      )
+      .then((res) => setPreview(res.data))
+      .catch((err: unknown) => {
+        const data = axios.isAxiosError(err) ? err.response?.data : undefined;
+        setError(data?.message || "Couldn't read that week's calendar");
+      })
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const newCount = preview?.classes.filter((c) => c.status === "added").length ?? 0;
+  const doHours = copyHours && canCopyHours && preview?.hours_count !== null;
+  const doClasses = copyClasses && canCopyClasses && newCount > 0;
+
+  const handleCopy = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await axios.post<CopyResult>(
+        url,
+        { start_date: weekStart, hours: doHours, classes: doClasses },
+        { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } },
+      );
+      setResult(res.data);
+      onCopied();
+    } catch (err: unknown) {
+      const data = axios.isAxiosError(err) ? err.response?.data : undefined;
+      setError(data?.message || "Failed to copy to the regular schedule");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const hoursCount = preview?.hours_count ?? 0;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o && !saving) onClose(); }}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Copy from Actual — {teacher.name}</DialogTitle>
+          <DialogDescription>
+            Makes the {weekLabel} on the real calendar {teacher.name}'s regular schedule. Nothing is booked or deducted.
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading ? (
+          <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+        ) : result ? (
+          <div className="p-3 bg-green-50 border border-green-200 rounded-lg space-y-0.5 text-green-700 font-medium">
+            {result.hours_count !== null && (
+              <p className="flex items-center gap-1.5">
+                <Check className="h-4 w-4" /> Regular hours set to {result.hours_count / 2} hour{result.hours_count === 2 ? "" : "s"} a week
+              </p>
+            )}
+            {doClasses && (
+              <p className="flex items-center gap-1.5">
+                <Check className="h-4 w-4" /> {result.classes_added} class{result.classes_added === 1 ? "" : "es"} added to students' regular schedules
+              </p>
+            )}
+          </div>
+        ) : preview && (
+          <>
+            <label className={`flex items-start gap-2 rounded-lg border p-3 ${canCopyHours ? "cursor-pointer" : "opacity-60"}`}>
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-primary"
+                checked={doHours}
+                disabled={!canCopyHours || saving}
+                onChange={(e) => setCopyHours(e.target.checked)}
+              />
+              <span className="text-sm">
+                <span className="font-medium">Teacher's regular open hours</span>
+                <span className="block text-xs text-muted-foreground">
+                  {!canCopyHours
+                    ? "You don't have permission to change the teacher's regular hours."
+                    : `Replaces the regular hours (now ${currentHoursCount / 2} h a week) with that week's open and booked slots: ${hoursCount / 2} h a week. Every other slot becomes closed.`}
+                </span>
+                {canCopyHours && preview.hours && (
+                  <span className="block mt-1.5 text-xs">
+                    {preview.hours.length === 0
+                      ? <span className="text-amber-600">No open slots that week — every regular slot will be closed.</span>
+                      : summarizeRegularSlots(preview.hours).map((d) => (
+                          <span key={d.day} className="flex gap-2">
+                            <span className="font-medium w-8 shrink-0">{d.day}</span>
+                            <span className="text-muted-foreground">{d.ranges}</span>
+                          </span>
+                        ))}
+                  </span>
+                )}
+              </span>
+            </label>
+
+            <label className={`flex items-start gap-2 rounded-lg border p-3 ${canCopyClasses && newCount > 0 ? "cursor-pointer" : "opacity-60"}`}>
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-primary"
+                checked={doClasses}
+                disabled={!canCopyClasses || newCount === 0 || saving}
+                onChange={(e) => setCopyClasses(e.target.checked)}
+              />
+              <span className="text-sm">
+                <span className="font-medium">Students' classes</span>
+                <span className="block text-xs text-muted-foreground">
+                  {!canCopyClasses
+                    ? "You don't have permission to change students' regular schedules."
+                    : preview.classes.length === 0
+                      ? "No classes that week."
+                      : newCount === 0
+                        ? "Every class that week is already in the regular schedule."
+                        : `Adds ${newCount} class${newCount === 1 ? "" : "es"} to the students' regular schedules. Existing regular slots are kept, even if the student had no class that week.`}
+                </span>
+              </span>
+            </label>
+
+            {canCopyClasses && preview.classes.length > 0 && (
+              <div className="border rounded-lg divide-y text-sm max-h-60 overflow-y-auto">
+                {preview.classes.map((c, i) => (
+                  <div key={i} className="flex items-center justify-between gap-2 px-3 py-1.5">
+                    <span className="truncate">
+                      <span className="font-medium">{c.student_name}</span>{" "}
+                      <span className="text-muted-foreground">{c.day_of_week.slice(0, 3)} {fmt12(c.start_time)}</span>
+                    </span>
+                    <span className={`text-xs shrink-0 ${COPY_STATUS[c.status].className}`}>
+                      {COPY_STATUS[c.status].label}
+                      {c.status === "other_teacher" && c.other_teacher ? ` with ${c.other_teacher}` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <DialogFooter>
+          {result ? (
+            <Button onClick={onClose}>Done</Button>
+          ) : (
+            <>
+              <Button variant="outline" disabled={saving} onClick={onClose}>Cancel</Button>
+              <Button onClick={handleCopy} disabled={loading || saving || !preview || (!doHours && !doClasses)}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Copy to Regular"}
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -841,6 +1061,7 @@ interface ApplyTeacherRegularDialogProps {
 
 type ApplyResult = {
   slots_opened: number;
+  slots_closed: number;
   leave_days: string[];
   students: StudentResult[];
 };
@@ -899,12 +1120,12 @@ const ApplyTeacherRegularDialog: React.FC<ApplyTeacherRegularDialogProps> = ({
         { num_weeks: weeksNum, start_date: startDate || undefined, open_hours: doHours, book_students: doStudents },
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      setResult({ slots_opened: res.data?.slots_opened ?? 0, leave_days: res.data?.leave_days ?? [], students: res.data?.students ?? [] });
+      setResult({ slots_opened: res.data?.slots_opened ?? 0, slots_closed: res.data?.slots_closed ?? 0, leave_days: res.data?.leave_days ?? [], students: res.data?.students ?? [] });
       onApplied();
     } catch (err: unknown) {
       const data = axios.isAxiosError(err) ? err.response?.data : undefined;
       setError(data?.message || "Failed to apply regular schedule");
-      if (data?.students) setResult({ slots_opened: data.slots_opened ?? 0, leave_days: data.leave_days ?? [], students: data.students });
+      if (data?.students) setResult({ slots_opened: data.slots_opened ?? 0, slots_closed: data.slots_closed ?? 0, leave_days: data.leave_days ?? [], students: data.students });
     } finally {
       setLoading(false);
     }
@@ -952,7 +1173,7 @@ const ApplyTeacherRegularDialog: React.FC<ApplyTeacherRegularDialogProps> = ({
                     ? "You don't have permission to open teacher slots."
                     : hoursCount === 0
                       ? "No regular open hours set yet — set them in “Edit open / closed hours”."
-                      : `${hoursPerWeek} hour${hoursPerWeek === 1 ? "" : "s"} a week, ~${hoursCount * weeksNum} slots in total. Slots already open stay open, nothing is closed, and the teacher's leave days are skipped.`}
+                      : `${hoursPerWeek} hour${hoursPerWeek === 1 ? "" : "s"} a week, ~${hoursCount * weeksNum} slots in total. The regular open slots are opened and every other slot is closed, so the real calendar matches the Regular view. Leave days and slots with a class are left alone.`}
                 </span>
               </span>
             </label>
@@ -1002,11 +1223,11 @@ const ApplyTeacherRegularDialog: React.FC<ApplyTeacherRegularDialogProps> = ({
 
         {result && (
           <div className="space-y-2">
-            {(result.slots_opened > 0 || totalBooked > 0) && (
+            {(result.slots_opened > 0 || result.slots_closed > 0 || totalBooked > 0) && (
               <div className="p-3 bg-green-50 border border-green-200 rounded-lg space-y-0.5">
                 {doHours && (
                   <p className="text-green-700 font-medium flex items-center gap-1.5">
-                    <Check className="h-4 w-4" /> {result.slots_opened} slot{result.slots_opened === 1 ? "" : "s"} opened
+                    <Check className="h-4 w-4" /> {result.slots_opened} slot{result.slots_opened === 1 ? "" : "s"} opened, {result.slots_closed} closed
                   </p>
                 )}
                 {doStudents && (
