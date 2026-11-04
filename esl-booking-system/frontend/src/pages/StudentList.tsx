@@ -270,9 +270,9 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Permanent: the account and every record attached to it are destroyed
-  // server-side in one transaction. There is no undo, which is why the dialog
-  // makes the admin type the student's name first.
+  // Removes the account (no login, hidden from the roster) but keeps the
+  // student's history server-side. Still not undoable from the UI, which is
+  // why the dialog makes the admin type the student's name first.
   const handleConfirmDelete = async () => {
     if (!deleteTarget || !deleteConfirmed) return;
     setDeleteLoading(true);
@@ -987,9 +987,9 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
         </div>
       </div>
 
-      {/* Delete confirmation. Permanent and unrecoverable, so it spells out what
-          goes and asks the admin to type the name — a click alone is too cheap
-          for an action with no undo. */}
+      {/* Delete confirmation. Spells out what goes and what is kept, and asks the
+          admin to type the name — a click alone is too cheap for an action with
+          no undo button. */}
       <Dialog
         open={!!deleteTarget}
         onOpenChange={(open) => {
@@ -1005,21 +1005,26 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
               </span>
             </DialogTitle>
             <DialogDescription>
-              Deletion will permanently remove their account and all of their
-              data. This cannot be undone.
+              Their account will be removed and they will no longer be able to
+              log in. Their past records stay on file.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-            <p className="text-xs font-medium text-foreground mb-1.5">
-              What will be deleted:
-            </p>
-            <ul className="text-xs text-muted-foreground space-y-0.5 list-disc pl-4">
-              <li>Their login account and profile details</li>
-              <li>All packages, remaining sessions and payment records</li>
-              <li>Every booking, past and upcoming, and its class reports</li>
-              <li>Homework, submissions, feedback and notifications</li>
-            </ul>
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+            <div>
+              <p className="text-xs font-medium text-foreground mb-1">What happens:</p>
+              <ul className="text-xs text-muted-foreground space-y-0.5 list-disc pl-4">
+                <li>Their login is removed and they disappear from the Students list</li>
+                <li>Upcoming classes are cancelled and their teachers are notified</li>
+              </ul>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-foreground mb-1">What is kept:</p>
+              <ul className="text-xs text-muted-foreground space-y-0.5 list-disc pl-4">
+                <li>Completed classes, still credited to their teachers</li>
+                <li>Class reports, packages and payment records</li>
+              </ul>
+            </div>
           </div>
 
           <div>
@@ -1064,7 +1069,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <>
-                  <Trash2 className="h-4 w-4 mr-2" /> Delete Permanently
+                  <Trash2 className="h-4 w-4 mr-2" /> Delete Account
                 </>
               )}
             </Button>

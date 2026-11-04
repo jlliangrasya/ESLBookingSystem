@@ -315,6 +315,8 @@ async function runAutoMigrations() {
     ['users', 'contact_number', 'VARCHAR(50) NULL'],
     // Migration 022: analytics and the student list/profile read this.
     ['users', 'is_disabled', 'BOOLEAN NOT NULL DEFAULT FALSE'],
+    // Migration 025: account deletes archive the row instead of removing it.
+    ['users', 'deleted_at', 'DATETIME NULL'],
   ];
   for (const [table, col, def] of addTableCols) {
     try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); }

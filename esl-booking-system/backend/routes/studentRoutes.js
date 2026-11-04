@@ -611,7 +611,7 @@ router.get("/students", authenticateToken, requireRole('company_admin'), async (
                 FROM bookings WHERE status NOT IN ('done','cancelled')
                 GROUP BY student_package_id
             ) active_bk ON active_bk.student_package_id = sp.id
-            WHERE u.role = 'student' AND u.company_id = ?
+            WHERE u.role = 'student' AND u.company_id = ? AND u.deleted_at IS NULL
             ${searchClause}
             ORDER BY u.id
             ${paginate ? 'LIMIT ? OFFSET ?' : ''}
@@ -625,7 +625,7 @@ router.get("/students", authenticateToken, requireRole('company_admin'), async (
             countParams.push(`%${search}%`, `%${search}%`);
         }
         const [[{ total }]] = await pool.query(
-            `SELECT COUNT(*) AS total FROM users WHERE role = 'student' AND company_id = ? ${countSearchClause}`,
+            `SELECT COUNT(*) AS total FROM users WHERE role = 'student' AND company_id = ? AND deleted_at IS NULL ${countSearchClause}`,
             countParams
         );
         // Passwords back the "Copy info" button — only for admins who manage credentials

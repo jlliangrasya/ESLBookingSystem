@@ -38,7 +38,7 @@ router.get('/students', authenticateToken, requireRole('company_admin'), async (
                 FROM student_packages sp2 WHERE sp2.company_id = ?
             ) sp ON u.id = sp.student_id AND sp.rn = 1
             LEFT JOIN tutorial_packages tp ON sp.package_id = tp.id
-            WHERE u.role = 'student' AND u.company_id = ?
+            WHERE u.role = 'student' AND u.company_id = ? AND u.deleted_at IS NULL
             ORDER BY u.name ASC
         `, [companyId, companyId]);
 

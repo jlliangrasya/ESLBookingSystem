@@ -15,6 +15,7 @@ const { attendeeSql, canUsePackageSql, canUsePackage, packageStudentIds } = requ
 const { findAvailableTeachers } = require("../utils/teacherAvailability");
 const { DAY_NAMES, addDays, dayOfWeek } = require("../utils/recurringBooking");
 const { DAYS_OF_WEEK, loadRegularSchedules, loadTeacherRegularSlots, loadTeacherRegularSchedule, findBookablePackage, applyRegularEntries, cleanRegularSlots, replaceTeacherRegularSlots, cleanRegularEntries, loadEntryTeachers, writeRegularEntries, syncTeacherHours } = require("../utils/regularSchedules");
+const { archiveUser } = require("../utils/archiveUser");
 const { HalfCreditError, resolveLateNotice, createHalfCredit, removeHalfCreditForBooking, notifyHalfCredit, fmtMoney } = require("../utils/halfCredits");
 
 /** Format a stored PHT datetime string for notification messages without UTC shift. */
@@ -462,17 +463,18 @@ router.put("/teachers/:id", authenticateToken, requireRole('company_admin'), req
   }
 });
 
-// Deactivate a teacher (permission: teachers.delete) — soft-delete to preserve history
+// Delete a teacher (permission: teachers.delete) — archives the account, keeps all history
 router.delete("/teachers/:id", authenticateToken, requireRole('company_admin'), requirePermission('teachers.delete'), async (req, res) => {
   try {
     const companyId = req.user.company_id;
     const adminId = req.user.id;
     const { id } = req.params;
-    const [result] = await pool.query(
-      "UPDATE users SET is_active = FALSE WHERE id = ? AND company_id = ? AND role = 'teacher'",
+    // Archive, never remove: their past classes and class reports stay on record.
+    const [[teacherRow]] = await pool.query(
+      "SELECT id FROM users WHERE id = ? AND company_id = ? AND role = 'teacher' AND deleted_at IS NULL",
       [id, companyId]
     );
-    if (result.affectedRows === 0) return res.status(404).json({ message: 'Teacher not found' });
+    if (!teacherRow || !(await archiveUser(pool, id))) return res.status(404).json({ message: 'Teacher not found' });
 
     // Cancel future bookings assigned to this teacher and refund sessions
     const [futureBookings] = await pool.query(
@@ -1331,7 +1333,7 @@ router.delete("/admins/:id", authenticateToken, requireRole('company_admin'), re
     if (!target) return res.status(404).json({ message: 'Admin not found' });
     if (target.is_owner) return res.status(400).json({ message: 'Cannot delete the company owner' });
 
-    await pool.query("UPDATE users SET is_active = FALSE WHERE id = ? AND company_id = ?", [id, companyId]);
+    await archiveUser(pool, id);
     invalidateAuthCache(Number(id), null);
     await logAction(companyId, req.user.id, 'admin_deleted', 'user', Number(id), {});
     res.json({ message: 'Admin deleted successfully' });
@@ -3045,11 +3047,12 @@ router.post('/students/:id/:action(disable|enable)', authenticateToken, requireR
   }
 });
 
-// Permanently delete a student and every record attached to them (company_admin).
-// Unlike /deactivate above, this cannot be undone: the account, its packages,
-// bookings, class reports, homework and feedback are all destroyed. The typed-name
-// confirmation is re-checked here rather than trusted from the UI, so a stray click
-// or a replayed request can never wipe a roster.
+// Delete a student (company_admin). The ACCOUNT goes, the RECORDS stay: their
+// completed classes, class reports, packages and payments are the school's
+// history and must keep counting (e.g. a teacher's done classes), so the users
+// row is archived via archiveUser() instead of removed. Upcoming classes are
+// cancelled and their sessions refunded, same as /deactivate. The typed-name
+// confirmation is re-checked here rather than trusted from the UI.
 router.delete('/students/:id', authenticateToken, requireRole('company_admin'), requirePermission('students.delete'), async (req, res) => {
   const connection = await pool.getConnection();
   let inTransaction = false;
@@ -3059,7 +3062,7 @@ router.delete('/students/:id', authenticateToken, requireRole('company_admin'), 
     const confirmName = String(req.body?.confirm_name ?? '').trim();
 
     const [[student]] = await connection.query(
-      "SELECT id, name FROM users WHERE id = ? AND company_id = ? AND role = 'student'",
+      "SELECT id, name FROM users WHERE id = ? AND company_id = ? AND role = 'student' AND deleted_at IS NULL",
       [id, companyId]
     );
     if (!student) return res.status(404).json({ message: 'Student not found' });
@@ -3071,107 +3074,53 @@ router.delete('/students/:id', authenticateToken, requireRole('company_admin'), 
       });
     }
 
-    // Deleting the owner of a shared package would delete the siblings' classes
-    // with it — make the admin remove the sharing first.
-    const [sharedWith] = await connection.query(
-      `SELECT DISTINCT u.name FROM student_package_members spm
-       JOIN student_packages sp ON sp.id = spm.student_package_id
-       JOIN users u ON u.id = spm.student_id
-       WHERE sp.student_id = ? AND sp.company_id = ?`,
-      [id, companyId]
-    );
-    if (sharedWith.length > 0) {
-      return res.status(409).json({
-        code: 'PACKAGE_SHARED',
-        message: `${student.name}'s package is shared with ${sharedWith.map(s => s.name).join(', ')}. Remove the sharing from their profile before deleting.`,
-      });
-    }
-
-    // Teachers would otherwise find classes silently gone from their schedule.
-    // Collected before the delete removes the rows; sent after it commits.
-    const [affectedTeachers] = await connection.query(
-      `SELECT DISTINCT b.teacher_id FROM bookings b
+    // Only this student's own upcoming classes (including ones on a sibling's
+    // shared package) are cancelled; siblings keep using a shared package.
+    const [upcoming] = await connection.query(
+      `SELECT b.id, b.student_package_id, b.teacher_id,
+              COALESCE(b.booking_group_id, CAST(b.id AS CHAR)) AS class_key
+       FROM bookings b
        JOIN student_packages sp ON b.student_package_id = sp.id
-       WHERE (sp.student_id = ? OR b.attendee_id = ?) AND b.company_id = ? AND b.teacher_id IS NOT NULL
+       WHERE ${attendeeSql()} = ? AND b.company_id = ?
          AND b.status NOT IN ('done', 'cancelled') AND b.appointment_date >= ?`,
-      [id, id, companyId, phtNowSql()]
+      [id, companyId, phtNowSql()]
     );
-
-    // Recorded for the audit log and the confirmation message — after the delete
-    // there is nothing left to count.
-    const [[counts]] = await connection.query(
-      `SELECT
-         (SELECT COUNT(*) FROM student_packages WHERE student_id = ?) AS packages,
-         (SELECT COUNT(*) FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id
-           WHERE sp.student_id = ? OR b.attendee_id = ?) AS bookings`,
-      [id, id, id]
-    );
-
-    // Deployments can be behind on migrations, and a table that was never created
-    // must not roll back the whole delete — so only touch what actually exists.
-    const [tableRows] = await connection.query(
-      'SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()'
-    );
-    const present = new Set(tableRows.map((r) => String(r.name).toLowerCase()));
 
     await connection.beginTransaction();
     inTransaction = true;
 
-    const purge = async (table, where, params, requires = []) => {
-      if (!present.has(table)) return;
-      if (requires.some((t) => !present.has(t))) return;
-      await connection.query(`DELETE FROM ${table} WHERE ${where}`, params);
-    };
-
-    const ownPackages = 'SELECT id FROM student_packages WHERE student_id = ?';
-    // Bookings on their own packages, plus classes they attended on a sibling's shared package
-    const ownBookings =
-      'SELECT b.id FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id WHERE sp.student_id = ? OR b.attendee_id = ?';
-
-    // Upcoming classes on a sibling's shared package go back to that package
-    const [sharedUpcoming] = await connection.query(
-      `SELECT b.student_package_id,
-              COUNT(DISTINCT COALESCE(b.booking_group_id, CAST(b.id AS CHAR))) AS classes
-       FROM bookings b JOIN student_packages sp ON b.student_package_id = sp.id
-       WHERE b.attendee_id = ? AND sp.student_id <> ?
-         AND b.status NOT IN ('done', 'cancelled') AND b.appointment_date >= ?
-       GROUP BY b.student_package_id`,
-      [id, id, phtNowSql()]
-    );
-    for (const row of sharedUpcoming) {
+    if (upcoming.length > 0) {
       await connection.query(
-        'UPDATE student_packages SET sessions_remaining = sessions_remaining + ? WHERE id = ? AND company_id = ?',
-        [row.classes, row.student_package_id, companyId]
+        `UPDATE bookings SET status = 'cancelled' WHERE id IN (${upcoming.map(() => '?').join(',')})`,
+        upcoming.map((b) => b.id)
       );
+      // A multi-slot class (shared booking_group_id) used one session, not one per row
+      const refund = {};
+      for (const b of upcoming) {
+        (refund[b.student_package_id] ||= new Set()).add(b.class_key);
+      }
+      for (const [spId, keys] of Object.entries(refund)) {
+        await connection.query(
+          'UPDATE student_packages SET sessions_remaining = sessions_remaining + ? WHERE id = ? AND company_id = ?',
+          [keys.size, spId, companyId]
+        );
+      }
     }
 
-    // Children first. Several of these have ON DELETE CASCADE and would go on
-    // their own, but the ones added after migration 002 (homework, recurring
-    // schedules, class reports) do not — those would block the delete outright.
-    await purge('assignment_submissions',
-      'student_id = ? OR assignment_id IN (SELECT id FROM assignments WHERE student_id = ?)',
-      [id, id], ['assignments']);
-    await purge('assignments', 'student_id = ?', [id]);
-    await purge('class_reports', `student_id = ? OR booking_id IN (${ownBookings})`, [id, id, id]);
-    await purge('recurring_schedules',
-      `student_id = ? OR student_package_id IN (${ownPackages})`, [id, id]);
-    await purge('session_adjustments', `student_package_id IN (${ownPackages})`, [id]);
-    await purge('bookings', `student_package_id IN (${ownPackages}) OR attendee_id = ?`, [id, id]);
-    await purge('student_package_members', `student_id = ? OR student_package_id IN (${ownPackages})`, [id, id]);
-    await purge('student_packages', 'student_id = ?', [id]);
-    await purge('student_feedback', 'student_id = ?', [id]);
+    // Forward-looking data only — none of this is history.
+    const [tableRows] = await connection.query(
+      'SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()'
+    );
+    const present = new Set(tableRows.map((r) => String(r.name).toLowerCase()));
+    const purge = async (table, where, params) => {
+      if (present.has(table)) await connection.query(`DELETE FROM ${table} WHERE ${where}`, params);
+    };
     await purge('student_regular_schedules', 'student_id = ?', [id]);
     await purge('waitlist', 'student_id = ?', [id]);
-    await purge('notifications', 'user_id = ?', [id]);
     await purge('push_subscriptions', 'user_id = ?', [id]);
-    await purge('announcement_reads', 'user_id = ?', [id]);
     await purge('account_links', 'user_id_a = ? OR user_id_b = ?', [id, id]);
 
-    const [result] = await connection.query(
-      "DELETE FROM users WHERE id = ? AND company_id = ? AND role = 'student'",
-      [id, companyId]
-    );
-    if (result.affectedRows === 0) {
+    if (!(await archiveUser(connection, id))) {
       await connection.rollback();
       inTransaction = false;
       return res.status(404).json({ message: 'Student not found' });
@@ -3184,36 +3133,30 @@ router.delete('/students/:id', authenticateToken, requireRole('company_admin'), 
     // before the delete keeps working until the entry expires.
     invalidateAuthCache(Number(id), null);
 
-    for (const t of affectedTeachers) {
+    const teacherIds = [...new Set(upcoming.map((b) => b.teacher_id).filter(Boolean))];
+    for (const teacherId of teacherIds) {
       await notify({
-        userId: t.teacher_id,
+        userId: teacherId,
         companyId,
         type: 'class_cancelled',
-        title: 'Upcoming classes removed',
-        message: `${student.name} was deleted from the roster. Their upcoming classes with you have been removed from your schedule.`,
+        title: 'Upcoming classes cancelled',
+        message: `${student.name} was removed from the roster. Their upcoming classes with you have been cancelled. Past classes and reports are kept.`,
       });
     }
 
-    await logAction(companyId, req.user.id, 'student_hard_deleted', 'user', Number(id), {
+    const classesCancelled = new Set(upcoming.map((b) => b.class_key)).size;
+    await logAction(companyId, req.user.id, 'student_deleted', 'user', Number(id), {
       deleted_name: student.name,
-      packages_deleted: counts.packages,
-      bookings_deleted: counts.bookings,
+      upcoming_classes_cancelled: classesCancelled,
     });
 
     res.json({
-      message: `${student.name} and all of their data have been permanently deleted.`,
-      deleted: { packages: counts.packages, bookings: counts.bookings },
+      message: `${student.name}'s account has been deleted. Their past classes and reports are kept.`,
+      cancelled: classesCancelled,
     });
   } catch (err) {
     if (inTransaction) await connection.rollback();
     console.error('Error deleting student:', err);
-    // A table this route does not know about still pointing at the student: the
-    // rollback means nothing was lost, so say so rather than returning a bare 500.
-    if (err && err.code === 'ER_ROW_IS_REFERENCED_2') {
-      return res.status(409).json({
-        message: 'Other records still reference this student, so nothing was deleted. Archive them instead, or contact support.',
-      });
-    }
     res.status(500).json({ message: 'Server error' });
   } finally {
     connection.release();

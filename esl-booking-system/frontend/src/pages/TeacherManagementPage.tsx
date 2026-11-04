@@ -643,7 +643,7 @@ const TeacherManagementPage = () => {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Remove Teacher</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground py-2">
-            Are you sure you want to remove <span className="font-medium">{deleteTeacher?.name}</span>? This cannot be undone.
+            Are you sure you want to remove <span className="font-medium">{deleteTeacher?.name}</span>? Their account will be removed and they can no longer log in. Upcoming classes are cancelled and the sessions refunded. Their past classes and class reports are kept.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTeacher(null)}>Cancel</Button>

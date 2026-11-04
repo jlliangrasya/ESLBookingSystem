@@ -233,6 +233,12 @@ const MIGRATIONS = [
       UNIQUE KEY unique_teacher_regular_slot (company_id, teacher_id, day_of_week, slot_time),
       FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE)`,
   },
+  // ── 025: Archived (soft-deleted) accounts ─────────────────────────────────
+  {
+    name: 'users.deleted_at column',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'deleted_at'",
+    up: 'ALTER TABLE users ADD COLUMN deleted_at DATETIME NULL',
+  },
 ];
 
 async function main() {
