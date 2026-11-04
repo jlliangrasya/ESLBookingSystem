@@ -227,12 +227,16 @@ const ReportModal: React.FC<ReportModalProps> = ({
         </div>
 
         <DialogFooter>
-          {hasContent && !isFetching && (
-            <Button variant="outline" onClick={handleDownload} disabled={isDownloading} className="sm:mr-auto">
-              {isDownloading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-              Download
-            </Button>
-          )}
+          {/* Always shown (view, edit and new) so a report can be saved as an image from any mode */}
+          <Button
+            variant="outline"
+            onClick={handleDownload}
+            disabled={isDownloading || isFetching || !hasContent}
+            className="sm:mr-auto"
+          >
+            {isDownloading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+            Download
+          </Button>
           <Button variant="outline" onClick={onClose} disabled={isLoading || isFetching}>
             {readOnly ? "Close" : "Cancel"}
           </Button>
