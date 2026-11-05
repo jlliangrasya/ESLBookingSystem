@@ -17,9 +17,10 @@ export interface RegularScheduleImageData {
 
 const SCALE = 2;
 const PAD = 32;
-const TIME_COL = 90;
+// Wide and tall enough for the bigger time labels in the first column
+const TIME_COL = 120;
 const DAY_COL = 150;
-const ROW_H = 26;
+const ROW_H = 30;
 const HEAD_H = 34;
 const BRAND = "#65C3E8";
 const FONT = "Poppins, 'Segoe UI', Arial, sans-serif";
@@ -80,7 +81,7 @@ export async function downloadRegularScheduleImage(data: RegularScheduleImageDat
   ctx.fillRect(gridLeft, gridTop, width - PAD * 2, HEAD_H);
   ctx.fillStyle = "#374151";
   ctx.font = `600 13px ${FONT}`;
-  ctx.fillText("Time", gridLeft + 10, gridTop + HEAD_H / 2);
+  ctx.fillText("Time", gridLeft + 12, gridTop + HEAD_H / 2);
   ctx.textAlign = "center";
   data.days.forEach((d, i) => {
     ctx.fillText(d, gridLeft + TIME_COL + DAY_COL * i + DAY_COL / 2, gridTop + HEAD_H / 2);
@@ -90,9 +91,12 @@ export async function downloadRegularScheduleImage(data: RegularScheduleImageDat
   // Body
   times.forEach((time, r) => {
     const y = gridTop + HEAD_H + r * ROW_H;
-    ctx.fillStyle = "#6b7280";
-    ctx.font = `500 12px ${FONT}`;
-    ctx.fillText(fmt12(time), gridLeft + 10, y + ROW_H / 2);
+    // The time is what people scan for, so it's large and dark on a light band
+    ctx.fillStyle = "#f9fafb";
+    ctx.fillRect(gridLeft, y, TIME_COL, ROW_H);
+    ctx.fillStyle = "#111827";
+    ctx.font = `600 16px ${FONT}`;
+    ctx.fillText(fmt12(time), gridLeft + 12, y + ROW_H / 2);
 
     data.days.forEach((day, i) => {
       const x = gridLeft + TIME_COL + DAY_COL * i;

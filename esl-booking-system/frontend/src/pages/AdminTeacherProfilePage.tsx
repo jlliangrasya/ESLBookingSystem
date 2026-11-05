@@ -575,6 +575,12 @@ const AdminTeacherProfilePage = () => {
               Teacher Profile
             </CardTitle>
             <div className="flex gap-2">
+              {can("calendar.view") && (
+                <Button id="teacher-btn-regular-schedule" size="sm" variant="outline" className="gap-1"
+                  onClick={() => navigate(`/admin/calendar?teacher=${teacher.id}&view=regular`)}>
+                  <CalendarDays className="h-4 w-4" /> Regular Schedule
+                </Button>
+              )}
               {can("teachers.reset_password") && (
                 <>
                   <Button id="teacher-btn-copy-login" size="sm" variant="outline" className="gap-1"

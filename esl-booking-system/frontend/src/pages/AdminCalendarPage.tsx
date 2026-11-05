@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import NavBar from "@/components/Navbar";
 import { usePermissions } from "@/context/PermissionsContext";
@@ -211,20 +211,29 @@ const AdminCalendarPage = () => {
   const [showCopyWeek, setShowCopyWeek] = useState(false);
   // "actual" is the real booked calendar; "regular" is the students' agreed
   // weekly slots with this teacher, which only become classes when applied.
-  const [view, setView] = useState<"actual" | "regular">("actual");
+  // ?teacher=<id>&view=regular (from a teacher's profile) opens that teacher's
+  // Regular Schedule view directly.
+  const [searchParams] = useSearchParams();
+  const [view, setView] = useState<"actual" | "regular">(
+    searchParams.get("view") === "regular" ? "regular" : "actual",
+  );
 
   const teacher = teachers[teacherIdx] ?? null;
 
   const fetchTeachers = useCallback(async () => {
     try {
       const res = await axios.get(`${base}/api/admin/teachers`, { headers });
-      setTeachers((res.data as Teacher[]).map(t => ({ id: t.id, name: t.name })));
+      const list = (res.data as Teacher[]).map(t => ({ id: t.id, name: t.name }));
+      setTeachers(list);
+      const wanted = Number(searchParams.get("teacher"));
+      const idx = wanted ? list.findIndex(t => t.id === wanted) : -1;
+      if (idx >= 0) setTeacherIdx(idx);
     } catch (err) {
       console.error("Error fetching teachers:", err);
     } finally {
       setLoadingTeachers(false);
     }
-  }, [base, headers]);
+  }, [base, headers, searchParams]);
 
   const fetchBookableStudents = useCallback(async () => {
     try {

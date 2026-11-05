@@ -891,6 +891,12 @@ const AdminStudentProfilePage = () => {
                   </CardTitle>
                   <div className="flex gap-2">
                     {can("students.edit") && (
+                      <Button id="student-btn-regular-schedule" size="sm" variant="outline" className="gap-1"
+                        onClick={() => setShowSchedule(true)}>
+                        <CalendarDays className="h-4 w-4" /> Regular Schedule
+                      </Button>
+                    )}
+                    {can("students.edit") && (
                       <Button id="student-btn-edit" size="sm" variant="outline" className="gap-1" onClick={openEdit}>
                         <Pencil className="h-4 w-4" /> Edit
                       </Button>
@@ -957,18 +963,6 @@ const AdminStudentProfilePage = () => {
                     <div className="col-span-2 sm:col-span-3">
                       <div className="flex items-center gap-1">
                         <p className="text-xs text-muted-foreground">Regular Schedule</p>
-                        {can("students.edit") && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            aria-label="Edit regular schedule"
-                            title="Edit regular schedule"
-                            className="h-5 w-5 p-0 text-muted-foreground"
-                            onClick={() => setShowSchedule(true)}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </Button>
-                        )}
                         {can("students.book_classes") && (student.regular_schedule?.length ?? 0) > 0 && (
                           <Button
                             size="sm"
