@@ -8,7 +8,7 @@ const { logAction } = require('../utils/audit');
 const { notifyWaitlistForSlot } = require('./waitlistRoutes');
 const { attendeeSql, packageStudentIds } = require('../utils/sharedPackages');
 const { HalfCreditError, resolveLateNotice, createHalfCredit, notifyHalfCredit } = require('../utils/halfCredits');
-const { loadTeacherRegularSlots, cleanRegularSlots, replaceTeacherRegularSlots, syncTeacherHours } = require('../utils/regularSchedules');
+const { loadTeacherRegularSlots, loadTeacherRegularSchedule, cleanRegularSlots, replaceTeacherRegularSlots, syncTeacherHours, addTeacherRegularEntry } = require('../utils/regularSchedules');
 const { addDays } = require('../utils/recurringBooking');
 
 const router = express.Router();
@@ -1141,6 +1141,90 @@ router.post('/weekly-slots', authenticateToken, requireRole('teacher'), async (r
             return res.status(400).json({ message: 'action must be "open" or "close"' });
         }
         res.json({ message: `Slot ${action}d successfully` });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// ── Regular Timetable tab ──
+// The teacher's own copy of the admin calendar's Regular Schedule view. It edits
+// the same records (teacher_regular_slots, student_regular_schedules), so every
+// change shows on the admin side too. All record only: nothing here opens real
+// slots or books classes.
+
+// GET /api/teacher/regular-timetable — students' regular slots with this teacher
+router.get('/regular-timetable', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        res.json(await loadTeacherRegularSchedule(req.user.company_id, req.user.id));
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// GET /api/teacher/regular-timetable/students — active students to pick from (names only)
+router.get('/regular-timetable/students', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            "SELECT id, name FROM users WHERE company_id = ? AND role = 'student' AND is_active = TRUE ORDER BY name",
+            [req.user.company_id]
+        );
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// PUT /api/teacher/regular-timetable/hours — replace the regular open hours only.
+// Unlike PUT /regular-slots this does not touch the real calendar.
+router.put('/regular-timetable/hours', authenticateToken, requireRole('teacher'), async (req, res) => {
+    const teacherId = req.user.id;
+    const companyId = req.user.company_id;
+    const { error, clean } = cleanRegularSlots(req.body.slots);
+    if (error) return res.status(400).json({ message: error });
+    try {
+        await replaceTeacherRegularSlots(companyId, teacherId, clean);
+        await logAction(companyId, teacherId, 'teacher_regular_slots_updated', 'user', teacherId, { open_slots: clean.length });
+        res.json((await loadTeacherRegularSlots(companyId, teacherId))[teacherId] || []);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// POST /api/teacher/regular-timetable/entries — put a student in one of this
+// teacher's regular slots. Body: { student_id, day_of_week, start_time }
+router.post('/regular-timetable/entries', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const companyId = req.user.company_id;
+        const studentId = Number(req.body.student_id);
+        const added = await addTeacherRegularEntry(companyId, req.user.id, studentId, req.body.day_of_week, String(req.body.start_time || ''));
+        if (added.error) return res.status(added.error.status).json({ message: added.error.message });
+        await logAction(companyId, req.user.id, 'student_regular_schedule_updated', 'user', studentId, { added: added.label });
+        res.status(201).json(await loadTeacherRegularSchedule(companyId, req.user.id));
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// DELETE /api/teacher/regular-timetable/entries/:entryId — only the teacher's own slots
+router.delete('/regular-timetable/entries/:entryId', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const companyId = req.user.company_id;
+        const [[entry]] = await pool.query(
+            `SELECT id, student_id, day_of_week, TIME_FORMAT(start_time, '%H:%i') AS start_time
+             FROM student_regular_schedules WHERE id = ? AND company_id = ? AND teacher_id = ?`,
+            [req.params.entryId, companyId, req.user.id]
+        );
+        if (!entry) return res.status(404).json({ message: 'Schedule slot not found' });
+        await pool.query('DELETE FROM student_regular_schedules WHERE id = ? AND company_id = ?', [entry.id, companyId]);
+        await logAction(companyId, req.user.id, 'student_regular_schedule_updated', 'user', entry.student_id, {
+            removed: `${entry.day_of_week} ${entry.start_time} (${req.user.name || 'teacher'})`,
+        });
+        res.json({ message: 'Removed' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });

@@ -3,6 +3,7 @@ import axios from "axios";
 import { AlertTriangle, CalendarPlus, Check, CopyPlus, Download, Loader2, Trash2, X } from "lucide-react";
 import { DAYS_OF_WEEK, summarizeRegularSlots, type TeacherRegularSlot } from "@/utils/regularSlots";
 import { downloadRegularScheduleImage, type RegularImageCell } from "@/utils/regularScheduleImage";
+import SearchableSelect from "@/components/SearchableSelect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,13 +16,6 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 // One student's agreed weekly slot with this teacher, plus the package that
 // "Apply to Actual" would book it from.
@@ -80,8 +74,41 @@ const cellFromPoint = (x: number, y: number): CellPos | null => {
   return Number.isInteger(d) && Number.isInteger(t) ? { d, t } : null;
 };
 
+// Where the grid reads and saves its records: the admin endpoints for any
+// teacher, or the teacher's own endpoints on their Regular Timetable tab.
+// Both edit the same tables, so a change on either side shows on the other.
+interface RegularApi {
+  schedule: string; // GET students' regular slots with the teacher
+  hours: string; // GET regular open hours
+  saveHours: string; // PUT regular open hours (record only)
+  students: string; // GET students to pick from
+  addEntry: string; // POST { student_id, day_of_week, start_time }
+  removeEntry: (entryId: number) => string; // DELETE
+}
+
+const adminApi = (base: string, teacherId: number): RegularApi => ({
+  schedule: `${base}/api/admin/teachers/${teacherId}/regular-schedule`,
+  hours: `${base}/api/admin/teachers/${teacherId}/regular-slots`,
+  saveHours: `${base}/api/admin/teachers/${teacherId}/regular-slots`,
+  students: `${base}/api/student/students`,
+  addEntry: `${base}/api/admin/teachers/${teacherId}/regular-schedule`,
+  removeEntry: (id) => `${base}/api/admin/regular-schedule/${id}`,
+});
+
+const teacherApi = (base: string): RegularApi => ({
+  schedule: `${base}/api/teacher/regular-timetable`,
+  hours: `${base}/api/teacher/regular-slots`,
+  saveHours: `${base}/api/teacher/regular-timetable/hours`,
+  students: `${base}/api/teacher/regular-timetable/students`,
+  addEntry: `${base}/api/teacher/regular-timetable/entries`,
+  removeEntry: (id) => `${base}/api/teacher/regular-timetable/entries/${id}`,
+});
+
 interface TeacherRegularScheduleProps {
   teacher: { id: number; name: string };
+  // The teacher's own Regular Timetable tab: their own endpoints, and only
+  // "Download Image" — no Copy from / Apply to Actual.
+  selfService?: boolean;
   // The calendar's own row times and student colors, so both views line up.
   slotTimes: string[];
   palette: string[];
@@ -90,21 +117,23 @@ interface TeacherRegularScheduleProps {
   canEdit: boolean;
   // Set the teacher's regular open/closed hours
   canEditHours: boolean;
-  // The Actual week on screen ("yyyy-MM-dd" Monday), which "Copy from Actual" copies
-  weekLabel: string;
-  weekStart: string;
+  // The Actual week on screen ("yyyy-MM-dd" Monday), which "Copy from Actual" copies.
+  // Not needed with selfService.
+  weekLabel?: string;
+  weekStart?: string;
   // Called after classes are booked, so the Actual view can refresh.
-  onApplied: () => void;
+  onApplied?: () => void;
 }
 
-type EditMode = "students" | "hours";
+/** How long a click waits for a second one before it counts as a single click. */
+const DOUBLE_CLICK_MS = 250;
 
 // The calendar's "Regular Schedule" view: the teacher's regular open/closed
 // hours plus every student's agreed weekly slots with them, as a Mon–Sun
 // template. Open slots with no student are the teacher's regular vacancies.
 // All of it is a record; only "Apply to Actual" books classes and deducts sessions.
 const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
-  teacher, slotTimes, palette, canApply, canEdit, canEditHours, weekLabel, weekStart, onApplied,
+  teacher, selfService = false, slotTimes, palette, canApply, canEdit, canEditHours, weekLabel = "", weekStart = "", onApplied,
 }) => {
   const [slots, setSlots] = useState<RegularSlot[]>([]);
   const [openSet, setOpenSet] = useState<Set<string>>(new Set());
@@ -113,14 +142,15 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
   const [showCopy, setShowCopy] = useState(false);
   // The grid cell being edited
   const [editCell, setEditCell] = useState<{ day: string; time: string } | null>(null);
-  const [mode, setMode] = useState<EditMode>(canEdit ? "students" : "hours");
+  // A single click waits briefly in case it becomes a double click.
+  const clickTimerRef = useRef<{ key: string; timer: ReturnType<typeof setTimeout>; run: () => void } | null>(null);
   const [hoursSaving, setHoursSaving] = useState(false);
   const [hoursError, setHoursError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
 
   // Drag-selection, for opening or closing a range of regular hours at once: the
   // rectangle between the cell the drag started on (anchor) and the one under the
-  // pointer (focus). Works in both modes; a plain click still does the mode's thing.
+  // pointer (focus). A plain click opens/closes one slot; a double click puts a student in it.
   const [selAnchor, setSelAnchor] = useState<CellPos | null>(null);
   const [selFocus, setSelFocus] = useState<CellPos | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
@@ -141,14 +171,15 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
 
   const token = localStorage.getItem("token");
   const base = import.meta.env.VITE_API_URL;
+  const api = useMemo(() => (selfService ? teacherApi(base) : adminApi(base, teacher.id)), [selfService, base, teacher.id]);
 
   const fetchSlots = useCallback(async () => {
     setLoading(true);
     const headers = { Authorization: `Bearer ${token}` };
     try {
       const [schedRes, hoursRes] = await Promise.all([
-        axios.get(`${base}/api/admin/teachers/${teacher.id}/regular-schedule`, { headers }),
-        axios.get(`${base}/api/admin/teachers/${teacher.id}/regular-slots`, { headers }),
+        axios.get(api.schedule, { headers }),
+        axios.get(api.hours, { headers }),
       ]);
       setSlots(Array.isArray(schedRes.data) ? schedRes.data : []);
       const hours: TeacherRegularSlot[] = Array.isArray(hoursRes.data) ? hoursRes.data : [];
@@ -159,7 +190,7 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [base, token, teacher.id]);
+  }, [api, token]);
 
   useEffect(() => { fetchSlots(); }, [fetchSlots]);
 
@@ -168,7 +199,7 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
     setHoursError(null);
     try {
       await axios.put(
-        `${base}/api/admin/teachers/${teacher.id}/regular-slots`,
+        api.saveHours,
         { slots: [...next].map((k) => { const [day_of_week, slot_time] = k.split("|"); return { day_of_week, slot_time }; }) },
         { headers: { Authorization: `Bearer ${token}` } },
       );
@@ -178,7 +209,7 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
     } finally {
       setHoursSaving(false);
     }
-  }, [base, token, teacher.id]);
+  }, [api, token]);
 
   const selectedKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -370,11 +401,15 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
     return true;
   };
 
+  const openSetRef = useRef(openSet);
+  openSetRef.current = openSet;
   const toggleHour = (key: string) => {
     if (hoursSaving) return;
-    const before = openSet;
-    const next = new Set(openSet);
+    // Read through the ref: this can run from a delayed click, after other changes
+    const before = openSetRef.current;
+    const next = new Set(before);
     if (next.has(key)) next.delete(key); else next.add(key);
+    openSetRef.current = next;
     setOpenSet(next);
     saveHours(next, before);
   };
@@ -455,30 +490,60 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
     }
   };
 
-  const hint =
-    mode === "hours" && canEditHours
-      ? "Click a slot to switch it open (green) or closed (gray), or drag across slots — hold then drag on touch — to open or close a whole range."
-      : canEdit
-        ? `Click a slot to add or remove a student.${canEditHours ? " Drag across slots to open or close a range." : ""}`
-        : "";
+  // Single click: open/close the slot (or, without that permission, edit its
+  // students). Double click: put a student in it. The single click is held back
+  // DOUBLE_CLICK_MS so a double click doesn't also switch the slot twice.
+  const singleAction = (key: string, day: string, time: string) =>
+    canEditHours ? () => toggleHour(key) : canEdit ? () => setEditCell({ day, time }) : null;
+  const doubleAction = (day: string, time: string) => (canEdit ? () => setEditCell({ day, time }) : null);
+
+  const handleCellClick = (key: string, day: string, time: string) => {
+    if (!guardCellClick(key)) return;
+    const single = singleAction(key, day, time);
+    const double = doubleAction(day, time);
+    const pending = clickTimerRef.current;
+    if (pending) {
+      clearTimeout(pending.timer);
+      clickTimerRef.current = null;
+      if (pending.key === key) {
+        double?.();
+        return;
+      }
+      pending.run(); // a quick click on another cell: the earlier one was a single click
+    }
+    if (!single) return;
+    if (!double) { single(); return; }
+    clickTimerRef.current = {
+      key,
+      run: single,
+      timer: setTimeout(() => { clickTimerRef.current = null; single(); }, DOUBLE_CLICK_MS),
+    };
+  };
+  useEffect(() => () => { if (clickTimerRef.current) clearTimeout(clickTimerRef.current.timer); }, []);
+
+  const hint = [
+    canEditHours && "Click a slot to open (green) or close (gray) it, or drag across slots — hold then drag on touch — to open or close a range.",
+    canEdit && (canEditHours ? "Double-click a slot to add or remove a student." : "Click a slot to add or remove a student."),
+  ].filter(Boolean).join(" ");
 
   return (
     <>
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-3">
         <p className="text-xs text-muted-foreground">
-          {teacher.name}'s regular weekly timetable, kept as a record. Green slots with no student are
-          regular vacancies. Nothing here is booked until you apply it.
+          {selfService
+            ? "Your regular weekly timetable, kept as a record. Green slots with no student are your regular vacancies. Changes here show on the admin's calendar too; nothing is booked or opened on your real calendar."
+            : `${teacher.name}'s regular weekly timetable, kept as a record. Green slots with no student are regular vacancies. Nothing here is booked until you apply it.`}
         </p>
         <div className="flex flex-wrap gap-2 shrink-0">
           <Button size="sm" variant="outline" disabled={loading || downloading} onClick={handleDownload}>
             {downloading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Download className="h-4 w-4 mr-1" />} Download Image
           </Button>
-          {(canEdit || canEditHours) && (
+          {!selfService && (canEdit || canEditHours) && (
             <Button size="sm" variant="outline" disabled={loading} onClick={() => setShowCopy(true)}>
               <CopyPlus className="h-4 w-4 mr-1" /> Copy from Actual
             </Button>
           )}
-          {(canApply || canEditHours) && (
+          {!selfService && (canApply || canEditHours) && (
             <Button size="sm" disabled={loading || (slots.length === 0 && openSet.size === 0)} onClick={() => setShowApply(true)}>
               <CalendarPlus className="h-4 w-4 mr-1" /> Apply to Actual
             </Button>
@@ -488,23 +553,6 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
 
       {(canEdit || canEditHours) && (
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          {canEdit && canEditHours && (
-            <div className="inline-flex rounded-lg border p-0.5 bg-muted/40" role="tablist" aria-label="What clicking edits">
-              {([["students", "Edit students"], ["hours", "Edit open / closed hours"]] as const).map(([v, label]) => (
-                <button
-                  key={v}
-                  role="tab"
-                  aria-selected={mode === v}
-                  onClick={() => setMode(v)}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                    mode === v ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
           {hoursSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
           {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
         </div>
@@ -557,17 +605,14 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
                       const key = `${day}|${time}`;
                       const here = cells.get(key) ?? [];
                       const isOpen = openSet.has(key);
-                      const action = mode === "hours" && canEditHours
-                        ? () => toggleHour(key)
-                        : mode === "students" && canEdit ? () => setEditCell({ day, time }) : null;
-                      const clickable = !!action;
-                      // Every cell takes part in drag-selection, whatever the mode.
+                      const clickable = canEditHours || canEdit;
+                      // Every cell takes part in drag-selection.
                       const cellProps = {
                         "data-regular-cell": `${d}:${t}`,
                         onPointerDown: (e: React.PointerEvent) => handleCellPointerDown(d, t, e),
                         onPointerMove: (e: React.PointerEvent) => handleCellPointerMove(d, t, e),
                         onPointerEnter: (e: React.PointerEvent) => handleCellPointerEnter(d, t, e),
-                        onClick: () => { if (guardCellClick(key)) action?.(); },
+                        onClick: () => handleCellClick(key, day, time),
                       };
                       const selected = selectedKeys.has(key) ? "ring-2 ring-inset ring-primary" : "";
                       if (here.length === 0) {
@@ -577,13 +622,14 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
                             {...cellProps}
                             title={
                               (isOpen ? "Regularly open — vacant" : "Regularly closed")
-                              + (mode === "hours" && canEditHours ? " · click to switch" : clickable ? " · click to add a student" : "")
+                              + (canEditHours ? " · click to switch" : "")
+                              + (canEdit ? (canEditHours ? " · double-click to add a student" : " · click to add a student") : "")
                             }
                             className={`p-1 text-center border ${
                               isOpen ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"
                             } ${clickable ? "cursor-pointer hover:brightness-95" : ""} ${selected}`}
                           >
-                            {isOpen ? "✓" : mode === "students" && canEdit ? "+" : ""}
+                            {isOpen ? "✓" : ""}
                           </td>
                         );
                       }
@@ -598,7 +644,8 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
                           title={here.map(({ slot }) => `${slot.student_name} — ${slot.day_of_week} ${fmt12(slot.start_time)}`).join("\n")
                             + (clash ? "\n⚠ More than one student in this slot" : "")
                             + (outsideHours ? "\n⚠ Outside the teacher's regular open hours" : "")
-                            + (mode === "hours" && canEditHours ? "\nClick to switch open/closed" : clickable ? "\nClick to edit" : "")}
+                            + (canEditHours ? "\nClick to switch open/closed" : "")
+                            + (canEdit ? (canEditHours ? "\nDouble-click to edit students" : "\nClick to edit students") : "")}
                           style={clash ? undefined : { backgroundColor: colorByStudent.get(only.slot.student_id), color: "#fff" }}
                           className={`p-1 text-center border ${clash ? "bg-amber-100 text-amber-800" : ""} ${
                             outsideHours ? "outline-2 outline-dashed outline-red-500 -outline-offset-2" : ""
@@ -648,12 +695,15 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
       <EditRegularSlotDialog
         cell={editCell}
         teacher={teacher}
+        api={api}
         // Everything covering this cell, including longer classes that started above it
         entries={editCell ? (cells.get(`${editCell.day}|${editCell.time}`) ?? []).map(({ slot }) => slot) : []}
         onClose={() => setEditCell(null)}
         onChanged={(fresh) => (fresh ? setSlots(fresh) : fetchSlots())}
       />
 
+      {!selfService && (
+      <>
       <ApplyTeacherRegularDialog
         open={showApply}
         teacher={teacher}
@@ -663,7 +713,7 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
         canBookStudents={canApply}
         onClose={() => setShowApply(false)}
         // Refresh the session counts shown here as well as the Actual view's slots and classes
-        onApplied={() => { fetchSlots(); onApplied(); }}
+        onApplied={() => { fetchSlots(); onApplied?.(); }}
       />
 
       <CopyFromActualDialog
@@ -677,6 +727,8 @@ const TeacherRegularSchedule: React.FC<TeacherRegularScheduleProps> = ({
         onClose={() => setShowCopy(false)}
         onCopied={fetchSlots}
       />
+      </>
+      )}
     </>
   );
 };
@@ -904,6 +956,7 @@ interface EditRegularSlotDialogProps {
   // null keeps the dialog closed
   cell: { day: string; time: string } | null;
   teacher: { id: number; name: string };
+  api: RegularApi;
   entries: RegularSlot[];
   onClose: () => void;
   // Fresh slot list when the server returned one, otherwise undefined to refetch.
@@ -912,7 +965,7 @@ interface EditRegularSlotDialogProps {
 
 // Add or remove students' regular slots at one day/time of this teacher's
 // template. A record only — nothing is booked until "Apply to Actual".
-const EditRegularSlotDialog: React.FC<EditRegularSlotDialogProps> = ({ cell, teacher, entries, onClose, onChanged }) => {
+const EditRegularSlotDialog: React.FC<EditRegularSlotDialogProps> = ({ cell, teacher, api, entries, onClose, onChanged }) => {
   const [students, setStudents] = useState<{ id: number; name: string }[]>([]);
   const [studentId, setStudentId] = useState("");
   const [time, setTime] = useState("");
@@ -921,7 +974,6 @@ const EditRegularSlotDialog: React.FC<EditRegularSlotDialogProps> = ({ cell, tea
   const [error, setError] = useState<string | null>(null);
 
   const token = localStorage.getItem("token");
-  const base = import.meta.env.VITE_API_URL;
 
   // Fresh form every time it opens; the student list is loaded once.
   useEffect(() => {
@@ -931,7 +983,7 @@ const EditRegularSlotDialog: React.FC<EditRegularSlotDialogProps> = ({ cell, tea
     setError(null);
     if (students.length > 0) return;
     axios
-      .get(`${base}/api/student/students`, { headers: { Authorization: `Bearer ${token}` } })
+      .get(api.students, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => {
         const rows: { id: number; name: string; is_active?: boolean | number }[] = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
         setStudents(
@@ -951,7 +1003,7 @@ const EditRegularSlotDialog: React.FC<EditRegularSlotDialogProps> = ({ cell, tea
     setError(null);
     try {
       const res = await axios.post(
-        `${base}/api/admin/teachers/${teacher.id}/regular-schedule`,
+        api.addEntry,
         { student_id: Number(studentId), day_of_week: cell.day, start_time: time },
         { headers: { Authorization: `Bearer ${token}` } },
       );
@@ -968,7 +1020,7 @@ const EditRegularSlotDialog: React.FC<EditRegularSlotDialogProps> = ({ cell, tea
     setRemovingId(entryId);
     setError(null);
     try {
-      await axios.delete(`${base}/api/admin/regular-schedule/${entryId}`, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.delete(api.removeEntry(entryId), { headers: { Authorization: `Bearer ${token}` } });
       onChanged();
     } catch (err: unknown) {
       setError(axios.isAxiosError(err) && err.response ? err.response.data?.message || "Failed to remove slot" : "An unexpected error occurred");
@@ -978,6 +1030,7 @@ const EditRegularSlotDialog: React.FC<EditRegularSlotDialogProps> = ({ cell, tea
   };
 
   const busy = saving || removingId !== null;
+  const studentOptions = useMemo(() => students.map((st) => ({ value: String(st.id), label: st.name })), [students]);
 
   return (
     <Dialog open={!!cell} onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
@@ -1016,16 +1069,16 @@ const EditRegularSlotDialog: React.FC<EditRegularSlotDialogProps> = ({ cell, tea
         <div className="space-y-2">
           <p className="text-sm font-medium">{entries.length > 0 ? "Add another student" : "Add a student"}</p>
           <div className="grid grid-cols-[1fr_7.5rem] gap-2">
-            <Select value={studentId} onValueChange={setStudentId} disabled={busy}>
-              <SelectTrigger aria-label="Student">
-                <SelectValue placeholder="Select a student" />
-              </SelectTrigger>
-              <SelectContent>
-                {students.map((s) => (
-                  <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              aria-label="Student"
+              options={studentOptions}
+              value={studentId}
+              onChange={setStudentId}
+              disabled={busy}
+              placeholder="Select a student"
+              searchPlaceholder="Search students…"
+              emptyText="No student with that name"
+            />
             <Input type="time" aria-label="Start time" value={time} onChange={(e) => setTime(e.target.value)} disabled={busy} />
           </div>
         </div>

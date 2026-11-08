@@ -45,6 +45,8 @@ import InstallAppButton from "@/components/InstallAppButton";
 import ThemeToggle from "@/components/ThemeToggle";
 import ReportModal from "@/components/ReportModal";
 import RegularScheduleSetupDialog from "@/components/RegularScheduleSetupDialog";
+import TeacherRegularSchedule from "@/components/TeacherRegularSchedule";
+import { STUDENT_COLORS } from "@/utils/studentColors";
 import { fmtDate, fmtDateOnly, TIMEZONES } from "@/utils/timezone";
 import {
   NOTE_COLOR_PRESETS,
@@ -78,7 +80,7 @@ import MonthCalendar, { MonthCalendarEvent } from "@/components/MonthCalendar";
 import LinkedAccountsCard from "@/components/LinkedAccountsCard";
 import { useLinkedAccounts, roleLabel } from "@/hooks/useLinkedAccounts";
 
-type Page = "dashboard" | "classes" | "profile";
+type Page = "dashboard" | "classes" | "profile" | "regular";
 
 interface Teacher {
   id: number;
@@ -1988,6 +1990,11 @@ const TeacherDashboard = () => {
       label: "Profile",
       icon: <UserCircle className="h-4 w-4" />,
     },
+    {
+      key: "regular",
+      label: "Regular Timetable",
+      icon: <Repeat className="h-4 w-4" />,
+    },
   ];
 
   return (
@@ -2100,13 +2107,13 @@ const TeacherDashboard = () => {
             </button>
           </div>
         )}
-        {/* Nav tabs */}
-        <div className="max-w-7xl mx-auto px-4 flex gap-0">
+        {/* Nav tabs — scroll sideways on narrow phones rather than wrap */}
+        <div className="max-w-7xl mx-auto px-4 flex gap-0 overflow-x-auto">
           {navItems.map((item) => (
             <button
               key={item.key}
               onClick={() => setPage(item.key)}
-              className={`flex items-center gap-1 px-2 py-3.5 text-sm font-medium border-b-2 transition-colors ${
+              className={`flex items-center gap-1 px-2 py-3.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
                 page === item.key
                   ? "border-white text-white"
                   : "border-transparent text-white/60 hover:text-white/90"
@@ -3365,6 +3372,31 @@ const TeacherDashboard = () => {
               </CardContent>
             </Card>
           </>
+        )}
+
+        {/* ═══ REGULAR TIMETABLE ═══ */}
+        {/* The same Regular Schedule grid admins see on the calendar, editing the
+            same records, so changes show on both sides. Record only: no Copy from /
+            Apply to Actual here. */}
+        {page === "regular" && teacher && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Repeat className="h-4 w-4 text-primary" /> Regular Timetable
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TeacherRegularSchedule
+                teacher={{ id: teacher.id, name: teacher.name }}
+                selfService
+                slotTimes={SLOT_TIMES}
+                palette={STUDENT_COLORS}
+                canApply={false}
+                canEdit
+                canEditHours
+              />
+            </CardContent>
+          </Card>
         )}
 
         {/* ═══ PROFILE PAGE ═══ */}

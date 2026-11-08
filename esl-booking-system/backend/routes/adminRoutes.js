@@ -14,7 +14,7 @@ const { phtNowSql } = require("../utils/phtTime");
 const { attendeeSql, canUsePackageSql, canUsePackage, packageStudentIds } = require("../utils/sharedPackages");
 const { findAvailableTeachers } = require("../utils/teacherAvailability");
 const { DAY_NAMES, addDays, dayOfWeek } = require("../utils/recurringBooking");
-const { DAYS_OF_WEEK, loadRegularSchedules, loadTeacherRegularSlots, loadTeacherRegularSchedule, findBookablePackage, applyRegularEntries, cleanRegularSlots, replaceTeacherRegularSlots, cleanRegularEntries, loadEntryTeachers, writeRegularEntries, syncTeacherHours } = require("../utils/regularSchedules");
+const { DAYS_OF_WEEK, loadRegularSchedules, loadTeacherRegularSlots, loadTeacherRegularSchedule, findBookablePackage, applyRegularEntries, cleanRegularSlots, replaceTeacherRegularSlots, cleanRegularEntries, loadEntryTeachers, writeRegularEntries, syncTeacherHours, addTeacherRegularEntry } = require("../utils/regularSchedules");
 const { archiveUser } = require("../utils/archiveUser");
 const { HalfCreditError, resolveLateNotice, createHalfCredit, removeHalfCreditForBooking, notifyHalfCredit, fmtMoney } = require("../utils/halfCredits");
 
@@ -1810,37 +1810,9 @@ router.post('/teachers/:id/regular-schedule', authenticateToken, requireRole('co
     const companyId = req.user.company_id;
     const teacherId = Number(req.params.id);
     const studentId = Number(req.body.student_id);
-    const day = DAYS_OF_WEEK.find((d) => d.toLowerCase() === String(req.body.day_of_week || '').toLowerCase());
-    const time = String(req.body.start_time || '');
-    if (!day) return res.status(400).json({ message: 'Invalid day' });
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return res.status(400).json({ message: 'Invalid time' });
-
-    const [people] = await pool.query(
-      "SELECT id, role, name FROM users WHERE id IN (?, ?) AND company_id = ?", [teacherId, studentId, companyId]
-    );
-    const teacher = people.find((u) => u.id === teacherId && u.role === 'teacher');
-    const student = people.find((u) => u.id === studentId && u.role === 'student');
-    if (!teacher) return res.status(404).json({ message: 'Teacher not found' });
-    if (!student) return res.status(404).json({ message: 'Student not found' });
-
-    const [[dupe]] = await pool.query(
-      `SELECT id FROM student_regular_schedules
-       WHERE company_id = ? AND student_id = ? AND day_of_week = ? AND start_time = ?`,
-      [companyId, studentId, day, `${time}:00`]
-    );
-    if (dupe) return res.status(400).json({ message: `${student.name} already has a regular slot on ${day} at this time` });
-    const [[{ cnt }]] = await pool.query(
-      'SELECT COUNT(*) AS cnt FROM student_regular_schedules WHERE company_id = ? AND student_id = ?', [companyId, studentId]
-    );
-    if (cnt >= 21) return res.status(400).json({ message: 'Too many schedule entries for this student' });
-
-    await pool.query(
-      'INSERT INTO student_regular_schedules (company_id, student_id, day_of_week, start_time, teacher_id) VALUES (?, ?, ?, ?, ?)',
-      [companyId, studentId, day, time, teacherId]
-    );
-    await logAction(companyId, req.user.id, 'student_regular_schedule_updated', 'user', studentId, {
-      added: `${day} ${time} (${teacher.name})`,
-    });
+    const added = await addTeacherRegularEntry(companyId, teacherId, studentId, req.body.day_of_week, String(req.body.start_time || ''));
+    if (added.error) return res.status(added.error.status).json({ message: added.error.message });
+    await logAction(companyId, req.user.id, 'student_regular_schedule_updated', 'user', studentId, { added: added.label });
     res.status(201).json(await loadTeacherRegularSchedule(companyId, teacherId));
   } catch (err) {
     res.status(500).json({ message: 'Server error' });

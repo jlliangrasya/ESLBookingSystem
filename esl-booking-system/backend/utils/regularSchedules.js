@@ -197,6 +197,40 @@ async function writeRegularEntries(connection, companyId, studentId, clean) {
   }
 }
 
+// Add one regular slot for a student with a teacher (the Regular Schedule grid,
+// admin or teacher). A record only. Returns { error: { status, message } } or
+// { label } describing what was added, for the audit log.
+async function addTeacherRegularEntry(companyId, teacherId, studentId, dayInput, time) {
+  const day = DAYS_OF_WEEK.find((d) => d.toLowerCase() === String(dayInput || '').toLowerCase());
+  if (!day) return { error: { status: 400, message: 'Invalid day' } };
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(time || ''))) return { error: { status: 400, message: 'Invalid time' } };
+
+  const [people] = await pool.query(
+    "SELECT id, role, name FROM users WHERE id IN (?, ?) AND company_id = ?", [teacherId, studentId, companyId]
+  );
+  const teacher = people.find((u) => u.id === teacherId && u.role === 'teacher');
+  const student = people.find((u) => u.id === studentId && u.role === 'student');
+  if (!teacher) return { error: { status: 404, message: 'Teacher not found' } };
+  if (!student) return { error: { status: 404, message: 'Student not found' } };
+
+  const [[dupe]] = await pool.query(
+    `SELECT id FROM student_regular_schedules
+     WHERE company_id = ? AND student_id = ? AND day_of_week = ? AND start_time = ?`,
+    [companyId, studentId, day, `${time}:00`]
+  );
+  if (dupe) return { error: { status: 400, message: `${student.name} already has a regular slot on ${day} at this time` } };
+  const [[{ cnt }]] = await pool.query(
+    'SELECT COUNT(*) AS cnt FROM student_regular_schedules WHERE company_id = ? AND student_id = ?', [companyId, studentId]
+  );
+  if (cnt >= 21) return { error: { status: 400, message: 'Too many schedule entries for this student' } };
+
+  await pool.query(
+    'INSERT INTO student_regular_schedules (company_id, student_id, day_of_week, start_time, teacher_id) VALUES (?, ?, ?, ?, ?)',
+    [companyId, studentId, day, time, teacherId]
+  );
+  return { label: `${day} ${time} (${teacher.name})` };
+}
+
 // Make the real calendar match a teacher's regular hours for `weeks` weeks from
 // startStr: regular open slots are opened and every other slot is CLOSED, so
 // the Actual week ends up looking like the Regular one. `regular` is a list of
@@ -309,4 +343,5 @@ async function replaceTeacherRegularSlots(companyId, teacherId, clean) {
 module.exports = {
   DAYS_OF_WEEK, loadRegularSchedules, loadTeacherRegularSlots, loadTeacherRegularSchedule, findBookablePackage, applyRegularEntries,
   cleanRegularSlots, replaceTeacherRegularSlots, cleanRegularEntries, loadEntryTeachers, writeRegularEntries, syncTeacherHours,
+  addTeacherRegularEntry,
 };
