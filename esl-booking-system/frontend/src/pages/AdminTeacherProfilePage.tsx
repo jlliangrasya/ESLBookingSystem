@@ -21,9 +21,10 @@ import {
   ArrowLeft, UserCircle, CalendarDays, Loader2, Pencil, Save, Eye, EyeOff,
   BookOpen, KeyRound, ChevronLeft, ChevronRight, Timer, CheckCircle2,
   UserX, Users, FileText, Heart, Search, Calculator, Copy, Check,
-  Plus, X, Download, Clock,
+  Plus, X, Download, Clock, Trash2,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly } from "@/utils/timezone";
+import DeleteClassDialog, { type DeleteClassTarget } from "@/components/DeleteClassDialog";
 import ReportModal from "@/components/ReportModal";
 
 const LOGIN_URL = "https://brightfolks.pages.dev";
@@ -206,7 +207,7 @@ const AdminTeacherProfilePage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const authContext = useContext(AuthContext);
-  const { can, canAny } = usePermissions();
+  const { can, canAny, isOwner } = usePermissions();
   const canEditSchedule = canAny("teachers.manage_schedule", "calendar.manage_slots");
   const currentUser = authContext?.user ?? null;
   const token = localStorage.getItem("token");
@@ -251,6 +252,8 @@ const AdminTeacherProfilePage = () => {
 
   // Drilldown dialog
   const [drillKey, setDrillKey] = useState<DrilldownKey | null>(null);
+  // Owner-only: delete a finished class from the drilldown lists
+  const [deleteClass, setDeleteClass] = useState<DeleteClassTarget | null>(null);
 
   // Custom date range for Performance Overview
   const [rangeFrom, setRangeFrom] = useState("");
@@ -1039,12 +1042,13 @@ const AdminTeacherProfilePage = () => {
                           <TableHead>Duration</TableHead>
                           <TableHead>Attendance</TableHead>
                           <TableHead>Report</TableHead>
+                          {isOwner && <TableHead className="w-10"></TableHead>}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {rangeDrillList.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={5} className="text-center text-muted-foreground text-sm py-8">
+                            <TableCell colSpan={isOwner ? 6 : 5} className="text-center text-muted-foreground text-sm py-8">
                               No records found
                             </TableCell>
                           </TableRow>
@@ -1060,6 +1064,19 @@ const AdminTeacherProfilePage = () => {
                                   ? <Button size="sm" variant="outline" className="text-xs h-7 border-green-400 text-green-700 hover:bg-green-50" onClick={() => setReportModal({ open: true, bookingId: b.id, studentName: b.student_name, classDate: b.appointment_date })}>✓ View Report</Button>
                                   : <span className="text-xs text-muted-foreground">No report</span>}
                               </TableCell>
+                              {isOwner && (
+                                <TableCell>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-red-50"
+                                    title="Delete class"
+                                    onClick={() => setDeleteClass({ ...b, teacher_name: teacher.name })}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TableCell>
+                              )}
                             </TableRow>
                           ))
                         )}
@@ -1463,12 +1480,13 @@ const AdminTeacherProfilePage = () => {
                   <TableHead>Duration</TableHead>
                   <TableHead>Attendance</TableHead>
                   <TableHead>Report</TableHead>
+                  {isOwner && <TableHead className="w-10"></TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {drillList.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground text-sm py-8">
+                    <TableCell colSpan={isOwner ? 6 : 5} className="text-center text-muted-foreground text-sm py-8">
                       No records found
                     </TableCell>
                   </TableRow>
@@ -1484,6 +1502,19 @@ const AdminTeacherProfilePage = () => {
                           ? <Button size="sm" variant="outline" className="text-xs h-7 border-green-400 text-green-700 hover:bg-green-50" onClick={() => setReportModal({ open: true, bookingId: b.id, studentName: b.student_name, classDate: b.appointment_date })}>✓ View Report</Button>
                           : <span className="text-xs text-muted-foreground">No report</span>}
                       </TableCell>
+                      {isOwner && (
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-red-50"
+                            title="Delete class"
+                            onClick={() => setDeleteClass({ ...b, teacher_name: teacher.name })}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}
@@ -1496,6 +1527,12 @@ const AdminTeacherProfilePage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeleteClassDialog
+        target={deleteClass}
+        onClose={() => setDeleteClass(null)}
+        onDeleted={(message) => { alert(message); fetchData(); }}
+      />
 
       {/* Report View Modal — admin read-only */}
       <ReportModal

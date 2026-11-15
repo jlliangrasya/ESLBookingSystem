@@ -2476,6 +2476,106 @@ router.put('/bookings/:bookingId/attendance', authenticateToken, requireRole('co
   }
 });
 
+// ——— Delete a finished class (owner only) ———
+//
+// Permanently removes a class marked done (present or absent) — every 30-min
+// row of its booking group — along with its class report. `refund_session`
+// returns the session the class consumed to its package (skipped when the
+// teacher was absent: that session was already refunded). An open half credit
+// from a late notice is removed with the class; one already combined or paid
+// is kept as history (its booking link just goes away).
+router.delete('/bookings/:bookingId', authenticateToken, requireRole('company_admin'), async (req, res) => {
+  const companyId = req.user.company_id;
+  const refund = req.query.refund_session === 'true' || req.body?.refund_session === true;
+  let access;
+  try {
+    access = await getAdminAccess(req.user.id);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+  if (!access.is_owner) return res.status(403).json({ message: 'Only the company owner can delete classes.' });
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [[booking]] = await connection.query(
+      `SELECT b.id, b.status, b.booking_group_id, b.student_package_id, b.teacher_id, b.appointment_date,
+              b.student_absent, b.teacher_absent, b.absence_notice_at,
+              u.id AS student_id, u.name AS student_name, t.name AS teacher_name
+       FROM bookings b
+       JOIN student_packages sp ON sp.id = b.student_package_id
+       JOIN users u ON u.id = ${attendeeSql()}
+       LEFT JOIN users t ON t.id = b.teacher_id
+       WHERE b.id = ? AND b.company_id = ? FOR UPDATE`,
+      [req.params.bookingId, companyId]
+    );
+    if (!booking) { await connection.rollback(); return res.status(404).json({ message: 'Class not found' }); }
+    if (booking.status !== 'done') {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Only classes marked as done (present or absent) can be deleted. Cancel upcoming classes instead.' });
+    }
+
+    const scope = booking.booking_group_id
+      ? { sql: 'booking_group_id = ? AND company_id = ?', params: [booking.booking_group_id, companyId] }
+      : { sql: 'id = ? AND company_id = ?', params: [booking.id, companyId] };
+    const [rows] = await connection.query(
+      `SELECT id, appointment_date FROM bookings WHERE ${scope.sql} ORDER BY appointment_date ASC FOR UPDATE`,
+      scope.params
+    );
+    const ids = rows.map(r => r.id);
+
+    // Explicit clean-up of dependants: the FKs cascade / set null, but don't
+    // rely on the database enforcing them.
+    await connection.query(
+      "DELETE FROM half_credits WHERE company_id = ? AND booking_id IN (?) AND status = 'open'",
+      [companyId, ids]
+    );
+    await connection.query('UPDATE half_credits SET booking_id = NULL WHERE booking_id IN (?)', [ids]);
+    await connection.query('UPDATE assignments SET booking_id = NULL WHERE booking_id IN (?)', [ids]);
+    await connection.query('DELETE FROM class_reports WHERE booking_id IN (?)', [ids]);
+    await connection.query('DELETE FROM bookings WHERE id IN (?)', [ids]);
+
+    const classStart = String(rows[0]?.appointment_date ?? booking.appointment_date);
+    const refunded = refund && !booking.teacher_absent;
+    if (refunded) {
+      await connection.query(
+        'UPDATE student_packages SET sessions_remaining = sessions_remaining + 1 WHERE id = ? AND company_id = ?',
+        [booking.student_package_id, companyId]
+      );
+      await connection.query(
+        `INSERT INTO session_adjustments (company_id, student_package_id, adjusted_by, adjustment, remarks, created_at)
+         VALUES (?, ?, ?, 1, ?, NOW())`,
+        [companyId, booking.student_package_id, req.user.id, `Class on ${classStart.slice(0, 16)} deleted — session returned`]
+      );
+    }
+
+    await connection.commit();
+
+    const attendance = booking.teacher_absent ? 'teacher_absent'
+      : booking.student_absent ? (booking.absence_notice_at ? 'late_notice' : 'student_absent')
+      : 'present';
+    await logAction(companyId, req.user.id, 'booking_deleted', 'booking', booking.id, {
+      student_id: booking.student_id,
+      student_name: booking.student_name,
+      teacher_id: booking.teacher_id,
+      teacher_name: booking.teacher_name,
+      appointment_date: classStart,
+      slots: ids.length,
+      attendance,
+      session_refunded: refunded,
+    });
+
+    res.json({ message: `Class deleted.${refunded ? ' 1 session returned to the package.' : ''}`, session_refunded: refunded });
+  } catch (err) {
+    await connection.rollback();
+    console.error('[DELETE /bookings/:bookingId]', err);
+    res.status(500).json({ message: 'Server error' });
+  } finally {
+    connection.release();
+  }
+});
+
 // ——— Substitute teacher ———
 
 /**

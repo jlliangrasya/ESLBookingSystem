@@ -20,7 +20,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users, UserCheck, X, CheckCircle, AlertTriangle, TrendingUp, TrendingDown, Download, CalendarPlus,
+  ArrowLeft, User, Package, CalendarDays, Loader2, Plus, FileText, KeyRound, Eye, EyeOff, Pencil, PlusCircle, MinusCircle, History, Users, UserCheck, X, CheckCircle, AlertTriangle, TrendingUp, TrendingDown, Download, CalendarPlus, Trash2,
 } from "lucide-react";
 import { fmtDate, fmtDateOnly, localToMysql } from "@/utils/timezone";
 import { downloadReportImage } from "@/utils/reportImage";
@@ -31,6 +31,7 @@ import RegularScheduleDialog, {
   type RegularScheduleEntry,
 } from "@/components/RegularScheduleDialog";
 import ApplyRegularScheduleDialog from "@/components/ApplyRegularScheduleDialog";
+import DeleteClassDialog, { type DeleteClassTarget } from "@/components/DeleteClassDialog";
 import { StudentPackagePicker } from "@/components/StudentPackagePicker";
 
 interface PackageHistory {
@@ -202,7 +203,7 @@ const AdminStudentProfilePage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const authContext = useContext(AuthContext);
-  const { can } = usePermissions();
+  const { can, isOwner } = usePermissions();
   const currentUser = authContext?.user ?? null;
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
@@ -229,6 +230,8 @@ const AdminStudentProfilePage = () => {
   const [recordMonth, setRecordMonth] = useState("all");
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [editingAttendanceId, setEditingAttendanceId] = useState<number | null>(null);
+  // Owner-only: delete a finished class
+  const [deleteClass, setDeleteClass] = useState<DeleteClassTarget | null>(null);
 
   // Late absence notice → half credits
   const [lateNoticeEnabled, setLateNoticeEnabled] = useState(false);
@@ -1607,6 +1610,7 @@ const AdminStudentProfilePage = () => {
                         )}
                       </TableCell>
                       <TableCell>
+                        <div className="flex items-center gap-1">
                         {(b.status === "pending" || b.status === "confirmed") && can("students.cancel_classes") && (
                           <Button
                             size="sm"
@@ -1644,6 +1648,26 @@ const AdminStudentProfilePage = () => {
                             </Select>
                           )
                         )}
+                        {b.status === "done" && isOwner && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-red-50"
+                            title="Delete class"
+                            onClick={() => setDeleteClass({
+                              id: b.id,
+                              appointment_date: b.appointment_date,
+                              student_name: student?.name,
+                              teacher_name: b.teacher_name,
+                              student_absent: b.student_absent,
+                              teacher_absent: b.teacher_absent,
+                              late_notice: !!b.student_absent && !!b.absence_notice_at,
+                            })}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -1670,6 +1694,12 @@ const AdminStudentProfilePage = () => {
         student={showSchedule ? student : null}
         onClose={() => setShowSchedule(false)}
         onSaved={(schedule) => setStudent((s) => (s ? { ...s, regular_schedule: schedule } : s))}
+      />
+
+      <DeleteClassDialog
+        target={deleteClass}
+        onClose={() => setDeleteClass(null)}
+        onDeleted={(message) => { alert(message); fetchData(); }}
       />
 
       <ApplyRegularScheduleDialog
