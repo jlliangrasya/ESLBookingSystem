@@ -25,7 +25,7 @@ router.get('/status', authenticateToken, requireRole('company_admin'), async (re
         const companyId = req.user.company_id;
 
         const [[company]] = await pool.query(
-            'SELECT status, company_name, created_at, approved_at FROM companies WHERE id = ?',
+            'SELECT status, company_name, created_at, approved_at, is_setup FROM companies WHERE id = ?',
             [companyId]
         );
         if (!company) return res.status(404).json({ message: 'Company not found' });
@@ -37,8 +37,11 @@ router.get('/status', authenticateToken, requireRole('company_admin'), async (re
                -- Any opened slot or any class already on a teacher's schedule means
                -- availability is set up; EXISTS keeps this cheap on busy companies.
                (EXISTS (SELECT 1 FROM teacher_available_slots WHERE company_id = ?)
-                OR EXISTS (SELECT 1 FROM bookings WHERE company_id = ? AND teacher_id IS NOT NULL)) AS has_teacher_schedule`,
-            [companyId, companyId, companyId, companyId]
+                OR EXISTS (SELECT 1 FROM bookings WHERE company_id = ? AND teacher_id IS NOT NULL)) AS has_teacher_schedule,
+               -- A submitted class record (for even one student) means a real class
+               -- has actually happened on this account.
+               EXISTS (SELECT 1 FROM class_reports WHERE company_id = ?) AS has_class_record`,
+            [companyId, companyId, companyId, companyId, companyId]
         );
 
         // One query for all three teacher facts — the count, who to chase about an
@@ -72,7 +75,22 @@ router.get('/status', authenticateToken, requireRole('company_admin'), async (re
             student_count: studentPackageCounts.student_count,
             package_count: studentPackageCounts.package_count,
             has_teacher_schedule: !!studentPackageCounts.has_teacher_schedule,
+            has_class_record: !!studentPackageCounts.has_class_record,
         };
+
+        // Proof the account is already in use: a package, a teacher, and at least
+        // one class record submitted. Stored in companies.is_setup the first time
+        // it's true and never cleared, so removing a package or teacher later
+        // doesn't bring the welcome tour back.
+        let accountSetUp = !!company.is_setup;
+        if (!accountSetUp &&
+            counts.package_count > 0 && counts.teacher_count > 0 && counts.has_class_record) {
+            accountSetUp = true;
+            await pool.query(
+                'UPDATE companies SET is_setup = TRUE WHERE id = ? AND is_setup = FALSE',
+                [companyId]
+            );
+        }
 
         const steps = {
             company_registered: true,
@@ -101,6 +119,7 @@ router.get('/status', authenticateToken, requireRole('company_admin'), async (re
             // True once the whole required path is done — the point at which the UI
             // stops pushing and starts offering the optional extras.
             onboarding_complete: completedCount === STEP_KEYS.length,
+            account_set_up: accountSetUp,
         });
     } catch (err) {
         res.status(500).json({ message: 'Server error' });

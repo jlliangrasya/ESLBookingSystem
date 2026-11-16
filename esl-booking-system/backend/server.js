@@ -317,6 +317,8 @@ async function runAutoMigrations() {
     ['users', 'is_disabled', 'BOOLEAN NOT NULL DEFAULT FALSE'],
     // Migration 025: account deletes archive the row instead of removing it.
     ['users', 'deleted_at', 'DATETIME NULL'],
+    // Migration 026: GET /api/onboarding/status reads and sets this.
+    ['companies', 'is_setup', 'BOOLEAN NOT NULL DEFAULT FALSE'],
   ];
   for (const [table, col, def] of addTableCols) {
     try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); }

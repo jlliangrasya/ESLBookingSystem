@@ -239,6 +239,12 @@ const MIGRATIONS = [
     check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'deleted_at'",
     up: 'ALTER TABLE users ADD COLUMN deleted_at DATETIME NULL',
   },
+  // ── 026: Company "already set up" flag (stops the welcome tour) ───────────
+  {
+    name: 'companies.is_setup column',
+    check: "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'is_setup'",
+    file: '026_company_is_setup.sql',
+  },
 ];
 
 async function main() {

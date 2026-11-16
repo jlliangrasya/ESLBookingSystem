@@ -29,10 +29,13 @@ export interface OnboardingStatus {
     student_count: number;
     package_count: number;
     has_teacher_schedule: boolean;
+    has_class_record: boolean;
   };
   first_teacher: { id: number; name: string; email: string } | null;
   milestone_teacher: { id: number; name: string; last_login_at: string } | null;
   onboarding_complete: boolean;
+  /** Has a package, a teacher, and at least one submitted class record. */
+  account_set_up: boolean;
 }
 
 interface OnboardingContextValue {
