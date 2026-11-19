@@ -148,6 +148,12 @@ export function SubstituteTeacherDialog({ bookingId, onClose, onAssigned, onMove
   const open = data?.open ?? [];
   const closed = data?.free_but_closed ?? [];
   const otherTimes = data?.other_times ?? [];
+  // Morning before 12 PM, afternoon 12–6 PM, evening from 6 PM
+  const timeGroups = [
+    { label: "Morning", items: otherTimes.filter(o => o.time < "12:00") },
+    { label: "Afternoon", items: otherTimes.filter(o => o.time >= "12:00" && o.time < "18:00") },
+    { label: "Evening", items: otherTimes.filter(o => o.time >= "18:00") },
+  ].filter(g => g.items.length > 0);
 
   return (
     <Dialog open onOpenChange={o => { if (!o && !assigning) onClose(); }}>
@@ -200,8 +206,13 @@ export function SubstituteTeacherDialog({ bookingId, onClose, onAssigned, onMove
                 {otherTimes.length === 0 ? (
                   <p className="text-xs text-muted-foreground">No other open times this day.</p>
                 ) : (
+                  timeGroups.map(g => (
+                  <div key={g.label} className="space-y-1.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground pt-1">
+                    {g.label} ({g.items.length})
+                  </p>
                   <ul className="space-y-1.5">
-                    {otherTimes.map(o => (
+                    {g.items.map(o => (
                       <li key={o.time} className="rounded-md border border-l-4 border-l-primary bg-primary/5 px-3 py-2 space-y-1.5">
                         <p className="text-sm font-medium">
                           {fmt12(o.time)} – {fmt12(addMinutes(o.time, b.duration_minutes))}
@@ -227,6 +238,8 @@ export function SubstituteTeacherDialog({ bookingId, onClose, onAssigned, onMove
                       </li>
                     ))}
                   </ul>
+                  </div>
+                  ))
                 )}
               </section>
             </div>

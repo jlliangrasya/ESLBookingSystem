@@ -573,8 +573,9 @@
   }
 }
 
-/* Prevent any child from overflowing the viewport */
-.max-w-7xl, .max-w-5xl, .max-w-4xl, .max-w-lg {
+/* Prevent any child from overflowing the viewport. Not dialogs: this rule is
+   unlayered, so it would beat their width utilities and stretch them full-width. */
+:is(.max-w-7xl, .max-w-5xl, .max-w-4xl, .max-w-lg):not([data-slot="dialog-content"]) {
   max-width: 100%;
 }
 @media (max-width: 1024px) {

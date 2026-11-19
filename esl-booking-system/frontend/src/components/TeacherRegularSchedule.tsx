@@ -834,7 +834,7 @@ const CopyFromActualDialog: React.FC<CopyFromActualDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o && !saving) onClose(); }}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Copy from Actual — {teacher.name}</DialogTitle>
           <DialogDescription>
@@ -1190,7 +1190,7 @@ const ApplyTeacherRegularDialog: React.FC<ApplyTeacherRegularDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o && !loading) onClose(); }}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Apply to Actual — {teacher.name}</DialogTitle>
           <DialogDescription>
