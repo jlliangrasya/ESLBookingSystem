@@ -12,7 +12,7 @@ const { sendMail } = require("../utils/mailer");
 const { generateTempPassword } = require("../utils/tempPassword");
 const { phtNowSql } = require("../utils/phtTime");
 const { attendeeSql, canUsePackageSql, canUsePackage, packageStudentIds } = require("../utils/sharedPackages");
-const { findAvailableTeachers } = require("../utils/teacherAvailability");
+const { findAvailableTeachers, findOpenTimesForDay } = require("../utils/teacherAvailability");
 const { DAY_NAMES, addDays, dayOfWeek } = require("../utils/recurringBooking");
 const { DAYS_OF_WEEK, loadRegularSchedules, loadTeacherRegularSlots, loadTeacherRegularSchedule, findBookablePackage, applyRegularEntries, cleanRegularSlots, replaceTeacherRegularSlots, cleanRegularEntries, loadEntryTeachers, writeRegularEntries, syncTeacherHours, addTeacherRegularEntry } = require("../utils/regularSchedules");
 const { archiveUser } = require("../utils/archiveUser");
@@ -1739,7 +1739,7 @@ router.post('/students/:id/regular-schedule/apply', authenticateToken, requireRo
       student_package_id, num_weeks: weeks, start_date: start_date || null, sessions_booked: applied.totalBooked,
       slots: applied.groups.map((r) => `${r.label}: ${r.sessions_booked}`),
     });
-    res.status(201).json({ message: 'Regular schedule applied', sessions_booked: applied.totalBooked, sessions_remaining: applied.sessionsRemaining, groups: applied.groups });
+    res.status(201).json({ message: 'Regular schedule applied', sessions_booked: applied.totalBooked, sessions_remaining: applied.sessionsRemaining, not_enough_sessions: applied.notEnoughSessions, groups: applied.groups });
   } catch (err) {
     await connection.rollback().catch(() => {});
     console.error('Apply regular schedule error:', err);
@@ -2086,7 +2086,7 @@ router.post('/teachers/:id/regular-schedule/apply', authenticateToken, requireRo
         }
         await connection.commit();
         totalBooked += applied.totalBooked;
-        students.push({ student_id: studentId, student_name: name, sessions_booked: applied.totalBooked, sessions_remaining: applied.sessionsRemaining, groups: applied.groups });
+        students.push({ student_id: studentId, student_name: name, sessions_booked: applied.totalBooked, sessions_remaining: applied.sessionsRemaining, not_enough_sessions: applied.notEnoughSessions, groups: applied.groups });
 
         notify({ userId: studentId, companyId, type: 'recurring_schedule_created', title: 'Recurring Schedule Created',
           message: `Regular schedule applied: ${applied.groups.filter((r) => r.sessions_booked > 0).map((r) => r.label).join('; ')} for ${weeks} week${weeks === 1 ? '' : 's'}. ${applied.totalBooked} classes booked.` });
@@ -2638,7 +2638,91 @@ router.get('/bookings/:id/substitutes', authenticateToken, requireRole('company_
       },
       open,
       free_but_closed: freeButClosed,
+      other_times: await openTimesForClass(companyId, cls),
     });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Other times the same day this class could move to (the substitute list
+// already covers its own time).
+function openTimesForClass(companyId, cls) {
+  return findOpenTimesForDay({
+    companyId, date: cls.date, durationMins: cls.durationMins, studentId: cls.booking.student_id,
+    ignoreBookingIds: cls.rowIds, skip: (time) => time === cls.time, isPast: isPastSlot,
+  });
+}
+
+// Move a class to another time the same day, with the teacher who has it open
+// (the current teacher or another one). Body: { time: "HH:mm", teacher_id }.
+router.post('/bookings/:id/move', authenticateToken, requireRole('company_admin'), requirePermission('calendar.book_classes'), async (req, res) => {
+  try {
+    const companyId = req.user.company_id;
+    const time = String(req.body.time || '');
+    const newTeacherId = Number(req.body.teacher_id);
+    if (!/^\d{2}:\d{2}$/.test(time) || !newTeacherId) return res.status(400).json({ message: 'time and teacher_id are required' });
+
+    const cls = await loadClassForSubstitute(companyId, req.params.id);
+    if (cls.error) return res.status(cls.status).json({ message: cls.error });
+
+    // Re-check now: the list the admin picked from may be stale
+    const slot = (await openTimesForClass(companyId, cls)).find(o => o.time === time);
+    const newTeacher = slot?.teachers.find(t => t.id === newTeacherId);
+    if (!newTeacher) {
+      return res.status(409).json({ message: 'That time is no longer free. Please pick another.' });
+    }
+
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [h, m] = time.split(':').map(Number);
+      for (let i = 0; i < cls.rowIds.length; i++) {
+        const mins = h * 60 + m + i * 30;
+        const at = `${cls.date} ${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}:00`;
+        await connection.query(
+          'UPDATE bookings SET appointment_date = ?, teacher_id = ?, rescheduled_by_admin = 1 WHERE id = ? AND company_id = ?',
+          [at, newTeacherId, cls.rowIds[i], companyId]
+        );
+      }
+      await connection.commit();
+    } catch (err) {
+      await connection.rollback().catch(() => {});
+      throw err;
+    } finally {
+      connection.release();
+    }
+
+    const fromTeacherId = cls.booking.teacher_id;
+    const oldWhen = fmtAppt(cls.start);
+    const newWhen = fmtAppt(`${cls.date} ${time}:00`);
+    const sameTeacher = newTeacherId === fromTeacherId;
+    notify({
+      userId: cls.booking.student_id, companyId, type: 'booking_updated',
+      title: 'Class rescheduled',
+      message: `Your class on ${oldWhen} has been moved to ${newWhen}${sameTeacher ? '' : ` with ${newTeacher.name}`}.`,
+    });
+    notify({
+      userId: newTeacherId, companyId, type: 'booking_updated',
+      title: sameTeacher ? 'Class rescheduled' : 'Class assigned',
+      message: sameTeacher
+        ? `Your class with ${cls.booking.student_name} on ${oldWhen} has been moved to ${newWhen}.`
+        : `You've been assigned ${cls.booking.student_name}'s class on ${newWhen}.`,
+    });
+    if (fromTeacherId && !sameTeacher) {
+      notify({
+        userId: fromTeacherId, companyId, type: 'booking_updated',
+        title: 'Class reassigned',
+        message: `Your class with ${cls.booking.student_name} on ${oldWhen} has been moved to ${newWhen} with ${newTeacher.name}.`,
+      });
+    }
+
+    await logAction(companyId, req.user.id, 'booking_rescheduled', 'booking', cls.booking.id, {
+      from: cls.start, to: `${cls.date} ${time}:00`,
+      from_teacher_id: fromTeacherId, to_teacher_id: newTeacherId, to_teacher_name: newTeacher.name,
+    });
+    res.json({ message: `Class moved to ${newWhen}${sameTeacher ? '' : ` with ${newTeacher.name}`}`, teacher: newTeacher, time });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });

@@ -81,7 +81,11 @@ const fmt12 = (hhmm) => {
 /**
  * Book one student's regular-schedule entries as real classes for `weeks`
  * weeks, deducting 1 session per class. Runs inside the caller's transaction:
- * on { error } the caller must roll back, so a shortfall books nothing.
+ * on { error } the caller must roll back.
+ *
+ * When the plan needs more classes than the package has sessions left, the
+ * earliest classes are booked up to the sessions available and the rest are
+ * reported as skipped ("Not enough sessions left") rather than failing.
  * Slots with no free dates at all are reported as skipped, not as errors.
  */
 async function applyRegularEntries(connection, {
@@ -97,41 +101,81 @@ async function applyRegularEntries(connection, {
   const labelOf = (g) => `${g.days.map((d) => d.slice(0, 3)).join('/')} ${fmt12(g.time)}${g.teacherName ? ` with ${g.teacherName}` : ''}`;
 
   const [[pkg]] = await connection.query(
-    'SELECT sessions_remaining FROM student_packages WHERE id = ? AND company_id = ?', [studentPackageId, companyId]
+    'SELECT sessions_remaining FROM student_packages WHERE id = ? AND company_id = ? FOR UPDATE', [studentPackageId, companyId]
   );
   if (!pkg) return { error: { status: 404, message: 'Student package not found' } };
+  if (pkg.sessions_remaining <= 0) {
+    return { error: { status: 403, message: 'No sessions remaining in this package. Add sessions first. Nothing was booked.' } };
+  }
 
+  const base = { companyId, actorRole, actorId, studentPackageId, studentId, numWeeks: weeks, startDate: startDate || null };
+
+  // ── 1. Work out every free date of every slot, booking nothing yet ──
+  const plans = [];
+  for (const g of groups.values()) {
+    const plan = await bookRecurringSchedule(connection, {
+      ...base, teacherId: g.teacherId, daysOfWeek: g.days, startTime: g.time, dryRun: true,
+    });
+    if (plan.error) {
+      const { code, status, body } = plan.error;
+      if (code === 'NO_AVAILABLE_DATES' || code === 'NO_MATCHING_DATES') {
+        plans.push({ g, dates: [], skipped: body.skipped_dates || [] });
+        continue;
+      }
+      return { error: { status, message: `${labelOf(g)}: ${body.message} Nothing was booked.` } };
+    }
+    plans.push({ g, dates: plan.bookableDates, skipped: plan.skippedDates });
+  }
+
+  // ── 2. Keep the earliest classes that the sessions left can pay for ──
+  const all = plans.flatMap((p) => p.dates.map((date) => ({ p, date, at: `${date} ${p.g.time}` })));
+  all.sort((a, b) => a.at.localeCompare(b.at));
+  const planned = all.length;
+  const keep = all.slice(0, pkg.sessions_remaining);
+  for (const { p, date } of all.slice(pkg.sessions_remaining)) {
+    p.skipped.push({ date, reason: 'Not enough sessions left' });
+  }
+  for (const p of plans) {
+    p.chosen = keep.filter((k) => k.p === p).map((k) => k.date);
+    p.skipped.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  // ── 3. Book the chosen dates ──
   const results = [];
   const teacherIds = new Set();
   let totalBooked = 0;
   let sessionsRemaining = pkg.sessions_remaining;
-  for (const g of groups.values()) {
+  for (const p of plans) {
+    if (p.chosen.length === 0) {
+      results.push({ label: labelOf(p.g), sessions_booked: 0, skipped_dates: p.skipped });
+      continue;
+    }
     const booked = await bookRecurringSchedule(connection, {
-      companyId, actorRole, actorId, studentPackageId, studentId, teacherId: g.teacherId,
-      daysOfWeek: g.days, startTime: g.time, numWeeks: weeks, startDate: startDate || null,
+      ...base, teacherId: p.g.teacherId, daysOfWeek: p.g.days, startTime: p.g.time, onlyDates: p.chosen,
     });
     if (booked.error) {
       const { code, status, body } = booked.error;
-      if (code === 'NO_AVAILABLE_DATES' || code === 'NO_MATCHING_DATES') {
-        results.push({ label: labelOf(g), sessions_booked: 0, skipped_dates: body.skipped_dates || [] });
+      // Another of this student's slots took the date (e.g. same time, two teachers)
+      if (code === 'NO_AVAILABLE_DATES') {
+        results.push({ label: labelOf(p.g), sessions_booked: 0, skipped_dates: [...p.skipped, ...(body.skipped_dates || [])] });
         continue;
       }
-      if (code === 'NOT_ENOUGH_SESSIONS') {
-        const needed = totalBooked + (body.sessions_needed || 1);
-        return { error: { status: 403, message: `Not enough sessions: ${pkg.sessions_remaining} remaining, but this schedule needs at least ${needed} classes over ${weeks} week${weeks === 1 ? '' : 's'}. Choose fewer weeks or add sessions. Nothing was booked.` } };
-      }
-      return { error: { status, message: `${labelOf(g)}: ${body.message} Nothing was booked.` } };
+      return { error: { status, message: `${labelOf(p.g)}: ${body.message} Nothing was booked.` } };
     }
     totalBooked += booked.sessionsBooked;
     sessionsRemaining = booked.sessionsRemaining;
     teacherIds.add(booked.teacherId);
-    results.push({ label: labelOf(g), sessions_booked: booked.sessionsBooked, skipped_dates: booked.skippedDates });
+    results.push({ label: labelOf(p.g), sessions_booked: booked.sessionsBooked, skipped_dates: [...p.skipped, ...booked.skippedDates] });
   }
 
   if (totalBooked === 0) {
     return { error: { status: 400, message: 'No classes could be booked. Every date has a conflict.', groups: results } };
   }
-  return { totalBooked, sessionsRemaining, groups: results, teacherIds: [...teacherIds] };
+  return {
+    totalBooked, sessionsRemaining, groups: results, teacherIds: [...teacherIds],
+    // Classes left out only because the package ran out of sessions
+    notEnoughSessions: Math.max(0, planned - keep.length),
+  };
 }
 
 // Teachers' regular weekly OPEN slots (record only), grouped by teacher id,

@@ -37,10 +37,15 @@ function dateStrLt(a, b) { return a < b; }
  *
  * Returns { error: { status, code, body } } when nothing should be booked, or
  * the created schedule's details.
+ *
+ * Options for callers that plan across several schedules (regular-schedule apply):
+ *   dryRun    — only work out which dates are free; book and deduct nothing.
+ *               Returns { bookableDates: ["YYYY-MM-DD"], skippedDates, teacherId }.
+ *   onlyDates — book only these "YYYY-MM-DD" dates out of the weeks asked for.
  */
 async function bookRecurringSchedule(connection, {
     companyId, actorRole, actorId, studentPackageId, studentId, teacherId: requestedTeacherId,
-    daysOfWeek, startTime, numWeeks, startDate,
+    daysOfWeek, startTime, numWeeks, startDate, dryRun = false, onlyDates = null,
 }) {
     const fail = (status, code, body) => ({ error: { status, code, body } });
     const weeksCount = Math.min(12, Math.max(1, parseInt(numWeeks) || 4));
@@ -73,7 +78,7 @@ async function bookRecurringSchedule(connection, {
     if (sp.payment_status !== 'paid') {
         return fail(403, 'NOT_PAID', { message: 'Package payment has not been confirmed yet.' });
     }
-    if (sp.sessions_remaining <= 0) {
+    if (sp.sessions_remaining <= 0 && !dryRun) {
         return fail(403, 'NOT_ENOUGH_SESSIONS', { message: 'No sessions remaining in this package.' });
     }
 
@@ -116,6 +121,7 @@ async function bookRecurringSchedule(connection, {
     for (let cur = schedStartStr; dateStrLt(cur, schedEndStr); cur = addOneDay(cur)) {
         const dayName = DAY_NAMES[dayOfWeek(cur)];
         if (!daysOfWeek.includes(dayName)) continue;
+        if (onlyDates && !onlyDates.includes(cur)) continue;
         targetDates.push(cur);
     }
 
@@ -234,6 +240,10 @@ async function bookRecurringSchedule(connection, {
             message: 'No available dates found. All dates have conflicts.',
             skipped_dates: skippedDates,
         });
+    }
+
+    if (dryRun) {
+        return { bookableDates: bookableDates.map((b) => b.date), skippedDates, teacherId };
     }
 
     if (sp.sessions_remaining < bookableDates.length) {

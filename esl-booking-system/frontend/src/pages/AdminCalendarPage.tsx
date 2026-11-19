@@ -1207,6 +1207,11 @@ const AdminCalendarPage = () => {
           bookingId={substituteBookingId}
           onClose={() => setSubstituteBookingId(null)}
           onAssigned={handleSubstituteAssigned}
+          onMoved={(message) => {
+            setSubstituteBookingId(null);
+            setSubstituteNotice(message);
+            fetchGrid();
+          }}
         />
       )}
     </>

@@ -1,4 +1,5 @@
 const pool = require('../db');
+const { attendeeSql } = require('./sharedPackages');
 
 /**
  * Who can teach a class at a given date + time.
@@ -91,4 +92,63 @@ async function findAvailableTeachers({ companyId, date, time24, durationMins, ex
     return { open, freeButClosed };
 }
 
-module.exports = { toTime24, consecutiveSlotTimes, findAvailableTeachers };
+/**
+ * Every other start time on `date` that a class of `durationMins` could move to,
+ * with the teachers who have all its slots open there:
+ *   [{ time: "HH:mm", teachers: [{ id, name }] }]
+ * A teacher counts when they're not on leave, have every slot open and none
+ * closed or booked. Times the student already has another class at are left
+ * out. `ignoreBookingIds` are the class being moved, so it doesn't block itself.
+ * `isPast(date, time)` drops times that have already started.
+ */
+async function findOpenTimesForDay({ companyId, date, durationMins, studentId, ignoreBookingIds = [], skip = null, isPast = () => false }) {
+    const [teachers] = await pool.query(
+        `SELECT id, name FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE ORDER BY name ASC`,
+        [companyId]
+    );
+    if (teachers.length === 0) return [];
+
+    const ignore = ignoreBookingIds.length ? ignoreBookingIds : [0];
+    const [[leaves], [openRows], [closedRows], [bookedRows]] = await Promise.all([
+        pool.query(
+            `SELECT teacher_id FROM teacher_leaves WHERE company_id = ? AND leave_date = ? AND status IN ('pending','approved')`,
+            [companyId, date]
+        ),
+        pool.query(
+            `SELECT teacher_id, TIME_FORMAT(slot_time, '%H:%i') AS t FROM teacher_available_slots WHERE company_id = ? AND slot_date = ?`,
+            [companyId, date]
+        ),
+        pool.query(
+            `SELECT teacher_id, LEFT(time, 5) AS t FROM closed_slots WHERE company_id = ? AND date = ?`,
+            [companyId, date]
+        ),
+        pool.query(
+            `SELECT b.teacher_id, ${attendeeSql('b', 'sp')} AS attendee_id, DATE_FORMAT(b.appointment_date, '%H:%i') AS t
+             FROM bookings b JOIN student_packages sp ON sp.id = b.student_package_id
+             WHERE b.company_id = ? AND DATE(b.appointment_date) = ? AND b.status NOT IN ('cancelled','done')
+               AND b.id NOT IN (${ignore.map(() => '?').join(',')})`,
+            [companyId, date, ...ignore]
+        ),
+    ]);
+
+    const onLeave = new Set(leaves.map(r => r.teacher_id));
+    const open = new Set(openRows.map(r => `${r.teacher_id}|${r.t}`));
+    const closedAll = new Set(closedRows.filter(r => r.teacher_id == null).map(r => r.t));
+    const closed = new Set(closedRows.map(r => `${r.teacher_id}|${r.t}`));
+    const teacherBusy = new Set(bookedRows.map(r => `${r.teacher_id}|${r.t}`));
+    const studentBusy = new Set(bookedRows.filter(r => Number(r.attendee_id) === Number(studentId)).map(r => r.t));
+
+    const startTimes = [...new Set(openRows.map(r => r.t))].sort();
+    const result = [];
+    for (const time of startTimes) {
+        if (isPast(date, time)) continue;
+        const slots = consecutiveSlotTimes(time, durationMins);
+        if (slots.some(st => studentBusy.has(st) || closedAll.has(st))) continue;
+        const free = teachers.filter(t => !onLeave.has(t.id) && !(skip && skip(time, t.id)) && slots.every(st =>
+            open.has(`${t.id}|${st}`) && !closed.has(`${t.id}|${st}`) && !teacherBusy.has(`${t.id}|${st}`)));
+        if (free.length > 0) result.push({ time, teachers: free });
+    }
+    return result;
+}
+
+module.exports = { toTime24, consecutiveSlotTimes, findAvailableTeachers, findOpenTimesForDay };

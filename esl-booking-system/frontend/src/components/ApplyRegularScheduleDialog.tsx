@@ -18,6 +18,7 @@ import { RegularScheduleList, type RegularScheduleEntry } from "@/components/Reg
 type ApplyResult = {
   sessions_booked: number;
   sessions_remaining: number;
+  not_enough_sessions?: number;
   groups: { label: string; sessions_booked: number; skipped_dates: { date: string; reason: string }[] }[];
 };
 
@@ -125,7 +126,7 @@ const ApplyRegularScheduleDialog: React.FC<ApplyRegularScheduleDialogProps> = ({
               </p>
               {planned > available && (
                 <p className="text-amber-600 flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" /> May not have enough sessions
+                  <AlertTriangle className="h-3 w-3 shrink-0" /> Not enough sessions for all of them — the earliest {available} will be booked
                 </p>
               )}
             </div>
@@ -139,6 +140,11 @@ const ApplyRegularScheduleDialog: React.FC<ApplyRegularScheduleDialogProps> = ({
             </p>
             <p className="text-sm">{result.sessions_booked} classes booked</p>
             <p className="text-sm">Sessions remaining: {result.sessions_remaining}</p>
+            {(result.not_enough_sessions ?? 0) > 0 && (
+              <p className="text-sm text-amber-600">
+                {result.not_enough_sessions} more class{result.not_enough_sessions === 1 ? " was" : "es were"} not booked — not enough sessions left.
+              </p>
+            )}
           </div>
         )}
 

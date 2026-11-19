@@ -35,6 +35,7 @@ type StudentResult = {
   student_name: string;
   sessions_booked: number;
   sessions_remaining?: number;
+  not_enough_sessions?: number;
   error?: string;
   groups?: { label: string; sessions_booked: number; skipped_dates: { date: string; reason: string }[] }[];
 };
@@ -1246,7 +1247,7 @@ const ApplyTeacherRegularDialog: React.FC<ApplyTeacherRegularDialogProps> = ({
                     ? "You don't have permission to book classes."
                     : slots.length === 0
                       ? "No student has a regular slot with this teacher yet."
-                      : "Deducts 1 session per class. Each student is booked separately: one without enough sessions is skipped and the rest still go ahead. A class needs the teacher's slot to be open."}
+                      : "Deducts 1 session per class. A student without enough sessions for every class gets their earliest classes booked, up to the sessions they have left. A class needs the teacher's slot to be open."}
                 </span>
               </span>
             </label>
@@ -1262,7 +1263,7 @@ const ApplyTeacherRegularDialog: React.FC<ApplyTeacherRegularDialogProps> = ({
                         up to {planned} class{planned === 1 ? "" : "es"} · {s.packageId ? `${s.sessions} sessions left` : "no active package"}
                         {s.packageId && planned > s.sessions && (
                           <span className="block text-amber-600">
-                            <AlertTriangle className="h-3 w-3 inline mr-0.5" />may not have enough sessions
+                            <AlertTriangle className="h-3 w-3 inline mr-0.5" />only the earliest {s.sessions} will be booked
                           </span>
                         )}
                       </span>
@@ -1307,6 +1308,9 @@ const ApplyTeacherRegularDialog: React.FC<ApplyTeacherRegularDialogProps> = ({
                       ) : (
                         <span className="text-xs text-green-700 shrink-0">
                           {r.sessions_booked} booked · {r.sessions_remaining} sessions left
+                          {(r.not_enough_sessions ?? 0) > 0 && (
+                            <span className="block text-amber-600">{r.not_enough_sessions} not booked — not enough sessions</span>
+                          )}
                         </span>
                       )}
                     </div>
