@@ -269,22 +269,21 @@ const AdminStudentProfilePage = () => {
     }
   };
 
-  // Disable/enable student — only hides them from the dashboard's Active
-  // Students count and low-classes panel; login and records are untouched.
-  const [disableLoading, setDisableLoading] = useState(false);
+  // Disabling a student is no longer offered (Deactivate covers it). Students
+  // disabled before that can still be enabled, so they aren't left hidden from
+  // the dashboard's Active Students count and low-classes panel for good.
+  const [enableLoading, setEnableLoading] = useState(false);
 
-  const handleToggleDisabled = async () => {
+  const handleEnable = async () => {
     if (!student) return;
-    const action = student.is_disabled ? 'enable' : 'disable';
-    if (action === 'disable' && !confirm(`Disable ${student.name}? They will be left out of the Active Students count and the low-classes panel on the dashboard. Their records, bookings and login stay as they are.`)) return;
-    setDisableLoading(true);
+    setEnableLoading(true);
     try {
-      await axios.post(`${base}/api/admin/students/${id}/${action}`, {}, { headers });
+      await axios.post(`${base}/api/admin/students/${id}/enable`, {}, { headers });
       fetchData();
     } catch (err) {
-      console.error(`Error ${action === 'disable' ? 'disabling' : 'enabling'} student:`, err);
+      console.error('Error enabling student:', err);
     } finally {
-      setDisableLoading(false);
+      setEnableLoading(false);
     }
   };
 
@@ -910,24 +909,25 @@ const AdminStudentProfilePage = () => {
                         <KeyRound className="h-4 w-4" /> Reset Password
                       </Button>
                     )}
-                    {can("students.deactivate") && <Button
-                      id="student-btn-disable"
+                    {can("students.deactivate") && !!student.is_disabled && <Button
+                      id="student-btn-enable"
                       size="sm"
                       variant="outline"
                       className="gap-1"
-                      title="Hide from the dashboard's Active Students count and low-classes panel"
-                      onClick={handleToggleDisabled}
-                      disabled={disableLoading}
+                      title="This student was disabled. Enable to show them in the dashboard's Active Students count and low-classes panel again."
+                      onClick={handleEnable}
+                      disabled={enableLoading}
                     >
-                      {disableLoading
-                        ? <Loader2 className="h-4 w-4 animate-spin" />
-                        : student.is_disabled ? "Enable" : "Disable"}
+                      {enableLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enable"}
                     </Button>}
                     {can("students.deactivate") && <Button
                       id="student-btn-deactivate"
                       size="sm"
                       variant={student.is_active ? "destructive" : "default"}
                       className="gap-1"
+                      title={student.is_active
+                        ? "Block this student from logging in and cancel their upcoming classes (sessions are refunded). Frees a seat in your plan. Past classes, reports and payroll records are kept."
+                        : "Let this student log in again. Classes cancelled at deactivation are not restored."}
                       onClick={handleToggleActive}
                       disabled={deactivateLoading}
                     >

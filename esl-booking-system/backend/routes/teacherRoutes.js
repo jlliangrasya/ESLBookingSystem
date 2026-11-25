@@ -1061,6 +1061,49 @@ router.get('/bookings/:id/last-class', authenticateToken, requireRole('teacher')
     }
 });
 
+// GET /api/teacher/students/:id/last-report — the student's most recent class report, for
+// the "Assigned Students" list. Only for a student this teacher is assigned to (as package
+// owner or a shared-package member, the same rule as the dashboard's student list). Like
+// /last-class, reports from any teacher count so a new teacher sees where things left off.
+router.get('/students/:id/last-report', authenticateToken, requireRole('teacher'), async (req, res) => {
+    try {
+        const teacherId = req.user.id;
+        const companyId = req.user.company_id;
+        const studentId = Number(req.params.id);
+        if (!Number.isInteger(studentId) || studentId <= 0) {
+            return res.status(400).json({ message: 'Invalid student' });
+        }
+
+        const [[assigned]] = await pool.query(
+            `SELECT sp.id FROM student_packages sp
+             WHERE sp.teacher_id = ? AND sp.company_id = ?
+               AND (sp.student_id = ? OR EXISTS (
+                     SELECT 1 FROM student_package_members m
+                     WHERE m.student_package_id = sp.id AND m.student_id = ?))
+             LIMIT 1`,
+            [teacherId, companyId, studentId, studentId]
+        );
+        if (!assigned) return res.status(404).json({ message: 'Student not found' });
+
+        const [[report]] = await pool.query(
+            `SELECT cr.notes, cr.new_words, cr.sentences, cr.remarks,
+                    b.appointment_date, t.name AS teacher_name
+             FROM class_reports cr
+             JOIN bookings b ON cr.booking_id = b.id
+             JOIN users t ON cr.teacher_id = t.id
+             WHERE cr.student_id = ? AND cr.company_id = ?
+             ORDER BY b.appointment_date DESC
+             LIMIT 1`,
+            [studentId, companyId]
+        );
+
+        res.json({ report: report || null });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // POST /api/teacher/weekly-slots/bulk — open or close every slot in a drag-selected range.
 // Past slots are skipped rather than rejected: a selection dragged across "now" should still
 // apply to the future half of it, so the response reports how many were actually touched.

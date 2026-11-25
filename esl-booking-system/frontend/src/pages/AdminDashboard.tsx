@@ -56,6 +56,13 @@ import OnboardingChecklist from "@/components/OnboardingChecklist";
 import { AdminTour, useStartTour } from "@/components/AdminTour";
 import { Map as MapIcon } from "lucide-react";
 
+// "2026-11" → "Nov 2026" for the Student Growth chart
+const GROWTH_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const fmtGrowthMonth = (ym: string) => {
+  const [y, m] = String(ym).split("-");
+  return GROWTH_MONTHS[Number(m) - 1] ? `${GROWTH_MONTHS[Number(m) - 1]} ${y}` : ym;
+};
+
 interface Feedback {
   id: number;
   student_name: string;
@@ -143,7 +150,7 @@ const AdminDashboard = () => {
 
   interface AnalyticsData {
     sessionsPerMonth: { month: string; sessions: number }[];
-    studentGrowth: { month: string; students: number }[];
+    studentGrowth: { month: string; students: number; added: number }[];
     packageStats: { package_name: string; total: number }[];
     totals: {
       totalSessions: number;
@@ -376,7 +383,12 @@ const AdminDashboard = () => {
               <Users className="h-5 w-5 text-[#2E6B9E]" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs text-gray-500 font-medium">Students</p>
+              <p
+                className="text-xs text-gray-500 font-medium"
+                title="All students who aren't deactivated. Your plan's student limit counts these."
+              >
+                Students
+              </p>
               {analytics?.totals.maxStudents != null ? (
                 <>
                   <p
@@ -406,7 +418,12 @@ const AdminDashboard = () => {
               <UserCheck className="h-5 w-5 text-emerald-600" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs text-gray-500 font-medium">Active Students</p>
+              <p
+                className="text-xs text-gray-500 font-medium"
+                title="Students with a paid package that still has sessions left or an upcoming class (disabled students not included)"
+              >
+                Active Students
+              </p>
               <p className="text-2xl font-bold text-gray-800 tabular-nums">
                 {analytics?.totals.activeStudents ?? "—"}
               </p>
@@ -480,7 +497,12 @@ const AdminDashboard = () => {
               <CalendarDays className="h-5 w-5 text-indigo-600" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs text-gray-500 font-medium">This Month</p>
+              <p
+                className="text-xs text-gray-500 font-medium"
+                title="All classes this month that aren't cancelled: done, upcoming, and not yet marked done"
+              >
+                Scheduled This Month
+              </p>
               <p className="text-2xl font-bold text-gray-800 tabular-nums">
                 {analytics?.totals.classesThisMonth ?? "—"}
               </p>
@@ -925,8 +947,11 @@ const AdminDashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="stat-card bg-white rounded-xl border shadow-sm p-4 pl-6 flex items-center gap-3">
                 <div>
-                  <p className="text-xs text-gray-500 font-medium">
-                    Total Sessions (This Month)
+                  <p
+                    className="text-xs text-gray-500 font-medium"
+                    title="Classes this month that are already marked done. Upcoming classes are added once they're done."
+                  >
+                    Completed This Month
                   </p>
                   <p className="text-2xl font-bold text-gray-800">
                     {analytics.totals.totalSessions}
@@ -996,14 +1021,28 @@ const AdminDashboard = () => {
                       margin={{ top: 4, right: 8, left: -10, bottom: 0 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                      <XAxis dataKey="month" tick={{ fontSize: 11 }} tickFormatter={fmtGrowthMonth} />
                       <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                      <Tooltip />
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (!active || !payload?.length) return null;
+                          const p = payload[0].payload as { month: string; students: number; added: number };
+                          return (
+                            <div className="rounded-md border bg-white px-3 py-2 text-xs shadow-sm">
+                              <div className="font-semibold mb-1">{fmtGrowthMonth(p.month)}</div>
+                              <div>Total students: <span className="font-semibold">{p.students}</span></div>
+                              <div className="text-gray-500">
+                                {p.added > 0 ? `+${p.added} added this month` : "No new students this month"}
+                              </div>
+                            </div>
+                          );
+                        }}
+                      />
                       <Legend />
                       <Line
                         type="monotone"
                         dataKey="students"
-                        name="New Students"
+                        name="Total Students"
                         stroke="#E76F7A"
                         strokeWidth={2}
                         dot={{ r: 3, fill: "#E76F7A" }}

@@ -158,6 +158,41 @@ interface LastClassReport {
   appointment_date: string;
   teacher_name: string;
 }
+// A class report's notes / new words / sentences / remarks — shared by the
+// Last Class panel and the Assigned Students list.
+function ClassReportBody({ report }: { report: LastClassReport }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-gray-500">
+        {fmtDate(report.appointment_date)} · with {report.teacher_name}
+      </p>
+      <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-primary mb-1">
+          Notes
+        </p>
+        <p className="text-sm whitespace-pre-wrap">
+          {report.notes?.trim() || (
+            <span className="text-gray-400 italic">No notes recorded</span>
+          )}
+        </p>
+      </div>
+      {(
+        [
+          ["New Words", report.new_words],
+          ["Sentences", report.sentences],
+          ["Remarks", report.remarks],
+        ] as const
+      )
+        .filter(([, v]) => v?.trim())
+        .map(([label, v]) => (
+          <div key={label}>
+            <p className="text-xs font-semibold text-gray-500 mb-0.5">{label}</p>
+            <p className="text-sm text-gray-700 whitespace-pre-wrap">{v}</p>
+          </div>
+        ))}
+    </div>
+  );
+}
 interface TeacherLeave {
   id: number;
   leave_date: string;
@@ -596,6 +631,16 @@ const TeacherDashboard = () => {
     report: LastClassReport | null;
   } | null>(null);
 
+  // Assigned Students modal — opened from the Overview card. `studentReport` is
+  // the student whose last class report is shown in place of the table.
+  const [showStudentsModal, setShowStudentsModal] = useState(false);
+  const [studentReport, setStudentReport] = useState<{
+    student: { id: number; name: string };
+    loading: boolean;
+    error: string | null;
+    report: LastClassReport | null;
+  } | null>(null);
+
   // Report modal
   const [reportModal, setReportModal] = useState<{
     open: boolean;
@@ -781,6 +826,27 @@ const TeacherDashboard = () => {
       setLastClass((prev) =>
         prev?.booking.id === booking.id
           ? { ...prev, loading: false, error: "Couldn't load the last class." }
+          : prev,
+      );
+    }
+  };
+
+  const openStudentReport = async (student: { id: number; name: string }) => {
+    setStudentReport({ student, loading: true, error: null, report: null });
+    try {
+      const res = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/teacher/students/${student.id}/last-report`,
+        { headers },
+      );
+      setStudentReport((prev) =>
+        prev?.student.id === student.id
+          ? { ...prev, loading: false, report: res.data.report }
+          : prev,
+      );
+    } catch {
+      setStudentReport((prev) =>
+        prev?.student.id === student.id
+          ? { ...prev, loading: false, error: "Couldn't load the last class report." }
           : prev,
       );
     }
@@ -1149,7 +1215,12 @@ const TeacherDashboard = () => {
   // Computed — use fmtDate for consistent date handling (appointment_date is stored as display time)
   const todayKey = fmtDate(new Date().toISOString(), "yyyy-MM-dd");
   // A student on several packages appears once per package in `students`
-  const assignedStudentCount = new Set(students.map((s) => s.id)).size;
+  // A student with more than one package appears once per package in `students`
+  const uniqueStudents = useMemo(() => {
+    const seen = new Set<number>();
+    return students.filter((s) => (seen.has(s.id) ? false : (seen.add(s.id), true)));
+  }, [students]);
+  const assignedStudentCount = uniqueStudents.length;
   // Absent-marked classes (Mark as Absent / Late Notice) count under absences, not here
   const todayUpcoming = bookings.filter(
     (b) =>
@@ -2167,7 +2238,19 @@ const TeacherDashboard = () => {
                   Overview
                 </h2>
                 <div className="grid grid-cols-2 gap-3">
-                  <Card>
+                  <Card
+                    role="button"
+                    tabIndex={0}
+                    title="View your assigned students"
+                    className="cursor-pointer transition-colors hover:border-primary/50 hover:bg-primary/5"
+                    onClick={() => setShowStudentsModal(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setShowStudentsModal(true);
+                      }
+                    }}
+                  >
                     <CardContent className="p-3">
                       <p className="text-3xl font-bold">
                         {assignedStudentCount}
@@ -4500,6 +4583,94 @@ const TeacherDashboard = () => {
         onApplied={() => fetchOpenSlots(weekStart)}
       />
 
+      {/* Assigned Students — from the Overview card */}
+      <Dialog
+        open={showStudentsModal}
+        onOpenChange={(o) => {
+          setShowStudentsModal(o);
+          if (!o) setStudentReport(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {studentReport
+                ? `Last Class Report · ${studentReport.student.name}`
+                : `Assigned Students (${assignedStudentCount})`}
+            </DialogTitle>
+          </DialogHeader>
+          {studentReport ? (
+            <div className="py-2">
+              {studentReport.loading ? (
+                <div className="flex justify-center py-6">
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                </div>
+              ) : studentReport.error ? (
+                <p className="text-sm text-red-600">{studentReport.error}</p>
+              ) : !studentReport.report ? (
+                <p className="text-sm text-gray-500 text-center py-4">
+                  No class report yet for this student.
+                </p>
+              ) : (
+                <ClassReportBody report={studentReport.report} />
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Nationality</TableHead>
+                    <TableHead className="text-right">Last Class Report</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {uniqueStudents.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={3}
+                        className="text-center text-muted-foreground text-sm py-8"
+                      >
+                        No students assigned yet
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    uniqueStudents.map((s) => (
+                      <TableRow key={s.id}>
+                        <TableCell className="font-medium">{s.name}</TableCell>
+                        <TableCell>{s.nationality || "—"}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1 text-xs"
+                            onClick={() => openStudentReport({ id: s.id, name: s.name })}
+                          >
+                            <FileText className="h-3.5 w-3.5" /> View
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          <DialogFooter>
+            {studentReport ? (
+              <Button variant="outline" onClick={() => setStudentReport(null)}>
+                <ChevronLeft className="h-4 w-4" /> Back to students
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={() => setShowStudentsModal(false)}>
+                Close
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Last Class panel — from a booked cell in the availability grid */}
       <Dialog
         open={lastClass !== null}
@@ -4537,42 +4708,7 @@ const TeacherDashboard = () => {
                   class.
                 </p>
               ) : (
-                <div className="space-y-3">
-                  <p className="text-xs text-gray-500">
-                    {fmtDate(lastClass.report.appointment_date)} · with{" "}
-                    {lastClass.report.teacher_name}
-                  </p>
-                  <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-primary mb-1">
-                      Notes
-                    </p>
-                    <p className="text-sm whitespace-pre-wrap">
-                      {lastClass.report.notes?.trim() || (
-                        <span className="text-gray-400 italic">
-                          No notes recorded
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  {(
-                    [
-                      ["New Words", lastClass.report.new_words],
-                      ["Sentences", lastClass.report.sentences],
-                      ["Remarks", lastClass.report.remarks],
-                    ] as const
-                  )
-                    .filter(([, v]) => v?.trim())
-                    .map(([label, v]) => (
-                      <div key={label}>
-                        <p className="text-xs font-semibold text-gray-500 mb-0.5">
-                          {label}
-                        </p>
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                          {v}
-                        </p>
-                      </div>
-                    ))}
-                </div>
+                <ClassReportBody report={lastClass.report} />
               )}
             </div>
           )}

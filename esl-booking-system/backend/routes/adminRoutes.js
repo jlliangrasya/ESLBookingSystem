@@ -10,12 +10,22 @@ const notify = require("../utils/notify");
 const { logAction } = require("../utils/audit");
 const { sendMail } = require("../utils/mailer");
 const { generateTempPassword } = require("../utils/tempPassword");
-const { phtNowSql } = require("../utils/phtTime");
+const { phtNowSql, phtTodaySql } = require("../utils/phtTime");
 const { attendeeSql, canUsePackageSql, canUsePackage, packageStudentIds } = require("../utils/sharedPackages");
 const { findAvailableTeachers, findOpenTimesForDay } = require("../utils/teacherAvailability");
 const { DAY_NAMES, addDays, dayOfWeek } = require("../utils/recurringBooking");
 const { DAYS_OF_WEEK, loadRegularSchedules, loadTeacherRegularSlots, loadTeacherRegularSchedule, findBookablePackage, applyRegularEntries, cleanRegularSlots, replaceTeacherRegularSlots, cleanRegularEntries, loadEntryTeachers, writeRegularEntries, syncTeacherHours, addTeacherRegularEntry } = require("../utils/regularSchedules");
 const { archiveUser } = require("../utils/archiveUser");
+
+// Used when deactivating/deleting a student or deleting a teacher: leaves out
+// every slot of a multi-slot class whose first slot has already started, so a
+// 50-min class in progress is never half-cancelled and refunded.
+// Takes one "now" parameter (phtNowSql()); alias the bookings table as b.
+const CLASS_NOT_STARTED_SQL = `AND NOT EXISTS (
+           SELECT 1 FROM bookings b_started
+           WHERE b.booking_group_id IS NOT NULL
+             AND b_started.booking_group_id = b.booking_group_id
+             AND b_started.appointment_date < ?)`;
 const { HalfCreditError, resolveLateNotice, createHalfCredit, removeHalfCreditForBooking, notifyHalfCredit, fmtMoney } = require("../utils/halfCredits");
 
 /** Format a stored PHT datetime string for notification messages without UTC shift. */
@@ -464,58 +474,81 @@ router.put("/teachers/:id", authenticateToken, requireRole('company_admin'), req
 });
 
 // Delete a teacher (permission: teachers.delete) — archives the account, keeps all history
+//
+// Only classes that have NOT started yet are cancelled. Done classes, and past
+// classes the teacher hasn't marked done yet, are left alone so they still
+// count toward the teacher's payroll. "Now" is Philippine time (phtNowSql):
+// appointment_date is stored as PHT wall-clock time, while SQL NOW() follows the
+// DB timezone (UTC when deployed) and would also cancel the last 8 hours.
+// A multi-slot class (e.g. 50 min = 2 slots) is refunded 1 session, not 1 per slot.
 router.delete("/teachers/:id", authenticateToken, requireRole('company_admin'), requirePermission('teachers.delete'), async (req, res) => {
+  const connection = await pool.getConnection();
+  let inTransaction = false;
   try {
     const companyId = req.user.company_id;
     const adminId = req.user.id;
     const { id } = req.params;
-    // Archive, never remove: their past classes and class reports stay on record.
-    const [[teacherRow]] = await pool.query(
-      "SELECT id FROM users WHERE id = ? AND company_id = ? AND role = 'teacher' AND deleted_at IS NULL",
-      [id, companyId]
-    );
-    if (!teacherRow || !(await archiveUser(pool, id))) return res.status(404).json({ message: 'Teacher not found' });
+    const now = phtNowSql();
 
-    // Cancel future bookings assigned to this teacher and refund sessions
-    const [futureBookings] = await pool.query(
-      `SELECT id, student_package_id, booking_group_id FROM bookings
-       WHERE teacher_id = ? AND company_id = ? AND status NOT IN ('done', 'cancelled')
-         AND appointment_date >= NOW()`,
+    await connection.beginTransaction();
+    inTransaction = true;
+
+    // Archive, never remove: their past classes and class reports stay on record.
+    const [[teacherRow]] = await connection.query(
+      "SELECT id, name FROM users WHERE id = ? AND company_id = ? AND role = 'teacher' AND deleted_at IS NULL",
       [id, companyId]
     );
-    const refundMap = {};
-    for (const b of futureBookings) {
-      refundMap[b.student_package_id] = (refundMap[b.student_package_id] || 0) + 1;
+    if (!teacherRow || !(await archiveUser(connection, id))) {
+      await connection.rollback();
+      inTransaction = false;
+      return res.status(404).json({ message: 'Teacher not found' });
     }
+
+    // Cancel this teacher's upcoming classes and refund sessions
+    const [futureBookings] = await connection.query(
+      `SELECT b.id, b.student_package_id,
+              COALESCE(b.booking_group_id, CAST(b.id AS CHAR)) AS class_key
+       FROM bookings b
+       WHERE b.teacher_id = ? AND b.company_id = ? AND b.status NOT IN ('done', 'cancelled')
+         AND b.appointment_date >= ?
+         ${CLASS_NOT_STARTED_SQL}`,
+      [id, companyId, now, now]
+    );
     if (futureBookings.length > 0) {
-      await pool.query(
-        `UPDATE bookings SET status = 'cancelled'
-         WHERE teacher_id = ? AND company_id = ? AND status NOT IN ('done', 'cancelled')
-           AND appointment_date >= NOW()`,
-        [id, companyId]
+      await connection.query(
+        `UPDATE bookings SET status = 'cancelled' WHERE id IN (${futureBookings.map(() => '?').join(',')})`,
+        futureBookings.map((b) => b.id)
       );
-      for (const [spId, count] of Object.entries(refundMap)) {
-        await pool.query(
-          `UPDATE student_packages SET sessions_remaining = sessions_remaining + ? WHERE id = ? AND company_id = ?`,
-          [count, spId, companyId]
+      const refund = {};
+      for (const b of futureBookings) {
+        if (b.student_package_id == null) continue;
+        (refund[b.student_package_id] ||= new Set()).add(b.class_key);
+      }
+      for (const [spId, keys] of Object.entries(refund)) {
+        await connection.query(
+          'UPDATE student_packages SET sessions_remaining = sessions_remaining + ? WHERE id = ? AND company_id = ?',
+          [keys.size, spId, companyId]
         );
       }
     }
-
-    const [[teacherInfo]] = await pool.query('SELECT name FROM users WHERE id = ?', [id]);
-    const teacherDisplayName = teacherInfo?.name || 'your teacher';
+    const classesCancelled = new Set(futureBookings.map((b) => b.class_key)).size;
 
     // Clear teacher assignment from active student packages
-    const [assignedPackages] = await pool.query(
+    const [assignedPackages] = await connection.query(
       'SELECT id, student_id FROM student_packages WHERE teacher_id = ? AND company_id = ?',
       [id, companyId]
     );
     if (assignedPackages.length > 0) {
-      await pool.query(
+      await connection.query(
         'UPDATE student_packages SET teacher_id = NULL WHERE teacher_id = ? AND company_id = ?',
         [id, companyId]
       );
     }
+
+    await connection.commit();
+    inTransaction = false;
+
+    const teacherDisplayName = teacherRow.name || 'your teacher';
 
     // Notify affected students (from both cancelled bookings and cleared packages)
     const notifiedStudents = new Set();
@@ -557,15 +590,19 @@ router.delete("/teachers/:id", authenticateToken, requireRole('company_admin'), 
         userId: admin.id, companyId,
         type: 'teacher_deactivated',
         title: 'Teacher deactivated',
-        message: `${teacherDisplayName} was deactivated. ${futureBookings.length} future booking(s) cancelled and ${packageCount} student package(s) had their teacher assignment cleared.`,
+        message: `${teacherDisplayName} was deactivated. ${classesCancelled} upcoming class(es) cancelled and ${packageCount} student package(s) had their teacher assignment cleared.`,
       });
     }
 
     invalidateAuthCache(Number(id), null);
-    await logAction(companyId, adminId, 'teacher_deactivated', 'user', Number(id), { bookings_cancelled: futureBookings.length, packages_cleared: packageCount });
-    res.json({ message: `Teacher removed. ${futureBookings.length} future booking(s) cancelled and sessions refunded. ${packageCount} student package(s) unassigned.` });
+    await logAction(companyId, adminId, 'teacher_deactivated', 'user', Number(id), { bookings_cancelled: futureBookings.length, classes_cancelled: classesCancelled, packages_cleared: packageCount });
+    res.json({ message: `Teacher removed. ${classesCancelled} upcoming class(es) cancelled and sessions refunded. ${packageCount} student package(s) unassigned.` });
   } catch (err) {
+    if (inTransaction) await connection.rollback();
+    console.error('Error deleting teacher:', err);
     res.status(500).json({ message: 'Server error' });
+  } finally {
+    connection.release();
   }
 });
 
@@ -3121,47 +3158,79 @@ router.post('/students', authenticateToken, requireRole('company_admin'), requir
   }
 });
 
-// Deactivate a student (company_admin only — soft-delete)
+// Deactivate a student (company_admin only — soft-delete).
+//
+// Past records are never touched: only classes that have NOT started yet and
+// are not 'done'/'cancelled' are cancelled. Done classes, class reports,
+// packages and the regular timetable all stay, so a teacher's done classes keep
+// counting toward payroll. "Now" is Philippine time (phtNowSql) because
+// appointment_date is stored as PHT wall-clock time; SQL NOW() follows the DB
+// session timezone and on a UTC host would also cancel classes from the last
+// 8 hours that the teacher hasn't marked done yet.
 router.post('/students/:id/deactivate', authenticateToken, requireRole('company_admin'), requirePermission('students.deactivate'), async (req, res) => {
+  const connection = await pool.getConnection();
+  let inTransaction = false;
   try {
     const companyId = req.user.company_id;
     const { id } = req.params;
-    const [result] = await pool.query(
+
+    const now = phtNowSql();
+
+    await connection.beginTransaction();
+    inTransaction = true;
+
+    const [result] = await connection.query(
       "UPDATE users SET is_active = FALSE WHERE id = ? AND company_id = ? AND role = 'student'",
       [id, companyId]
     );
-    if (result.affectedRows === 0) return res.status(404).json({ message: 'Student not found' });
-
-    // Cancel future bookings for this student and refund sessions
-    const [futureBookings] = await pool.query(
-      `SELECT b.id, b.student_package_id FROM bookings b
-       JOIN student_packages sp ON b.student_package_id = sp.id
-       WHERE ${attendeeSql()} = ? AND b.company_id = ? AND b.status NOT IN ('done', 'cancelled')
-         AND b.appointment_date >= NOW()`,
-      [id, companyId]
-    );
-    const refundMap = {};
-    for (const b of futureBookings) {
-      refundMap[b.student_package_id] = (refundMap[b.student_package_id] || 0) + 1;
+    if (result.affectedRows === 0) {
+      await connection.rollback();
+      inTransaction = false;
+      return res.status(404).json({ message: 'Student not found' });
     }
-    if (futureBookings.length > 0) {
-      await pool.query(
-        `UPDATE bookings SET status = 'cancelled'
-         WHERE id IN (${futureBookings.map(b => b.id).join(',')})`,
+
+    const [upcoming] = await connection.query(
+      `SELECT b.id, b.student_package_id,
+              COALESCE(b.booking_group_id, CAST(b.id AS CHAR)) AS class_key
+       FROM bookings b
+       JOIN student_packages sp ON b.student_package_id = sp.id
+       WHERE ${attendeeSql()} = ? AND b.company_id = ?
+         AND b.status NOT IN ('done', 'cancelled') AND b.appointment_date >= ?
+         ${CLASS_NOT_STARTED_SQL}`,
+      [id, companyId, now, now]
+    );
+
+    if (upcoming.length > 0) {
+      await connection.query(
+        `UPDATE bookings SET status = 'cancelled' WHERE id IN (${upcoming.map(() => '?').join(',')})`,
+        upcoming.map((b) => b.id)
       );
-      for (const [spId, count] of Object.entries(refundMap)) {
-        await pool.query(
-          `UPDATE student_packages SET sessions_remaining = sessions_remaining + ? WHERE id = ? AND company_id = ?`,
-          [count, spId, companyId]
+      // A multi-slot class (shared booking_group_id) used one session, not one per row
+      const refund = {};
+      for (const b of upcoming) {
+        (refund[b.student_package_id] ||= new Set()).add(b.class_key);
+      }
+      for (const [spId, keys] of Object.entries(refund)) {
+        await connection.query(
+          'UPDATE student_packages SET sessions_remaining = sessions_remaining + ? WHERE id = ? AND company_id = ?',
+          [keys.size, spId, companyId]
         );
       }
     }
 
+    await connection.commit();
+    inTransaction = false;
+
     invalidateAuthCache(Number(id), null);
-    await logAction(companyId, req.user.id, 'student_deactivated', 'user', Number(id), { bookings_cancelled: futureBookings.length });
-    res.json({ message: `Student deactivated. ${futureBookings.length} future booking(s) cancelled and sessions refunded.` });
+    const classesCancelled = new Set(upcoming.map((b) => b.class_key)).size;
+    await logAction(companyId, req.user.id, 'student_deactivated', 'user', Number(id), { classes_cancelled: classesCancelled });
+    res.json({ message: `Student deactivated. ${classesCancelled} upcoming class(es) cancelled and sessions refunded. Past classes and records are kept.` });
   } catch (err) {
+    if (inTransaction) await connection.rollback();
+    console.error('Error deactivating student:', err);
     res.status(500).json({ message: 'Server error' });
+  } finally {
+    connection.release();
   }
 });
 
@@ -3238,8 +3307,9 @@ router.delete('/students/:id', authenticateToken, requireRole('company_admin'), 
        FROM bookings b
        JOIN student_packages sp ON b.student_package_id = sp.id
        WHERE ${attendeeSql()} = ? AND b.company_id = ?
-         AND b.status NOT IN ('done', 'cancelled') AND b.appointment_date >= ?`,
-      [id, companyId, phtNowSql()]
+         AND b.status NOT IN ('done', 'cancelled') AND b.appointment_date >= ?
+         ${CLASS_NOT_STARTED_SQL}`,
+      [id, companyId, phtNowSql(), phtNowSql()]
     );
 
     await connection.beginTransaction();
@@ -3335,15 +3405,38 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
       [companyId]
     );
 
-    // Student growth (new students per month, last 6 months)
-    const [studentGrowth] = await pool.query(
-      `SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS students
-       FROM users
-       WHERE company_id = ? AND role = 'student'
-         AND created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
-       GROUP BY month ORDER BY month ASC`,
-      [companyId]
-    );
+    // Student growth, last 6 calendar months. `students` is the running total at
+    // the end of each month (everyone enrolled so far, minus deleted accounts);
+    // `added` is how many joined that month. A month with no sign-ups still
+    // appears, carrying the previous total forward.
+    const [[[{ curMonth }]], [addedRows], [deletedRows]] = await Promise.all([
+      pool.query("SELECT DATE_FORMAT(NOW(), '%Y-%m') AS curMonth"),
+      pool.query(
+        `SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS cnt
+         FROM users WHERE company_id = ? AND role = 'student'
+         GROUP BY month`,
+        [companyId]
+      ),
+      pool.query(
+        `SELECT DATE_FORMAT(deleted_at, '%Y-%m') AS month, COUNT(*) AS cnt
+         FROM users WHERE company_id = ? AND role = 'student' AND deleted_at IS NOT NULL
+         GROUP BY month`,
+        [companyId]
+      ),
+    ]);
+    const [curY, curM] = curMonth.split('-').map(Number);
+    const growthMonths = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(Date.UTC(curY, curM - 1 - i, 1));
+      growthMonths.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+    }
+    const sumUpTo = (rows, month) =>
+      rows.reduce((s, r) => (r.month <= month ? s + Number(r.cnt) : s), 0);
+    const studentGrowth = growthMonths.map((month) => ({
+      month,
+      students: sumUpTo(addedRows, month) - sumUpTo(deletedRows, month),
+      added: Number(addedRows.find((r) => r.month === month)?.cnt || 0),
+    }));
 
     // Package revenue (confirmed packages this month)
     const [packageStats] = await pool.query(
@@ -3371,6 +3464,13 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
         AND (sp_m.sessions_remaining > 0
              OR EXISTS (SELECT 1 FROM bookings b_m WHERE b_m.student_package_id = sp_m.id AND b_m.status NOT IN ('done','cancelled')))`;
 
+    // "Today" / "this week" / "this month" in Philippine time. appointment_date is stored as
+    // PHT wall-clock time, while CURDATE()/NOW() follow the DB clock (UTC when deployed), which
+    // made these counts show the previous day/week/month from midnight to 8 AM PH time.
+    // Escaped literals (not ? params) so the parameter lists below stay unchanged.
+    const phtToday = pool.escape(phtTodaySql());
+    const phtNowLit = pool.escape(phtNowSql());
+
     // Summary totals + plan limits
     const [[totals]] = await pool.query(
       `SELECT
@@ -3384,18 +3484,18 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
          (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'teacher' AND is_active = TRUE) AS teachersCount,
          (SELECT COUNT(*) FROM users WHERE company_id = ? AND role = 'company_admin' AND is_active = TRUE) AS adminsCount,
          (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND status = 'done'
-           AND YEAR(appointment_date) = YEAR(CURDATE()) AND MONTH(appointment_date) = MONTH(CURDATE())) AS totalSessions,
+           AND YEAR(appointment_date) = YEAR(${phtToday}) AND MONTH(appointment_date) = MONTH(${phtToday})) AS totalSessions,
          (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND status = 'cancelled') AS totalCancelled,
-         (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND DATE(appointment_date) = CURDATE() AND status != 'cancelled') AS classesToday,
-         (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND YEARWEEK(appointment_date, 1) = YEARWEEK(CURDATE(), 1) AND status != 'cancelled') AS classesThisWeek,
-         (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND YEARWEEK(appointment_date, 1) = YEARWEEK(CURDATE(), 1) AND status = 'done') AS doneThisWeek,
-         (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND YEAR(appointment_date) = YEAR(CURDATE()) AND MONTH(appointment_date) = MONTH(CURDATE()) AND status != 'cancelled') AS classesThisMonth,
+         (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND DATE(appointment_date) = ${phtToday} AND status != 'cancelled') AS classesToday,
+         (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND YEARWEEK(appointment_date, 1) = YEARWEEK(${phtToday}, 1) AND status != 'cancelled') AS classesThisWeek,
+         (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND YEARWEEK(appointment_date, 1) = YEARWEEK(${phtToday}, 1) AND status = 'done') AS doneThisWeek,
+         (SELECT COUNT(DISTINCT COALESCE(booking_group_id, CAST(id AS CHAR))) FROM bookings WHERE company_id = ? AND YEAR(appointment_date) = YEAR(${phtToday}) AND MONTH(appointment_date) = MONTH(${phtToday}) AND status != 'cancelled') AS classesThisMonth,
          (SELECT IFNULL(SUM(tp.price), 0) FROM student_packages sp
           JOIN tutorial_packages tp ON sp.package_id = tp.id
           WHERE sp.company_id = ? AND sp.payment_status = 'paid') AS totalRevenue,
          (SELECT COUNT(*) FROM bookings
           WHERE company_id = ? AND teacher_id IS NULL
-            AND status IN ('pending','confirmed') AND appointment_date >= NOW()) AS unassignedBookings,
+            AND status IN ('pending','confirmed') AND appointment_date >= ${phtNowLit}) AS unassignedBookings,
          sp.max_students AS maxStudents,
          sp.max_teachers AS maxTeachers,
          sp.max_admins AS maxAdmins,
@@ -3413,17 +3513,17 @@ router.get('/analytics', authenticateToken, requireRole('company_admin'), async 
          (SELECT COUNT(DISTINCT COALESCE(b1.booking_group_id, CAST(b1.id AS CHAR)))
           FROM bookings b1
           WHERE b1.teacher_id = u.id AND b1.company_id = u.company_id
-            AND YEARWEEK(b1.appointment_date, 1) = YEARWEEK(CURDATE(), 1)
+            AND YEARWEEK(b1.appointment_date, 1) = YEARWEEK(${phtToday}, 1)
             AND b1.status != 'cancelled') AS bookedThisWeek,
          (SELECT COUNT(DISTINCT COALESCE(b2.booking_group_id, CAST(b2.id AS CHAR)))
           FROM bookings b2
           WHERE b2.teacher_id = u.id AND b2.company_id = u.company_id
-            AND YEARWEEK(b2.appointment_date, 1) = YEARWEEK(CURDATE(), 1)
+            AND YEARWEEK(b2.appointment_date, 1) = YEARWEEK(${phtToday}, 1)
             AND b2.status = 'done') AS doneThisWeek,
          (SELECT COUNT(DISTINCT COALESCE(b3.booking_group_id, CAST(b3.id AS CHAR)))
           FROM bookings b3
           WHERE b3.teacher_id = u.id AND b3.company_id = u.company_id
-            AND DATE(b3.appointment_date) = CURDATE()
+            AND DATE(b3.appointment_date) = ${phtToday}
             AND b3.status != 'cancelled') AS today
        FROM users u
        WHERE u.company_id = ? AND u.role = 'teacher' AND u.is_active = TRUE

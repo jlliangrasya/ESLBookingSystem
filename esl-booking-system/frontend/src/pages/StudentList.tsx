@@ -322,7 +322,8 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
       const matchStatus =
         statusFilter === "all" ||
         (statusFilter === "active" && isActive(s)) ||
-        (statusFilter === "archived" && !isActive(s));
+        (statusFilter === "deactivated" && !isActive(s)) ||
+        (statusFilter === "disabled" && isActive(s) && !!s.is_disabled);
       return matchSearch && matchSession && matchTeacher && matchStatus;
     });
   }, [students, search, sessionFilter, teacherFilter, statusFilter]);
@@ -678,8 +679,9 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="archived">Archived</SelectItem>
-              <SelectItem value="all">Active + Archived</SelectItem>
+              <SelectItem value="deactivated">Deactivated</SelectItem>
+              <SelectItem value="disabled">Disabled</SelectItem>
+              <SelectItem value="all">All Students</SelectItem>
             </SelectContent>
           </Select>
           <DropdownMenu>
@@ -754,7 +756,7 @@ Please use the email and password to login to https://brightfolks.pages.dev`;
                                 variant="outline"
                                 className="text-[10px] text-muted-foreground"
                               >
-                                Archived
+                                Deactivated
                               </Badge>
                             )}
                             {isActive(student) && !!student.is_disabled && (
